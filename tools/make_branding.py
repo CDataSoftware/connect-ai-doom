@@ -10,19 +10,29 @@
            256-tall arena walls it tiles twice: trim at the floor and mid-wall.
   M_DOOM   the menu logo becomes the Connect AI logo.
 
-Usage: make_branding.py <freedoom2.wad> <brand kit dir> <out.wad>
+With --mission (state/mission.json from brief.py) it also draws the run's signs:
+  CAIRM0-2 one per app room: the app, what Claude found there, and the access
+           Connect AI grants (keycard color: blue = read, yellow = read + write)
+  CAIVAULT the PII vault's sign, with Connect AI's refusal
+  CAIXXXX  the vault's walls: masked values
+
+Usage: make_branding.py <freedoom2.wad> <brand kit dir> <out.wad> [--mission mission.json]
 The brand kit dir is the extracted BRANDKIT folder (kept out of git).
 """
+import json
 import struct
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 DEPTH = (21, 21, 28)          # brand Depth #15151C
 AGILITY = (255, 229, 0)       # brand Agility #FFE500
 GRAY_LO, GRAY_HI = 24, 140    # brand Gray 11 (Depth) .. Gray 5, as plain gray levels
 TRIM_ROWS = 4  # thinner breaks into dashes at a distance
+CLARITY = (241, 238, 233)     # brand Clarity #F1EEE9
+KEY_BLUE, KEY_YELLOW, KEY_RED = (64, 96, 255), AGILITY, (255, 48, 32)
+FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
 LOGO = "02 Logos/Product Logos/Connect AI/PNG/connect-ai-agility-clarity.png"  # for dark backgrounds
 
 
@@ -108,7 +118,61 @@ def menu_image(kit):
     return img
 
 
-def build(iwad, kit, out):
+def font(size):
+    try:
+        return ImageFont.truetype(FONT, size)
+    except OSError:
+        return ImageFont.load_default(size)
+
+
+def fit(draw, text, size, width):
+    """The largest font up to `size` that fits `text` in `width` pixels."""
+    while size > 8 and draw.textlength(text, font=font(size)) > width:
+        size -= 1
+    return font(size)
+
+
+def text_sign(wall, lines, border):
+    """A 256x128 sign on the branded wall: a Depth plate with a keycard-colored
+    border and centered lines of (text, size, color)."""
+    sign = Image.new("RGBA", (256, 128))
+    for x in range(0, 256, wall.width):
+        sign.paste(wall, (x, 0))
+    d = ImageDraw.Draw(sign)
+    d.rectangle([6, 6, 249, 121], fill=DEPTH + (255,), outline=border + (255,), width=4)
+    fonts = [fit(d, t, size, 220) for t, size, _ in lines]
+    heights = [f.getbbox("XG")[3] for f in fonts]
+    y = (128 - sum(heights) - 6 * (len(lines) - 1)) // 2
+    for (t, _, color), f, h in zip(lines, fonts, heights):
+        d.text((128, y), t, font=f, fill=color + (255,), anchor="mt")
+        y += h + 6
+    return sign
+
+
+def mission_textures(wall, mission):
+    """(name, image) for each sign and the vault walls of this run."""
+    out = []
+    for i, room in enumerate(mission.get("rooms", [])[:3]):
+        key, access = (KEY_YELLOW, "READ + WRITE") if room.get("writable") else (KEY_BLUE, "READ ONLY")
+        out.append((f"CAIRM{i}", text_sign(wall, [
+            (room.get("app", room["connection"]).upper(), 40, AGILITY),
+            (room.get("title", "").upper(), 24, CLARITY),
+            (access, 18, key)], key)))
+    if mission.get("denied"):
+        out.append(("CAIVAULT", text_sign(wall, [
+            ("PII VAULT", 40, KEY_RED),
+            ("BLOCKED BY CONNECT AI", 22, CLARITY),
+            ("DATA SECURITY", 18, AGILITY)], KEY_RED)))
+        xxxx = Image.new("RGBA", (128, 128), DEPTH + (255,))
+        d = ImageDraw.Draw(xxxx)
+        for row, y in enumerate(range(4, 128, 16)):
+            d.text((4 + (row % 2) * 10, y), "XXX-XX-XXXX" if row % 2 == 0 else "XXXX XXXX XXXX",
+                   font=font(15), fill=(120, 120, 128, 255))
+        out.append(("CAIXXXX", xxxx))
+    return out
+
+
+def build(iwad, kit, out, mission=None):
     lumps = read_wad(iwad)
     pal = lumps["PLAYPAL"][:768]
     palette = [tuple(pal[3 * i:3 * i + 3]) for i in range(256)]
@@ -129,14 +193,19 @@ def build(iwad, kit, out):
     sign = Image.new("RGBA", (256, 128))
     for x in range(0, 256, tw):
         sign.paste(wall, (x, 0))
-    plate = sign_image(kit)
-    sign.alpha_composite(plate, ((256 - plate.width) // 2, (128 - plate.height) // 2))
+    has_kit = (Path(kit) / LOGO).exists()  # without the brand kit: text instead of the logo
+    if has_kit:
+        plate = sign_image(kit)
+        sign.alpha_composite(plate, ((256 - plate.width) // 2, (128 - plate.height) // 2))
+    else:
+        sign = text_sign(wall, [("CONNECT AI", 48, AGILITY)], AGILITY)
 
     # PNAMES: everything from the IWAD + our sign patch.
     pn = lumps["PNAMES"]
     count = struct.unpack("<i", pn[:4])[0]
     names = [pn[4 + 8 * i:12 + 8 * i].rstrip(b"\0").decode().upper() for i in range(count)]
-    names += ["CAILOGO", "CAIWALLP"]
+    extra = mission_textures(wall, mission) if mission else []
+    names += ["CAILOGO", "CAIWALLP"] + [f"P{n[3:]}"[:8] for n, _ in extra]
     pnames = struct.pack("<i", len(names)) + b"".join(name8(n) for n in names)
 
     # TEXTURE1: a PWAD's TEXTURE1 replaces the IWAD's, so copy every entry, then append ours.
@@ -144,7 +213,9 @@ def build(iwad, kit, out):
     tcount = struct.unpack("<i", tb[:4])[0]
     offs = list(struct.unpack(f"<{tcount}i", tb[4:4 + 4 * tcount]))
     entries = [tb[o:offs[i + 1]] if i + 1 < tcount else tb[o:] for i, o in enumerate(offs)]
-    for tex, (w, h), patch in (("CAISIGN", sign.size, "CAILOGO"), ("CAIWALL", wall.size, "CAIWALLP")):
+    textures = [("CAISIGN", sign.size, "CAILOGO"), ("CAIWALL", wall.size, "CAIWALLP")]
+    textures += [(n, img.size, f"P{n[3:]}"[:8]) for n, img in extra]
+    for tex, (w, h), patch in textures:
         entries.append(name8(tex) + struct.pack("<ihhih", 0, w, h, 0, 1)
                        + struct.pack("<hhhhh", 0, 0, names.index(patch), 0, 0))
     head = 4 + 4 * len(entries)
@@ -154,15 +225,17 @@ def build(iwad, kit, out):
         pos += len(e)
     texture1 = struct.pack("<i", len(entries)) + struct.pack(f"<{len(entries)}i", *table) + b"".join(entries)
 
-    menu = menu_image(kit)
     out_lumps = [
         ("PNAMES", pnames),
         ("TEXTURE1", texture1),
         ("CAILOGO", to_patch(sign, palette)),
         ("CAIWALLP", to_patch(wall, palette)),
-        # menu draws M_DOOM at (94, 2) minus offsets; these center it.
-        ("M_DOOM", to_patch(menu, palette, left=94 - (320 - menu.width) // 2, top=-4)),
     ]
+    if has_kit:
+        menu = menu_image(kit)
+        # menu draws M_DOOM at (94, 2) minus offsets; these center it.
+        out_lumps.append(("M_DOOM", to_patch(menu, palette, left=94 - (320 - menu.width) // 2, top=-4)))
+    out_lumps += [(f"P{n[3:]}"[:8], to_patch(img, palette)) for n, img in extra]
     data, directory, pos = b"", b"", 12
     for name, blob in out_lumps:
         directory += struct.pack("<ii", pos, len(blob)) + name8(name)
@@ -172,4 +245,10 @@ def build(iwad, kit, out):
 
 
 if __name__ == "__main__":
-    build(*sys.argv[1:4])
+    args = sys.argv[1:]
+    mission = None
+    if "--mission" in args:
+        i = args.index("--mission")
+        mission = json.loads(Path(args[i + 1]).read_text())
+        del args[i:i + 2]
+    build(*args[:3], mission=mission)

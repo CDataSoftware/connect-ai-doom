@@ -7,144 +7,77 @@ psdoom-ng calls three commands (see vendor/src/psdoom-ng/trunk/src/pr_process.c)
   PSDOOMRENICECMD  -> `connect_doom.py hit <id>`   a monster was wounded
 
 psdoom runs these synchronously inside the game loop, so they only touch local
-files. `poll` is the slow part: it queries Connect AI in the background and
-writes state/cache.json.
+files. `poll` is the slow part: it re-runs each room's query from
+state/mission.json (written by brief.py) through the Connect AI MCP server and
+writes state/cache.json. Room i's monsters get ids with id % 3 == i, which is
+how psdoom picks the arena they spawn in.
 
 The source data is never modified. A kill is logged to state/kills.jsonl and
-hidden from later lists (otherwise psdoom resurrects the monster). With
-SANDBOX=1 a kill also INSERTs a row into SANDBOX_TABLE through Connect AI.
+hidden from later lists (otherwise psdoom resurrects the monster).
 """
-import base64
 import datetime as dt
 import hashlib
 import json
 import os
 import random
-import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+import connect_ai_mcp
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 CACHE = STATE / "cache.json"
 KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
-
-API_URL = os.environ.get("CONNECT_AI_URL", "https://cloud.cdata.com/api/query")
-MAX_MONSTERS = int(os.environ.get("MAX_MONSTERS", "40"))
-DEMON_DAYS = int(os.environ.get("DEMON_DAYS", "1"))  # this many days past DueDate = pink demon
-# Any SELECT works if it returns: Id, Label (who), Amount (dollars), DueDate.
-SOURCE_QUERY = os.environ.get(
-    "SOURCE_QUERY",
-    "SELECT o.[Id] AS Id, a.[Name] AS Label, o.[Amount] AS Amount, o.[CloseDate] AS DueDate "
-    "FROM [Salesforce1].[Salesforce].[Opportunity] o "
-    "LEFT JOIN [Salesforce1].[Salesforce].[Account] a ON o.[AccountId] = a.[Id] "
-    f"WHERE o.[IsClosed] = 0 ORDER BY o.[Amount] DESC LIMIT {MAX_MONSTERS}",
-)
-SANDBOX_TABLE = os.environ.get("SANDBOX_TABLE", "[Snowflake_WH].[PUBLIC].[DOOM_FOLLOW_UPS]")
-
-
-# ---------------------------------------------------------------- Connect AI
-
-OP_ITEM = os.environ.get("CONNECT_AI_OP_ITEM", "op://Private/Connect AI PAT")
-
-
-def op_read(field):
-    try:
-        return subprocess.run(["op", "--account", "my.1password.com", "read", f"{OP_ITEM}/{field}"],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
-
-
-_AUTH = None
-
-
-def credentials():
-    """CONNECT_AI_USER / CONNECT_AI_PAT, else the 1Password item in CONNECT_AI_OP_ITEM."""
-    global _AUTH
-    if _AUTH is None:
-        user = os.environ.get("CONNECT_AI_USER") or op_read("username")
-        pat = os.environ.get("CONNECT_AI_PAT") or op_read("credential")
-        if not (user and pat):
-            sys.exit("Set CONNECT_AI_USER and CONNECT_AI_PAT, or store them in 1Password (CONNECT_AI_OP_ITEM).")
-        _AUTH = base64.b64encode(f"{user}:{pat}".encode()).decode()
-    return _AUTH
-
-
-def run_sql(sql, params=None):
-    """POST a SQL statement to the Connect AI query API; return a list of row dicts."""
-    body = {"query": sql}
-    if params:
-        body["parameters"] = {k: {"dataType": 5, "value": v} for k, v in params.items()}
-    req = urllib.request.Request(
-        API_URL,
-        data=json.dumps(body).encode(),
-        headers={"Authorization": f"Basic {credentials()}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            payload = json.load(resp)
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Connect AI HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
-    if payload.get("error"):
-        raise RuntimeError(f"Connect AI error: {payload['error'].get('message', payload['error'])}")
-    rows = []
-    for result in payload.get("results", []):
-        cols = [c.get("columnLabel") or c["columnName"] for c in result.get("schema", [])]
-        rows += [dict(zip(cols, r)) for r in result.get("rows", [])]
-    return rows
+MISSION = STATE / "mission.json"
+MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 
 
 # ---------------------------------------------------------------- monsters
 
-def monster_id(record_id):
-    """psdoom wants an int PID; derive a stable one from the record id."""
-    return 1000 + int(hashlib.sha1(record_id.encode()).hexdigest(), 16) % 899000
+def monster_id(record_id, room):
+    """psdoom wants an int PID; derive a stable one whose remainder mod 3 is the room."""
+    return (334 + int(hashlib.sha1(record_id.encode()).hexdigest(), 16) % 299000) * 3 + room
 
 
-def short_name(label, dollars):
-    """psdoom shows at most 7 characters and no spaces: initials + amount, e.g. SES76k."""
-    initials = "".join(w[0] for w in (label or "?").split() if w[:1].isalnum()).upper()[:3] or "X"
-    amount = f"{dollars // 1000}k" if dollars >= 10000 else str(dollars)
-    return (initials + amount)[:7]
+def short_name(label):
+    """psdoom shows at most 7 characters and no spaces: the first real word, e.g. DESERT
+    (skipping prefixes like '2025' or 'Q4-REN-')."""
+    words = ["".join(ch for ch in w if ch.isalpha()) for w in (label or "?").replace("-", " ").split()]
+    return next((w for w in words if len(w) >= 3), next((w for w in words if w), "X"))[:7].upper()
 
 
-def to_monster(row, now):
-    due = dt.datetime.fromisoformat(str(row["DueDate"]).replace(" ", "T").split(".")[0])
-    overdue = (now - due).days
-    dollars = int(row["Amount"] or 0)
+def to_monster(row, room_index, room):
+    rid = f"{room['connection']}:{row.get('Id')}"
     return {
-        "pid": monster_id(row["Id"]),
-        "id": row["Id"],
-        "customer": row["Label"] or "(no account)",
-        "dollars": dollars,
-        "overdue_days": overdue,
-        "name": short_name(row["Label"], dollars),
-        "demon": 1 if overdue >= DEMON_DAYS else 0,
+        "pid": monster_id(rid, room_index),
+        "id": rid,
+        "app": room.get("app", room["connection"]),
+        "writable": room.get("writable", False),
+        "label": row.get("Label") or "?",
+        "detail": row.get("Detail") or "",
+        "name": short_name(row.get("Label")),
+        "demon": 1 if str(row.get("Hot", "0")).strip() in ("1", "True", "true") else 0,
     }
 
 
-def demo_rows(n=MAX_MONSTERS):
-    """Made-up deals for offline play (no Connect AI, no real customer data)."""
+def demo_mission():
+    """Made-up rooms for offline play (no Connect AI, no real customer data)."""
     rng = random.Random(42)
     words = ["Acme", "Globex", "Initech", "Umbrella", "Hooli", "Vandelay", "Wonka", "Stark",
              "Tyrell", "Cyberdyne", "Soylent", "Wayne", "Oscorp", "Gringotts", "Monarch"]
-    kinds = ["Corp", "Labs", "Health", "Bank", "University", "Energy", "Systems"]
-    today = dt.datetime.now()
-    rows = []
-    for i in range(n):
-        due = today + dt.timedelta(days=rng.choice([-60, -20, -5, 10, 30, 90]))
-        rows.append({
-            "Id": f"demo_{i:03d}",
-            "Label": f"{rng.choice(words)} {rng.choice(kinds)}",
-            "Amount": rng.choice([5969, 15127, 33077, 76718, 149900]),
-            "DueDate": due.strftime("%Y-%m-%d %H:%M:%S"),
-        })
-    return rows
+    rooms = [{"connection": "DemoCRM", "app": "Demo CRM", "title": "Deals slipping", "writable": True},
+             {"connection": "DemoDesk", "app": "Demo Helpdesk", "title": "Open escalations", "writable": True},
+             {"connection": "DemoBilling", "app": "Demo Billing", "title": "Overdue invoices", "writable": False}]
+    for r in rooms:
+        r["rows"] = [{"Id": f"{r['connection']}{i}", "Label": f"{rng.choice(words)} Corp",
+                      "Detail": f"${rng.choice([5969, 15127, 33077, 76718])}", "Hot": rng.choice([0, 1])}
+                     for i in range(12)]
+    return {"question": "(demo)", "answer": "Made-up data for offline play.", "rooms": rooms,
+            "denied": [{"connection": "DemoPII", "error": "Request blocked: PII detected in inbound query"}],
+            "masked": [], "calls": []}
 
 
 def write_cache(monsters, source):
@@ -194,20 +127,13 @@ def cmd_kill(args):
     m = find(int(args[0]))
     if not m:
         return
-    record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"),
-              "mode": "sandbox" if os.environ.get("SANDBOX") == "1" else "dry-run"}
+    record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"), "mode": "dry-run"}
     append(KILLS, record)
-    d = m["overdue_days"]
-    when = f"slipped {d}d" if d > 0 else f"closes in {-d}d"
     # stdout's first line is shown in-game (patched pr_kill); Doom's font is upper case.
-    print(f"CHASED {m['customer']} ${m['dollars']:,}"[:79].upper(), flush=True)
-    print(f"\n  KILL  {m['customer']}  ${m['dollars']:,}  ({when})  "
-          f"{m['id']}  [{record['mode']}]\n", file=sys.stderr)
-    if record["mode"] == "sandbox":
-        # Never block the game loop on the network: hand off to a detached process.
-        subprocess.Popen([sys.executable, __file__, "sandbox-write", m["id"]],
-                         stdout=subprocess.DEVNULL, stderr=open(STATE / "sandbox.log", "a"),
-                         start_new_session=True)
+    action = "FOLLOW-UP QUEUED" if m["writable"] else "FLAGGED"
+    print(f"{m['app']}: {m['label']}"[:44].upper() + f", {action}", flush=True)
+    print(f"\n  KILL  {m['app']}  {m['label']}  ({m['detail']})  {m['id']}  [{record['mode']}]\n",
+          file=sys.stderr)
 
 
 def cmd_hit(args):
@@ -216,25 +142,33 @@ def cmd_hit(args):
         append(HITS, {"id": m["id"], "at": time.time()})
 
 
-def cmd_sandbox_write(args):
-    m = next(k for k in read_jsonl(KILLS) if k["id"] == args[0])
-    run_sql(f"INSERT INTO {SANDBOX_TABLE} ([RECORD_ID], [CUSTOMER], [AMOUNT_DUE], [KILLED_AT]) "
-            "VALUES (@id, @customer, @amount, @at)",
-            {"@id": m["id"], "@customer": m["customer"], "@amount": str(m["dollars"]), "@at": m["killed_at"]})
-    print(f"{m['killed_at']} sandbox insert ok {m['id']}", file=sys.stderr)
+def fetch(mission):
+    """Re-run every room's query through the Connect AI MCP server."""
+    if all("rows" in r for r in mission["rooms"]):     # the demo mission carries its rows
+        return [to_monster(row, i, r) for i, r in enumerate(mission["rooms"]) for row in r["rows"]]
+    mcp = connect_ai_mcp.Client()
+    monsters = []
+    for i, room in enumerate(mission["rooms"][:3]):
+        try:
+            rows = mcp.query(room["query"])[:MAX_PER_ROOM]
+        except connect_ai_mcp.MCPError as e:
+            print(f"{room['app']}: {e}", file=sys.stderr)
+            continue
+        monsters += [to_monster(row, i, room) for row in rows]
+    return monsters
 
 
 def cmd_poll(args):
     """Refresh the cache. `poll --demo` uses made-up data; `poll --once` exits after one fetch."""
     interval = int(os.environ.get("POLL_SECONDS", "15"))
+    if "--demo" in args:
+        MISSION.write_text(json.dumps(demo_mission(), indent=1))
     while True:
         now = dt.datetime.now()
         try:
-            if "--demo" in args:
-                rows, source = demo_rows(), "demo"
-            else:
-                rows, source = run_sql(SOURCE_QUERY), "connect-ai"
-            monsters = [to_monster(r, now) for r in rows]
+            mission = json.loads(MISSION.read_text())
+            monsters = fetch(mission)
+            source = "demo" if "--demo" in args else "connect-ai-mcp"
             write_cache(monsters, source)
             print(f"{now:%H:%M:%S} {source}: {len(monsters)} monsters", file=sys.stderr)
         except Exception as e:  # keep the last good cache; the game keeps running
@@ -246,11 +180,47 @@ def cmd_poll(args):
 
 def cmd_score(_):
     kills = read_jsonl(KILLS)
-    total = sum(k["dollars"] for k in kills)
     left = len([m for m in cached_monsters() if m["id"] not in killed_ids()])
-    print(f"{len(kills)} deals fragged, ${total:,} chased, {left} still standing")
+    print(f"{len(kills)} cleared, {left} still standing")
     for k in kills[-10:]:
-        print(f"  {k['killed_at']}  {k['customer']:<34} ${k['dollars']:>8,}  {k['overdue_days']:>4}d late  [{k['mode']}]")
+        print(f"  {k['killed_at']}  {k['app']:<18} {k['label'][:40]:<40} {k['detail'][:30]}  [{k['mode']}]")
+
+
+def cmd_panel(args):
+    """Serve the side panel (panel/index.html) and the run's state on localhost."""
+    import http.server
+
+    port = int(args[0]) if args else 8666
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, directory=str(ROOT / "panel"), **kw)
+
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path.split("?")[0] != "/state.json":
+                return super().do_GET()
+            try:
+                mission = json.loads(MISSION.read_text())
+            except (FileNotFoundError, json.JSONDecodeError):
+                mission = None
+            dead = killed_ids()
+            body = json.dumps({
+                "events": read_jsonl(STATE / "run.jsonl"),
+                "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
+                "kills": read_jsonl(KILLS)[-12:],
+                "standing": len([m for m in cached_monsters() if m["id"] not in dead]),
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+    print(f"panel on http://localhost:{port}", file=sys.stderr)
+    http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
 def cmd_reset(_):
@@ -260,7 +230,7 @@ def cmd_reset(_):
 
 
 COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "poll": cmd_poll,
-            "score": cmd_score, "reset": cmd_reset, "sandbox-write": cmd_sandbox_write}
+            "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:

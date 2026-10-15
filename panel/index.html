@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Access Granted</title>
+<style>
+  :root {
+    --depth: #15151C; --panel: #1F1F28; --line: #2E2E3A; --clarity: #F1EEE9; --muted: #B5B9BC;
+    --agility: #FFE500; --blue: #4D7CFF; --red: #FF3B2F; --green: #3DDC84;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--depth); color: var(--clarity);
+         font: 15px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  header { padding: 18px 22px 12px; border-bottom: 3px solid var(--agility); }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { padding: 16px 22px 40px; display: grid; gap: 18px; }
+  h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--agility); }
+  .ask { font-size: 19px; font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  #steps { display: grid; gap: 6px; }
+  .step { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: baseline;
+          padding: 7px 10px; border-radius: 6px; background: var(--panel); animation: in .25s ease-out; }
+  .step .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); align-self: center; }
+  .step.ok .dot { background: var(--green); }
+  .step.wait .dot { background: var(--agility); animation: pulse 1s infinite; }
+  .step.blocked { background: #3A1512; border: 1px solid var(--red); }
+  .step.blocked .dot { background: var(--red); }
+  .step.masked { border: 1px solid var(--agility); }
+  .step .what b { color: var(--agility); font-weight: 600; }
+  .step .res { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .step.blocked .res { color: var(--red); font-weight: 700; white-space: normal; }
+  #rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .room { border-left: 6px solid var(--blue); }
+  .room.write { border-left-color: var(--agility); }
+  .room.vault { border-left-color: var(--red); }
+  .room .app { font-size: 17px; font-weight: 700; }
+  .room .key { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
+  .room.read .key { color: var(--blue); } .room.write .key { color: var(--agility); } .room.vault .key { color: var(--red); }
+  #answer { color: var(--clarity); }
+  #kills { display: grid; gap: 4px; font-size: 14px; }
+  .kill { display: flex; justify-content: space-between; gap: 10px; }
+  .kill .act { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .empty { color: var(--muted); font-style: italic; }
+  .stat { font-size: 13px; color: var(--muted); }
+  @keyframes in { from { opacity: 0; transform: translateY(4px); } }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (max-width: 480px) { header, main { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Access Granted</h1>
+  <div class="sub">Claude, working through the Connect AI MCP server. Every step below is a live call.</div>
+</header>
+<main>
+  <section><h2>The ask</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
+  <section><h2>What Claude did through Connect AI</h2><div id="steps"><div class="empty">No calls yet</div></div></section>
+  <section><h2>What Connect AI let it reach</h2><div id="rooms"><div class="empty">Building the level when Claude is done</div></div></section>
+  <section><h2>Claude's answer</h2><div class="card" id="answer"><span class="empty">Still working</span></div></section>
+  <section><h2>In the game</h2><div class="stat" id="standing"></div><div id="kills"></div></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+// Plain words for each MCP tool: the audience sees what happened, not SQL.
+function describe(e) {
+  const app = e.connection ? `<b>${esc(e.connection)}</b>` : "";
+  switch (e.tool) {
+    case "getCatalogs": return "Asked Connect AI which apps this user can reach";
+    case "getSchemas": case "getTables": case "getColumns": return `Looked around in ${app}`;
+    case "getInstructions": return `Read Connect AI's guide for <b>${esc(e.args?.driverName)}</b>`;
+    case "queryData": return `Read data from ${app}`;
+    default: return `${esc(e.tool)} ${app}`;
+  }
+}
+
+function result(call, r) {
+  if (!r) return ["wait", "working"];
+  const text = r.text || "";
+  if (r.error && /blocked|denied|permission|cannot obtain/i.test(text))
+    return ["blocked", "Blocked by Connect AI: " + esc(text.split("\n")[0].replace(/^Error:\s*/, ""))];
+  if (r.error) return ["", "error, retried"];
+  if (call.tool === "queryData" && text.includes("XXXX")) return ["masked", "masked by Data Security"];
+  if (call.tool === "getCatalogs") return ["ok", `${r.rows} apps`];
+  if (call.tool === "queryData") return ["ok", `${r.rows} records`];
+  return ["ok", ""];
+}
+
+function renderSteps(events) {
+  const calls = [];
+  for (const e of events) {
+    if (e.kind === "question") $("ask").textContent = e.text;
+    if (e.kind === "call") calls.push({...e, r: null});
+    if (e.kind === "result") {
+      const c = calls.find(c => !c.r && c.tool === e.tool && c.connection === e.connection);
+      if (c) c.r = e;
+    }
+  }
+  if (!calls.length) return;
+  $("steps").innerHTML = calls.map(c => {
+    const [cls, res] = result(c, c.r);
+    return `<div class="step ${cls}"><span class="dot"></span><span class="what">${describe(c)}</span><span class="res">${res}</span></div>`;
+  }).join("");
+}
+
+function renderMission(m) {
+  if (!m) return;
+  $("answer").textContent = m.answer || "";
+  const rooms = (m.rooms || []).map(r => {
+    const write = r.writable;
+    return `<div class="card room ${write ? "write" : "read"}"><div class="app">${esc(r.app)}</div>
+      <div>${esc(r.title)}</div><div class="key">${write ? "Yellow key: read + write" : "Blue key: read only"}</div></div>`;
+  });
+  for (const d of m.denied || [])
+    rooms.push(`<div class="card room vault"><div class="app">${esc(d.connection || "PII vault")}</div>
+      <div>${esc((d.error || "").split("\n")[0])}</div><div class="key">Red door: no key exists</div></div>`);
+  $("rooms").innerHTML = rooms.join("") || '<div class="empty">Nothing reached</div>';
+}
+
+function renderKills(kills, standing) {
+  $("standing").textContent = `${standing} still standing, ${kills.length ? "latest first:" : "none cleared yet"}`;
+  $("kills").innerHTML = kills.slice().reverse().map(k => `<div class="kill card">
+    <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="stat">${esc(k.detail)}</span></span>
+    <span class="act">${k.writable ? "follow-up queued" : "flagged"} (dry run)</span></div>`).join("");
+}
+
+async function tick() {
+  try {
+    const s = await (await fetch("/state.json", {cache: "no-store"})).json();
+    renderSteps(s.events || []);
+    renderMission(s.mission && (s.events || []).some(e => e.kind === "mission") ? s.mission : null);
+    renderKills(s.kills || [], s.standing || 0);
+  } catch (e) { /* the bridge restarts between runs; try again next tick */ }
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

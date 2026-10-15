@@ -53,27 +53,19 @@ if [[ ! -x "$SRC/zdbsp/build/zdbsp" ]]; then
    && cmake --build build -j8) >>"$LOG" 2>&1
 fi
 
-echo "Freedoom + arena map..."
+echo "Freedoom..."
 if [[ ! -f wads/freedoom2.wad ]]; then
   curl -sSL -o vendor/freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
   unzip -o -q -j vendor/freedoom.zip '*/freedoom2.wad' -d wads
 fi
-# Optional light branding from the CData brand kit (not in git). Without it the
-# arena uses plain walls.
+# Optional: the Connect AI logo for the Esc menu, from the CData brand kit (not in git).
+# raid.sh builds the level and its signs for each run.
 BRANDKIT_ZIP=${BRANDKIT_ZIP:-$HOME/Documents/dev/cdata/BRANDKIT.zip}
-BRAND=""
-if [[ -f "$BRANDKIT_ZIP" ]] && python3 -c 'import PIL' 2>/dev/null; then
-  echo "Connect AI branding..."
+if [[ -f "$BRANDKIT_ZIP" && ! -d brand/BRANDKIT ]]; then
+  echo "Connect AI brand kit..."
   mkdir -p brand
   # SharePoint zips are streamed (no central directory); bsdtar reads them, unzip can't.
-  [[ -d brand/BRANDKIT ]] || /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand \
-    'BRANDKIT/02 Logos/Product Logos/Connect AI/*'
-  python3 tools/make_branding.py wads/freedoom2.wad brand/BRANDKIT wads/brand.wad
-  BRAND=--brand
-else
-  rm -f wads/brand.wad
+  /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand 'BRANDKIT/02 Logos/Product Logos/Connect AI/*'
 fi
-python3 tools/make_arena.py vendor/arena-raw.wad $BRAND
-"$SRC/zdbsp/build/zdbsp" -o wads/arena.wad vendor/arena-raw.wad >>"$LOG"
-
+python3 -c 'import PIL' 2>/dev/null || pip3 install --user pillow >>"$LOG"
 echo "Done. Try: ./raid.sh --demo"

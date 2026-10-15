@@ -11,27 +11,28 @@ from unittest import mock
 from helpers import BLOCKED, PAT, PII_SQL, PLAN, ROOT, FakeMCP, fake_claude_env, query
 
 import brief
+import claude_run
 
 
 class HelpersTest(unittest.TestCase):
     def test_count_rows(self):
-        self.assertEqual(brief.count_rows("Id,Label\n1,\"a,b\"\n2,\"multi\nline\"\n\nQuery ID: q"), 2)
-        self.assertEqual(brief.count_rows("Id,Label\n"), 0)
-        self.assertEqual(brief.count_rows(""), 0)
-        self.assertEqual(brief.count_rows("CatalogName\nA\nB\nC"), 3)
+        self.assertEqual(claude_run.count_rows("Id,Label\n1,\"a,b\"\n2,\"multi\nline\"\n\nQuery ID: q"), 2)
+        self.assertEqual(claude_run.count_rows("Id,Label\n"), 0)
+        self.assertEqual(claude_run.count_rows(""), 0)
+        self.assertEqual(claude_run.count_rows("CatalogName\nA\nB\nC"), 3)
 
     def test_catalog_of(self):
-        self.assertEqual(brief.catalog_of({"catalogName": "Zendesk1", "query": query("Salesforce1")}), "Zendesk1")
-        self.assertEqual(brief.catalog_of({"query": query("Salesforce1")}), "Salesforce1")
-        self.assertEqual(brief.catalog_of({"query": "select x from [My Sheet] . [dbo].[t]"}), "My Sheet")
-        self.assertIsNone(brief.catalog_of({"query": "SELECT 1"}))
-        self.assertIsNone(brief.catalog_of({}))
+        self.assertEqual(claude_run.catalog_of({"catalogName": "Zendesk1", "query": query("Salesforce1")}), "Zendesk1")
+        self.assertEqual(claude_run.catalog_of({"query": query("Salesforce1")}), "Salesforce1")
+        self.assertEqual(claude_run.catalog_of({"query": "select x from [My Sheet] . [dbo].[t]"}), "My Sheet")
+        self.assertIsNone(claude_run.catalog_of({"query": "SELECT 1"}))
+        self.assertIsNone(claude_run.catalog_of({}))
 
     def test_tool_text(self):
-        self.assertEqual(brief.tool_text("plain"), "plain")
-        self.assertEqual(brief.tool_text([{"type": "text", "text": "a"}, "junk", {"type": "text", "text": "b"}]),
+        self.assertEqual(claude_run.tool_text("plain"), "plain")
+        self.assertEqual(claude_run.tool_text([{"type": "text", "text": "a"}, "junk", {"type": "text", "text": "b"}]),
                          "a\nb")
-        self.assertEqual(brief.tool_text(None), "")
+        self.assertEqual(claude_run.tool_text(None), "")
 
     def test_refusal_pattern(self):
         for text in (BLOCKED, "Request blocked: Credit card number detected in inbound query"):

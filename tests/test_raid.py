@@ -42,7 +42,7 @@ esac
 '''
 FAKE_OP = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/op.txt"\nprintf "%s\\n" "$FAKE_OP_SECRET"\n'
 
-SOURCES = ["raid.sh", "connect_doom.py", "connect_ai_mcp.py", "brief.py", "tools", "panel"]
+SOURCES = ["raid.sh", "connect_doom.py", "connect_ai_mcp.py", "claude_run.py", "brief.py", "tools", "panel"]
 
 
 class RaidTest(unittest.TestCase):

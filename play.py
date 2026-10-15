@@ -12,10 +12,11 @@ command to state/agent/cmd and read state/agent/state.json. Tools are high level
 import json
 import os
 import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
+
+import claude_run
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
@@ -269,15 +270,10 @@ Keep going until the rooms are clear or you run out of turns. End with a two-lin
 
 
 def event(kind, **data):
-    with PLAY_LOG.open("a") as f:
-        f.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
+    claude_run.EventLog(PLAY_LOG)(kind, **data)
 
 
 def run():
-    sys.path.insert(0, str(ROOT))
-    import connect_ai_mcp
-    read_only_ops = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData"
-
     m = mission()
     rooms = "\n".join(f"  room {i + 1}: {r['app']}, {r['title']} "
                       f"({'yellow door, read + write' if r.get('writable') else 'blue door, read only'})"
@@ -286,67 +282,24 @@ def run():
              "to see what Connect AI does.") if m.get("denied") else ""
     prompt = PROMPT.format(question=m["question"], rooms=rooms, vault=vault)
 
-    PLAY_LOG.write_text("")
+    claude_run.EventLog(PLAY_LOG).reset()
+    servers = {"doom": {"type": "stdio", "command": sys.executable, "args": [str(ROOT / "play.py"), "mcp"]}}
+    env = dict(os.environ)
+    if os.environ.get("CONNECT_AI_USER") and os.environ.get("CONNECT_AI_PAT"):   # offline: Doom tools only
+        servers["connectai"] = claude_run.connect_ai_server()
+        env = claude_run.env(os.environ)
     config = STATE / "play-mcp.json"
-    config.write_text(json.dumps({"mcpServers": {
-        "doom": {"type": "stdio", "command": sys.executable, "args": [str(ROOT / "play.py"), "mcp"]},
-        "connectai": {"type": "http", "url": f"{connect_ai_mcp.MCP_URL}?ops={read_only_ops}",
-                      "headers": {"Authorization": "Basic ${CONNECT_AI_BASIC}"}},
-    }}))
-    servers = json.loads(config.read_text())
-    if not (os.environ.get("CONNECT_AI_USER") and os.environ.get("CONNECT_AI_PAT")):
-        del servers["mcpServers"]["connectai"]   # demo mode: Doom tools only
-        config.write_text(json.dumps(servers))
-        env = dict(os.environ)
-    else:
-        env = {**os.environ, "CONNECT_AI_BASIC": connect_ai_mcp.basic_token()}
+    config.write_text(json.dumps({"mcpServers": servers}))
     cmd = ["claude", "-p", prompt, "--model", MODEL, "--max-turns", MAX_TURNS,
            "--mcp-config", str(config), "--strict-mcp-config",
            "--allowedTools", "mcp__doom", "mcp__connectai",
            "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
     event("question", text="Claude plays: " + m["question"])
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=STATE)
     # raid.sh stops us when the game closes; take Claude down with us.
-    signal.signal(signal.SIGTERM, lambda *_: (proc.terminate(), sys.exit(0)))
-    started, finished = {}, False
-    for line in proc.stdout:
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        kind = msg.get("type")
-        if kind == "system" and msg.get("subtype") == "init":
-            event("session", model=msg.get("model"), tools=[t for t in msg.get("tools", []) if t.startswith("mcp__")])
-        elif kind == "stream_event":
-            delta = msg.get("event", {}).get("delta", {})
-            if delta.get("type") == "text_delta":
-                event("text_delta", text=delta["text"])
-        elif kind in ("assistant", "user"):
-            for c in msg.get("message", {}).get("content") or []:
-                if not isinstance(c, dict):
-                    continue
-                if c.get("type") == "text" and kind == "assistant":
-                    event("thought", text=c["text"])
-                elif c.get("type") == "tool_use" and c["name"].startswith("mcp__"):
-                    _, server, tool = c["name"].split("__", 2)
-                    started[c["id"]] = time.time()
-                    args = c.get("input", {})
-                    event("call", id=c["id"], server=server, tool=tool, args=args,
-                          connection=args.get("catalogName"))
-                elif c.get("type") == "tool_result" and c.get("tool_use_id") in started:
-                    content = c.get("content")
-                    text = content if isinstance(content, str) else "\n".join(
-                        x.get("text", "") for x in content or [] if isinstance(x, dict))
-                    rows = max(len(text.split("\nQuery ID:")[0].strip().splitlines()) - 1, 0)
-                    event("result", id=c["tool_use_id"], error=bool(c.get("is_error")), rows=rows,
-                          text=text[:4000], ms=int((time.time() - started.pop(c["tool_use_id"])) * 1000))
-        elif kind == "result":
-            finished = True
-            event("done", cost_usd=msg.get("total_cost_usd"), duration_ms=msg.get("duration_ms"),
-                  turns=msg.get("num_turns"), text=msg.get("result", ""))
-    proc.wait()
-    if proc.returncode and not finished:   # hitting --max-turns also exits non-zero, after a result
-        event("failed", text=proc.stderr.read()[-500:])
+    out = claude_run.run(cmd, event, env=env, cwd=STATE, on_start=lambda proc: signal.signal(
+        signal.SIGTERM, lambda *_: (proc.terminate(), sys.exit(0))))
+    if out["returncode"] and not out["finished"]:   # hitting --max-turns also exits non-zero, after a result
+        event("failed", text=out["stderr"][-500:])
 
 
 if __name__ == "__main__":

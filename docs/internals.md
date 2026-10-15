@@ -22,6 +22,7 @@ raid.sh
 - `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once.
 - `brief.py`: the briefing: runs `claude -p` with the Connect AI MCP server and turns the result into `state/mission.json`.
 - `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
+- `claude_run.py`: runs Claude Code headless (`claude -p`, stream-json) for `brief.py` and `play.py`: the read-only Connect AI MCP server config, and the event log the panel reads.
 - `connect_doom.py`: the psdoom bridge (`list`, `kill`, `hit`), the poller, the live `lookup` and `vault` checks, `score`/`reset`, and the panel server.
 - `play.py`: Claude plays: a Doom MCP server (`look`, `go_to`, `attack`) over the agent channel, and the `claude -p` run that uses it.
 - `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.

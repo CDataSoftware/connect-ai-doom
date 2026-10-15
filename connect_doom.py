@@ -92,6 +92,11 @@ def demo_mission():
             "masked": [], "calls": []}
 
 
+def is_offline(mission):
+    """The offline mission (poll --demo) carries made-up rows; a live one has queries."""
+    return bool(mission and mission.get("rooms")) and all("rows" in r for r in mission["rooms"])
+
+
 def write_cache(monsters, source, rooms=None):
     """rooms: each room's last refresh through Connect AI ({connection, ms, rows, error})."""
     STATE.mkdir(parents=True, exist_ok=True)
@@ -171,8 +176,8 @@ def cmd_kill(args):
     print(f"\n  KILL  {m['app']}  {m['label']}  ({m['detail']})  {m['id']}  [{record['mode']}]\n",
           file=sys.stderr)
     mission = read_json(MISSION)
-    live = mission and not all("rows" in r for r in mission["rooms"]) and os.environ.get("CONNECT_AI_PAT")
-    if live:  # the demo has no Connect AI to ask; the game must not wait on the network
+    if mission and not is_offline(mission) and os.environ.get("CONNECT_AI_PAT"):
+        # offline there is no Connect AI to ask; and the game must not wait on the network
         subprocess.Popen([sys.executable, __file__, "lookup", m["id"]], start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -245,7 +250,7 @@ def cmd_hit(args):
 def fetch(mission, stats=None):
     """Re-run every room's query through the Connect AI MCP server. With a stats list,
     append each room's round trip to it."""
-    if all("rows" in r for r in mission["rooms"]):     # the offline mission carries its rows
+    if is_offline(mission):
         return [to_monster(row, i, r) for i, r in enumerate(mission["rooms"]) for row in r["rows"]]
     mcp = connect_ai_mcp.Client()
     monsters = []

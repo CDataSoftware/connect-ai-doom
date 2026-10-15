@@ -9,26 +9,23 @@ state/mission.json: the rooms Claude found (one per app, with the query that
 fills it with monsters) and the doors Connect AI kept shut (real refusals
 taken from the tool results, never from Claude's own summary).
 """
-import csv
-import io
 import json
 import os
 import re
-import subprocess
 import sys
-import time
 from pathlib import Path
 
+import claude_run
 import connect_ai_mcp
+from claude_run import catalog_of
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 RUN = STATE / "run.jsonl"
 MISSION = STATE / "mission.json"
 MAX_ROOMS = 3  # psdoom spawns monsters into exactly three arenas
-# The agent gets Connect AI's read-only tools only. Nothing is ever written: in the
-# game, a kill only reads its record again.
-READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData"
+# The agent gets Connect AI's read-only tools only (claude_run.READ_ONLY_OPS). Nothing is
+# ever written: in the game, a kill only reads its record again.
 MODEL = os.environ.get("BRIEF_MODEL", "sonnet")
 
 DEFAULT_QUESTION = os.environ.get(
@@ -62,97 +59,30 @@ REFUSAL = re.compile(r"^(Error: )?Request blocked", re.I)
 
 
 def event(kind, **data):
-    with RUN.open("a") as f:
-        f.write(json.dumps({"t": time.time(), "kind": kind, **data}) + "\n")
+    claude_run.EventLog(RUN)(kind, **data)
 
 
 def mcp_config():
-    """The token stays in the environment; Claude Code expands ${CONNECT_AI_BASIC} itself."""
     path = STATE / "mcp.json"
-    path.write_text(json.dumps({"mcpServers": {"connectai": {
-        "type": "http",
-        "url": f"{connect_ai_mcp.MCP_URL}?ops={READ_ONLY_OPS}",
-        "headers": {"Authorization": "Basic ${CONNECT_AI_BASIC}"},
-    }}}))
+    path.write_text(json.dumps({"mcpServers": {"connectai": claude_run.connect_ai_server()}}))
     return path
-
-
-def tool_text(content):
-    if isinstance(content, str):
-        return content
-    return "\n".join(c.get("text", "") for c in content or [] if isinstance(c, dict))
-
-
-def count_rows(text):
-    """Rows in a CSV tool result (the text ends with a 'Query ID' line)."""
-    body = text.split("\nQuery ID:")[0].strip()
-    try:
-        return max(len(list(csv.reader(io.StringIO(body)))) - 1, 0)
-    except csv.Error:
-        return max(len(body.splitlines()) - 1, 0)
-
-
-def catalog_of(args):
-    if args.get("catalogName"):
-        return args["catalogName"]
-    m = re.search(r"\[([^\]]+)\]\s*\.\s*\[", args.get("query", ""))
-    return m.group(1) if m else None
 
 
 def run(question):
     STATE.mkdir(parents=True, exist_ok=True)
-    RUN.write_text("")
+    claude_run.EventLog(RUN).reset()
     event("question", text=question)
-    env = {**os.environ, "CONNECT_AI_BASIC": connect_ai_mcp.basic_token()}
     cmd = ["claude", "-p", question, "--model", MODEL,
            "--mcp-config", str(mcp_config()), "--strict-mcp-config",
            "--allowedTools", "mcp__connectai",
            "--append-system-prompt", INSTRUCTIONS,
            "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                            env=env, cwd=STATE)
-    calls, pending, final = [], {}, ""
-    for line in proc.stdout:
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        kind = msg.get("type")
-        if kind == "system" and msg.get("subtype") == "init":
-            event("session", model=msg.get("model"),
-                  tools=[t for t in msg.get("tools", []) if t.startswith("mcp__")])
-        elif kind == "stream_event":
-            delta = msg.get("event", {}).get("delta") or {}
-            if delta.get("type") == "text_delta" and delta.get("text"):
-                event("text_delta", text=delta["text"])
-        elif kind == "result":
-            final = msg.get("result", "")
-            event("done", cost_usd=msg.get("total_cost_usd"), duration_ms=msg.get("duration_ms"),
-                  turns=msg.get("num_turns"))
-        for c in (msg.get("message") or {}).get("content") or []:
-            if not isinstance(c, dict):
-                continue
-            if c.get("type") == "tool_use" and c["name"].startswith("mcp__connectai__"):
-                tool = c["name"].removeprefix("mcp__connectai__")
-                args = c.get("input", {})
-                pending[c["id"]] = {"tool": tool, "args": args, "start": time.time()}
-                event("call", id=c["id"], server="connectai", tool=tool, args=args,
-                      connection=catalog_of(args))
-            elif c.get("type") == "tool_result" and c.get("tool_use_id") in pending:
-                call = pending.pop(c["tool_use_id"])
-                text = tool_text(c.get("content"))
-                call.update(text=text[:4000], error=bool(c.get("is_error")) or text.startswith("Error:"))
-                calls.append(call)
-                event("result", id=c["tool_use_id"], tool=call["tool"], connection=catalog_of(call["args"]),
-                      error=call["error"], rows=0 if call["error"] else count_rows(text),
-                      text=text[:4000], ms=round((time.time() - call["start"]) * 1000))
-            elif c.get("type") == "text" and kind == "assistant":
-                event("thought", text=c["text"][:2000])
-    proc.wait()
-    if proc.returncode:
-        event("failed", text=proc.stderr.read()[-500:])
-        sys.exit(f"claude exited {proc.returncode}")
-    return build_mission(question, final, calls)
+    out = claude_run.run(cmd, event, env=claude_run.env(os.environ), cwd=STATE)
+    if out["returncode"]:
+        event("failed", text=out["stderr"][-500:])
+        sys.exit(f"claude exited {out['returncode']}")
+    calls = [c for c in out["calls"] if c["server"] == "connectai"]
+    return build_mission(question, out["result"], calls)
 
 
 def build_mission(question, final, calls):

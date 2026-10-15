@@ -6,6 +6,8 @@
 #   ./raid.sh --again             replay the last briefing (no Claude run)
 #   ./raid.sh --demo              made-up data, no network
 #   ./raid.sh brief [question]    only run the briefing
+#   --claude-plays                Claude drives the marine (optional, off by default); combine
+#                                 with any mode above, e.g. ./raid.sh --again --claude-plays
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
 # Kills are dry run: logged to state/kills.jsonl, nothing is written to any app.
 set -euo pipefail
@@ -16,11 +18,12 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION=""
+MODE=live QUESTION="" PLAYS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --demo) MODE=demo; shift ;;
     --again) MODE=again; shift ;;
+    --claude-plays) PLAYS=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     *) break ;;
@@ -76,6 +79,14 @@ fi
 export PSDOOMPSCMD="python3 $BRIDGE list"
 export PSDOOMKILLCMD="python3 $BRIDGE kill"
 export PSDOOMRENICECMD="python3 $BRIDGE hit"
+
+if [[ -n "$PLAYS" ]]; then
+  # The agent channel patched into psdoom: Claude's commands in, game state out.
+  mkdir -p state/agent && rm -f state/agent/*
+  export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_GOD=1
+  ( /bin/sleep 4; exec python3 play.py run ) 2>>state/play.err &
+  PIDS+=($!)
+fi
 
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user

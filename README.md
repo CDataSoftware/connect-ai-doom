@@ -17,9 +17,9 @@ You need a Mac with [Homebrew](https://brew.sh), Claude Code signed in (the `cla
 ./raid.sh replay --claude-plays   # Claude plays instead of you; works with any mode
 ```
 
-Every mode has the same two parts: Claude's briefing builds the level (`new` runs one, `replay` reuses the last), then the game keeps it live (monsters refresh from Connect AI every 15 seconds, and each kill reads its record again). The old names still work: `--again`, `--demo` and `brief`.
+`new` and `replay` have the same two parts: Claude's briefing builds the level (`new` runs one, `replay` reuses the last), then the game keeps it live (monsters refresh from Connect AI every 15 seconds, each kill reads its record again, and the red door asks Connect AI again). `offline` skips Connect AI entirely, and `brief-only` skips the game. The old names still work: `--again`, `--demo` and `brief`.
 
-The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, and `GEOMETRY=1280x800` sets the game's size.
+The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, `NO_PANEL=1` skips it, and `GEOMETRY=1280x800` sets the game's size.
 
 **Controls:** WASD to move, the mouse to turn, left click or Space to fire, E or right click to open doors, Shift to run, P to pause, Esc for the menu. Aim at a monster to see its record (app, name, detail) above the status bar. Clear all the rooms, then try the red door.
 
@@ -29,7 +29,7 @@ The default question asks for at-risk customers across the CRM, support and bill
 
 ## How the MCP server drives the game
 
-Connect AI is involved at three points: Claude's briefing, the monster refresh during play, and a live read on every kill.
+Connect AI is involved at four points: Claude's briefing, the monster refresh during play, a live read on every kill, and the red door.
 
 ```
                   Connect AI MCP server (read-only tools)
@@ -49,15 +49,17 @@ Connect AI is involved at three points: Claude's briefing, the monster refresh d
 
 - **Rooms and monsters.** Each query's rows are the room's monsters. `Label` is the name tag, and rows with `Hot = 1` are pink demons.
 - **Keycard doors.** Connect AI reports this user's permissions on each connection. An app with Insert or Update gets a yellow door, a read-only app a blue door. The colors reflect real permissions, but they are only a picture of them: picking up a key in the game changes no access anywhere.
-- **The PII vault.** Every call that Connect AI's Data Security refused becomes a vault behind a red door with no red key. Using the door shows the actual refusal, for example `CONNECT AI: PII DETECTED IN INBOUND QUERY`.
+- **The PII vault.** Every call that Connect AI's Data Security refused becomes a vault behind a red door with no red key. Using the door shows the actual refusal, for example `CONNECT AI: PII DETECTED IN INBOUND QUERY`, and sends the request again (see 4).
 
 Claude's own words are used only for the room titles and the answer. Rooms come from the queries it ran, doors from Connect AI's permissions, and the vault from the tool results. `tools/make_arena.py`, `make_branding.py` and `make_deh.py` turn the plan into the map, the signs and the keycard messages.
 
 **2. Monsters stay live.** psdoom-ng is a Doom port that spawns a monster per process. Here it calls `connect_doom.py` instead of `ps`: `list` for the monsters, `kill` when one dies, `hit` when one is shot. These calls run inside the game loop, so they only read local files. `connect_doom.py poll` keeps those files fresh by re-running each room's query through the MCP server every 15 seconds. `connect_ai_mcp.py` is the small MCP client it uses.
 
-**3. Each kill reads the record again.** A kill writes nothing back to your apps. It logs the kill and starts a background `lookup` that reads that one record live through Connect AI, using the room's own query. The game doesn't wait for it. The panel shows what came back and how long the round trip took.
+**3. Each kill reads the record again.** A kill writes nothing back to your apps. It logs the kill and starts a background `lookup` that reads that one record live through Connect AI, using the room's own query. The game doesn't wait for it. The panel shows what came back and how long the round trip took. In the game, the kill message counts down what's left in the room.
 
-**The side panel** shows Claude's steps through the MCP server as they happen during the briefing, with blocked calls in red. While a game is running it switches to a game view: the latest kill or hit, each room's progress, and the kill feed with each live read.
+**4. The red door asks again.** Trying the red door runs `connect_doom.py vault` in the background: it sends the exact request Connect AI blocked during the briefing (the SSN lookup) again, live. The panel shows Connect AI refusing it again, with the request and the round trip, so the governance isn't a recording.
+
+**The side panel** shows Claude's steps through the MCP server as they happen during the briefing, with blocked calls in red. While a game is running it switches to a game view: the latest kill, hit or red-door try; each room's progress and when Connect AI last refreshed it; and the event feed with each live read.
 
 ## Claude plays
 
@@ -65,7 +67,9 @@ Claude's own words are used only for the room titles and the answer. Rooms come 
 
 ## Account
 
-It runs as `demo@example.com`, an account with Data Security rules for credit card and US Social Security numbers and connections with mixed permissions. Set `CONNECT_AI_USER` and `CONNECT_AI_PAT`, or let `raid.sh` read the token from the macOS Keychain (service `connect-doom`). All data in the account is synthetic.
+`./raid.sh login` saves an account's email (in `state/account`) and token (in the macOS Keychain, service `connect-doom`); `CONNECT_AI_USER` and `CONNECT_AI_PAT` in the environment override both. If you keep the token in 1Password, set `CONNECT_AI_OP_ITEM` to its `op://` path and the first run copies it into the Keychain.
+
+The demo was built on `demo@example.com`, whose data is synthetic. Any account works; for the full show it needs a few connections, at least one read-only and one writable (blue and yellow doors), and a Data Security rule for US Social Security numbers (the red door).
 
 ## More
 

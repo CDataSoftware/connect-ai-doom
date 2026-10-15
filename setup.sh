@@ -66,4 +66,4 @@ fi
 python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --user pillow >>"$LOG" 2>&1 \
   || python3 -m pip install --user --break-system-packages pillow >>"$LOG"
 python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand   # the panel's sprites and logos
-echo "Done. Try: ./raid.sh --demo"
+echo "Done. Next: ./raid.sh login, then ./raid.sh new (or ./raid.sh offline to try it without an account)"

@@ -149,6 +149,7 @@ fi
 
 export PSDOOMPSCMD="python3 $BRIDGE list"
 export PSDOOM_LABELS="$PWD/state/labels.tsv"  # the record under the crosshair, written by the bridge
+export PSDOOMVAULTCMD="python3 $BRIDGE vault"   # the red door asks Connect AI again, live
 export PSDOOMKILLCMD="python3 $BRIDGE kill"
 export PSDOOMRENICECMD="python3 $BRIDGE hit"
 

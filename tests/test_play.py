@@ -108,8 +108,8 @@ class ToolsTest(StateDirTest):
     def test_attack(self):
         out = play.tool_attack(FakeGame(game_state()), {"pid": 1002})
         self.assertEqual(out, {"result": "killed", "app": "Salesforce", "record": "Acme Corp", "detail": "$45,000",
-                               "logged": "follow-up queued (dry run)"})
-        self.assertEqual(play.tool_attack(FakeGame(game_state()), {"pid": 1003})["logged"], "flagged (dry run)")
+                               "logged": "kill logged; the record is being read again, live, through Connect AI "
+                                         "(nothing is written)"})
         out = play.tool_attack(FakeGame(game_state(), {("ATTACK", 1003): "lost sight"}), {"pid": 1003})
         self.assertNotIn("logged", out)
 
@@ -117,14 +117,19 @@ class ToolsTest(StateDirTest):
         g = FakeGame(game_state())
         self.assertEqual(play.tool_go_to(g, {"place": "keycards"})["result"], "arrived")
         self.assertEqual(g.commands, [("MOVE", 2560, -600),
-                                      ("MOVE", *play.KEY_SPOTS["blue"]), ("MOVE", *play.KEY_SPOTS["yellow"])])
+                                      ("MOVE", 2496, -656), ("MOVE", 2624, -656)])   # blue, yellow
 
     def test_go_to_keycards_skips_unneeded_keys(self):
         (self.state / "mission.json").write_text(json.dumps({**MISSION, "rooms": MISSION["rooms"][1:]}))
         g = FakeGame(game_state(y=-200))
         play.tool_go_to(g, {"place": "keycards"})
-        self.assertIn(("MOVE", *play.KEY_SPOTS["blue"]), g.commands)
-        self.assertNotIn(("MOVE", *play.KEY_SPOTS["yellow"]), g.commands)
+        self.assertIn(("MOVE", 2496, -656), g.commands)
+        self.assertNotIn(("MOVE", 2624, -656), g.commands)
+
+    def test_keycard_spots_match_the_level(self):
+        """One key color in use sits at the first spot, whichever color it is (tools/make_arena.py)."""
+        self.assertEqual(play.key_spots([{"writable": True}, {"writable": True}]), [(2496, -656)])
+        self.assertEqual(play.key_spots([{"writable": False}, {"writable": True}]), [(2496, -656), (2624, -656)])
 
     def test_go_to_a_room_opens_its_door(self):
         g = FakeGame(game_state(keys=("yellow",)))

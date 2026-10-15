@@ -243,7 +243,8 @@ class TempState:
         import connect_doom as cd
         self.tmp = tempfile.TemporaryDirectory()
         paths = {"CACHE": "cache.json", "KILLS": "kills.jsonl", "HITS": "hits.jsonl", "MISSION": "mission.json",
-                 "GAME": "game.json", "LOOKUPS": "lookups.jsonl", "LABELS": "labels.tsv"}
+                 "GAME": "game.json", "LOOKUPS": "lookups.jsonl", "LABELS": "labels.tsv",
+                 "VAULT": "vault.jsonl"}
         self.saved = {k: getattr(cd, k) for k in ("STATE", *paths)}
         state = Path(self.tmp.name)
         cd.STATE = state

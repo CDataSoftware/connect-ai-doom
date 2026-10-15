@@ -123,11 +123,12 @@ class CommandsTest(unittest.TestCase):
     def test_kill_logs_hides_and_prints_the_in_game_message(self):
         acme, initech = self.monsters[0], self.monsters[2]
         out = self.run_cmd("kill", str(acme["pid"]))
-        self.assertEqual(out.splitlines()[0], "SALESFORCE: ACME CORP, KILLED")
-        self.assertEqual(self.run_cmd("kill", str(initech["pid"])).splitlines()[0], "ZENDESK: INITECH, KILLED")
+        self.assertEqual(out.splitlines()[0], "SALESFORCE: ACME CORP, 1 LEFT")          # Globex, same room
+        self.assertEqual(self.run_cmd("kill", str(initech["pid"])).splitlines()[0],
+                         "ZENDESK ROOM CLEAR! 1 LEFT ELSEWHERE")
         kills = cd.read_jsonl(cd.KILLS)
         self.assertEqual([k["id"] for k in kills], [acme["id"], initech["id"]])
-        self.assertTrue(all(k["mode"] == "dry-run" and k["killed_at"] for k in kills))
+        self.assertTrue(all(k["mode"] == "read-only" and k["killed_at"] for k in kills))
         self.assertNotIn(str(acme["pid"]), self.run_cmd("list"))
         self.assertEqual(len(self.run_cmd("list").splitlines()), 1)
 
@@ -145,9 +146,16 @@ class CommandsTest(unittest.TestCase):
 
     def test_kill_message_is_capped_for_the_hud(self):
         m = cd.to_monster({"Id": "z", "Label": "A" * 80}, 0, ROOM)
-        cd.write_cache([m], "test")
+        cd.write_cache([m, cd.to_monster({"Id": "y", "Label": "B"}, 0, ROOM)], "test")
         first = self.run_cmd("kill", str(m["pid"])).splitlines()[0]
-        self.assertEqual(first, ("SALESFORCE: " + "A" * 80)[:44] + ", KILLED")
+        self.assertEqual(first, ("SALESFORCE: " + "A" * 80)[:36] + ", 1 LEFT")
+
+    def test_last_kill_says_try_the_red_door(self):
+        cd.MISSION.write_text(json.dumps({"rooms": [ROOM], "denied": [{"connection": "PII"}]}))
+        for m in self.monsters[:-1]:
+            self.run_cmd("kill", str(m["pid"]))
+        self.assertEqual(self.run_cmd("kill", str(self.monsters[-1]["pid"])).splitlines()[0],
+                         "ALL RECORDS CLEARED! NOW TRY THE RED DOOR")
 
     def test_kill_and_hit_of_unknown_pid_do_nothing(self):
         self.assertEqual(self.run_cmd("kill", "12345"), "")
@@ -223,7 +231,7 @@ class PollCLITest(unittest.TestCase):
             listed = bridge(tmp, "list").stdout.splitlines()
             self.assertEqual(len(listed), 36)
             pid = listed[0].split()[1]
-            self.assertTrue(bridge(tmp, "kill", pid).stdout.endswith(", KILLED\n"))
+            self.assertRegex(bridge(tmp, "kill", pid).stdout, r", \d+ LEFT\n$")
             self.assertFalse((Path(tmp) / "lookups.jsonl").exists(), "the demo has no Connect AI to read from")
             self.assertEqual(len(bridge(tmp, "list").stdout.splitlines()), 35)
             self.assertIn("1 cleared, 35 still standing", bridge(tmp, "score").stdout)
@@ -246,7 +254,7 @@ class PollCLITest(unittest.TestCase):
             bridge(tmp, "poll", "--once", env=env)
             pid = bridge(tmp, "list").stdout.split()[1]
             r = bridge(tmp, "kill", pid, env=env)
-            self.assertEqual(r.stdout.splitlines()[0], "ZENDESK: INITECH, KILLED")   # without waiting on the read
+            self.assertEqual(r.stdout.splitlines()[0], "ALL RECORDS CLEARED!")   # without waiting on the read
             lookups = Path(tmp) / "lookups.jsonl"
             for _ in range(100):
                 if lookups.exists():
@@ -256,6 +264,31 @@ class PollCLITest(unittest.TestCase):
             self.assertEqual((entry["id"], entry["row"]["label"]), ("Zendesk1:Z1", "Initech"))
             self.assertIn("AS q WHERE q.[Id] = 'Z1'", entry["sql"])
             self.assertGreaterEqual(entry["ms"], 0)
+
+    def test_red_door_asks_connect_ai_again_live(self):
+        with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
+            request = {"query": "SELECT [full_name] FROM [PostgreSQLPII].[public].[customers] WHERE [ssn] = @s",
+                       "parameters": {"@s": "123-45-6789"}}
+            (Path(tmp) / "mission.json").write_text(json.dumps({"rooms": [], "denied": [
+                {"connection": "PostgreSQLPII", "tool": "queryData", "request": request, "error": "old"}]}))
+            env = {"CONNECT_AI_MCP_URL": mcp.url, "CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}
+            self.assertEqual(bridge(tmp, "vault", env=env).returncode, 0)
+            entry = json.loads((Path(tmp) / "vault.jsonl").read_text())
+            self.assertTrue(entry["blocked"])
+            self.assertEqual(entry["text"], "Request blocked: PII detected in inbound query")
+            self.assertEqual(entry["request"], request)
+            self.assertGreaterEqual(entry["ms"], 0)
+
+    def test_poll_times_each_room(self):
+        with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
+            rooms = [{"connection": "Zendesk1", "app": "Zendesk", "query": query("Zendesk1")},
+                     {"connection": "Nope", "app": "Nope", "query": "SELECT 1 FROM [Nope].[x]"}]
+            (Path(tmp) / "mission.json").write_text(json.dumps({"rooms": rooms}))
+            env = {"CONNECT_AI_MCP_URL": mcp.url, "CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}
+            bridge(tmp, "poll", "--once", env=env)
+            stats = json.loads((Path(tmp) / "cache.json").read_text())["rooms"]
+        self.assertEqual([(s["connection"], s.get("rows"), "error" in s) for s in stats],
+                         [("Zendesk1", 1, False), ("Nope", None, True)])
 
     def test_lookup_sql_quotes_the_id(self):
         self.assertTrue(cd.lookup_sql({"query": "SELECT 1"}, "o'neil").endswith("q.[Id] = 'o''neil'"))
@@ -275,7 +308,7 @@ class PollCLITest(unittest.TestCase):
             for args in ((), ("bogus",)):
                 r = bridge(tmp, *args)
                 self.assertNotEqual(r.returncode, 0)
-                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|poll|score|reset|panel}", r.stderr)
+                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|score|reset|panel}", r.stderr)
 
 
 class PanelServerTest(unittest.TestCase):
@@ -343,14 +376,14 @@ class PanelServerTest(unittest.TestCase):
     def test_empty_state(self):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
                                              "game": None, "kills": [], "kill_total": 0, "hits": [],
-                                             "rooms_live": [], "standing": 0})
+                                             "rooms_live": [], "vault": [], "standing": 0})
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}
         (self.state / "mission.json").write_text(json.dumps(mission))
         cache_monsters = cd.fetch(mission)
         (self.state / "cache.json").write_text(json.dumps({"monsters": cache_monsters}))
-        kills = [{**m, "killed_at": "2026-10-15T13:52:33", "mode": "dry-run"} for m in cache_monsters[:14]]
+        kills = [{**m, "killed_at": "2026-10-15T13:52:33", "mode": "read-only"} for m in cache_monsters[:14]]
         (self.state / "kills.jsonl").write_text("".join(json.dumps(k) + "\n" for k in kills))
         (self.state / "run.jsonl").write_text('{"kind": "question", "text": "q"}\n{"kind": "ca')  # mid-write
         (self.state / "play.jsonl").write_text('{"kind": "call", "server": "doom", "tool": "look"}\n')

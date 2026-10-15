@@ -24,7 +24,13 @@ PLAY_LOG = STATE / "play.jsonl"
 MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
-KEY_SPOTS = {"blue": (2496, -656), "yellow": (2624, -656)}
+
+
+def key_spots(rooms):
+    """Where the lobby's keycards lie: as tools/make_arena.py places them, one per color
+    in use, sorted, 128 apart from x=2496."""
+    keys = sorted({"yellow" if r.get("writable") else "blue" for r in rooms})
+    return [(2496 + 128 * i, -656) for i in range(len(keys))]
 
 
 # ---------------------------------------------------------------- the game channel
@@ -142,8 +148,7 @@ def tool_go_to(game, args):
     m = mission()
     if "key" in target:
         route = [(2560, -600)] if here == "lobby" else route + [(2560, -256), (2560, -600)]
-        route += [KEY_SPOTS[k] for k in ("blue", "yellow")
-                  if any(not r.get("writable") if k == "blue" else r.get("writable") for r in m["rooms"])]
+        route += key_spots(m["rooms"])
     elif "vault" in target:
         if not m.get("denied"):
             return {"result": "There is no vault: Connect AI didn't block anything this run."}
@@ -196,7 +201,7 @@ def tool_attack(game, args):
     result = game.do("ATTACK", pid, timeout=16)
     out = {"result": result, "app": rec.get("app"), "record": rec.get("label"), "detail": rec.get("detail")}
     if result == "killed":
-        out["logged"] = "follow-up queued (dry run)" if rec.get("writable") else "flagged (dry run)"
+        out["logged"] = "kill logged; the record is being read again, live, through Connect AI (nothing is written)"
     return out
 
 

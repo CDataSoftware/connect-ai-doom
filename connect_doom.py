@@ -35,6 +35,7 @@ CACHE = STATE / "cache.json"
 KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
 LOOKUPS = STATE / "lookups.jsonl"
+VAULT = STATE / "vault.jsonl"  # each time the red door is tried: Connect AI's live answer
 LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the crosshair
 MISSION = STATE / "mission.json"
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
@@ -86,15 +87,17 @@ def demo_mission():
         r["rows"] = [{"Id": f"{r['connection']}{i}", "Label": f"{rng.choice(words)} Corp",
                       "Detail": f"${rng.choice([5969, 15127, 33077, 76718])}", "Hot": rng.choice([0, 1])}
                      for i in range(12)]
-    return {"question": "(demo)", "answer": "Made-up data for offline play.", "rooms": rooms,
+    return {"question": "(offline: made-up data)", "answer": "Made-up data for offline play.", "rooms": rooms,
             "denied": [{"connection": "DemoPII", "error": "Request blocked: PII detected in inbound query"}],
             "masked": [], "calls": []}
 
 
-def write_cache(monsters, source):
+def write_cache(monsters, source, rooms=None):
+    """rooms: each room's last refresh through Connect AI ({connection, ms, rows, error})."""
     STATE.mkdir(parents=True, exist_ok=True)
     tmp = CACHE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"source": source, "fetched_at": time.time(), "monsters": monsters}, indent=1))
+    tmp.write_text(json.dumps({"source": source, "fetched_at": time.time(), "rooms": rooms or [],
+                               "monsters": monsters}, indent=1))
     tmp.replace(CACHE)  # atomic, so `list` never reads a half-written file
     tmp = LABELS.with_suffix(".tmp")
     tmp.write_text("".join(f"{m['pid']}\t{line}\n" for m in monsters for line in [aim_label(m)]))
@@ -162,10 +165,9 @@ def cmd_kill(args):
     m = find(int(args[0]))
     if not m:
         return
-    record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"), "mode": "dry-run"}
+    record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"), "mode": "read-only"}
     append(KILLS, record)
-    # stdout's first line is shown in-game (patched pr_kill); Doom's font is upper case.
-    print(f"{m['app']}: {m['label']}"[:44].upper() + ", KILLED", flush=True)
+    print(kill_message(m), flush=True)
     print(f"\n  KILL  {m['app']}  {m['label']}  ({m['detail']})  {m['id']}  [{record['mode']}]\n",
           file=sys.stderr)
     mission = read_json(MISSION)
@@ -173,6 +175,20 @@ def cmd_kill(args):
     if live:  # the demo has no Connect AI to ask; the game must not wait on the network
         subprocess.Popen([sys.executable, __file__, "lookup", m["id"]], start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def kill_message(m):
+    """The in-game line for a kill (patched pr_kill shows stdout's first line; Doom's font
+    is upper case): the record and how many are left in its room, or a room or level clear."""
+    mission = read_json(MISSION) or {}
+    dead = killed_ids()
+    alive = [x for x in cached_monsters() if x["id"] not in dead]
+    in_room = [x for x in alive if x["pid"] % 3 == m["pid"] % 3]
+    if not alive:
+        return "ALL RECORDS CLEARED!" + (" NOW TRY THE RED DOOR" if mission.get("denied") else "")
+    if not in_room:
+        return f"{m['app']} room clear! {len(alive)} left elsewhere".upper()
+    return f"{m['app']}: {m['label']}"[:36].upper() + f", {len(in_room)} LEFT"
 
 
 def lookup_sql(room, record_id):
@@ -200,25 +216,53 @@ def cmd_lookup(args):
     append(LOOKUPS, entry)
 
 
+def cmd_vault(_):
+    """The red door was tried: send the request Connect AI blocked during the briefing again,
+    live, and log what it says now (the side panel shows it)."""
+    mission = read_json(MISSION) or {}
+    d = next((d for d in mission.get("denied", []) if d.get("request")), None)
+    if not d:  # offline missions have no real request to send
+        return
+    entry = {"connection": d["connection"], "tool": d["tool"], "request": d["request"]}
+    start = time.time()
+    try:
+        entry["text"] = connect_ai_mcp.Client().call(d["tool"], **d["request"])[:300]
+        entry["blocked"] = False
+    except Exception as e:
+        entry["text"] = str(e).split("\n")[0][:200]
+        entry["blocked"] = isinstance(e, connect_ai_mcp.MCPError)
+    entry["ms"] = round((time.time() - start) * 1000)
+    entry["at"] = time.time()
+    append(VAULT, entry)
+
+
 def cmd_hit(args):
     m = find(int(args[0]))
     if m:
         append(HITS, {"id": m["id"], "at": time.time()})
 
 
-def fetch(mission):
-    """Re-run every room's query through the Connect AI MCP server."""
-    if all("rows" in r for r in mission["rooms"]):     # the demo mission carries its rows
+def fetch(mission, stats=None):
+    """Re-run every room's query through the Connect AI MCP server. With a stats list,
+    append each room's round trip to it."""
+    if all("rows" in r for r in mission["rooms"]):     # the offline mission carries its rows
         return [to_monster(row, i, r) for i, r in enumerate(mission["rooms"]) for row in r["rows"]]
     mcp = connect_ai_mcp.Client()
     monsters = []
     for i, room in enumerate(mission["rooms"][:3]):
+        start = time.time()
+        stat = {"connection": room["connection"]}
         try:
             rows = mcp.query(room["query"])[:MAX_PER_ROOM]
+            stat["rows"] = len(rows)
+            monsters += [to_monster(row, i, room) for row in rows]
         except connect_ai_mcp.MCPError as e:
             print(f"{room['app']}: {e}", file=sys.stderr)
-            continue
-        monsters += [to_monster(row, i, room) for row in rows]
+            stat["error"] = str(e).split("\n")[0][:200]
+        stat["ms"] = round((time.time() - start) * 1000)
+        stat["at"] = time.time()
+        if stats is not None:
+            stats.append(stat)
     return monsters
 
 
@@ -231,9 +275,10 @@ def cmd_poll(args):
         now = dt.datetime.now()
         try:
             mission = json.loads(MISSION.read_text())
-            monsters = fetch(mission)
+            stats = []
+            monsters = fetch(mission, stats)
             source = "demo" if "--demo" in args else "connect-ai-mcp"
-            write_cache(monsters, source)
+            write_cache(monsters, source, stats)
             print(f"{now:%H:%M:%S} {source}: {len(monsters)} monsters", file=sys.stderr)
         except Exception as e:  # keep the last good cache; the game keeps running
             print(f"{now:%H:%M:%S} poll failed: {e}", file=sys.stderr)
@@ -290,7 +335,7 @@ def cmd_panel(args):
                     if h["at"] >= since and h["id"] in by_id]
             looked = {e["id"]: e for e in read_jsonl(LOOKUPS)}
             kills = [{**k, "lookup": looked.get(k["id"])} for k in kills]
-            killed_now = {k["id"] for k in kills}
+            refreshed = {r["connection"]: r for r in (read_json(CACHE) or {}).get("rooms", [])}
             rooms = []
             for i, room in enumerate((mission or {}).get("rooms", [])[:3]):
                 mine = [m for m in monsters if m["pid"] % 3 == i]   # monster_id puts the room in pid mod 3
@@ -298,7 +343,8 @@ def cmd_panel(args):
                 rooms.append({"app": room.get("app", room["connection"]), "writable": room.get("writable", False),
                               "title": room.get("title", ""), "left": len(alive),
                               "urgent_left": sum(m["demon"] for m in alive),
-                              "killed": sum(m["id"] in killed_now for m in mine)})
+                              "killed": sum(m["id"] in dead for m in mine),
+                              "refresh": refreshed.get(room["connection"])})
             body = json.dumps({
                 "events": live_events(STATE / "run.jsonl"),
                 "play_events": live_events(STATE / "play.jsonl"),
@@ -308,6 +354,7 @@ def cmd_panel(args):
                 "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
                 "hits": hits[-40:],
                 "rooms_live": rooms,
+                "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
                 "standing": len([m for m in monsters if m["id"] not in dead]),
             }).encode()
             self.send_response(200)
@@ -321,12 +368,13 @@ def cmd_panel(args):
 
 
 def cmd_reset(_):
-    for p in (KILLS, HITS, LOOKUPS):
+    for p in (KILLS, HITS, LOOKUPS, VAULT):
         p.unlink(missing_ok=True)
     print("kills cleared")
 
 
-COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "lookup": cmd_lookup, "poll": cmd_poll,
+COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "lookup": cmd_lookup, "vault": cmd_vault,
+            "poll": cmd_poll,
             "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel}
 
 if __name__ == "__main__":

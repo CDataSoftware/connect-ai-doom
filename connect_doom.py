@@ -7,19 +7,22 @@ psdoom-ng calls three commands (see vendor/src/psdoom-ng/trunk/src/pr_process.c)
   PSDOOMRENICECMD  -> `connect_doom.py hit <id>`   a monster was wounded
 
 psdoom runs these synchronously inside the game loop, so they only touch local
-files. `poll` is the slow part: it re-runs each room's query from
+files; `kill` hands the record's live read to a background `lookup`. `poll` is the slow part: it re-runs each room's query from
 state/mission.json (written by brief.py) through the Connect AI MCP server and
 writes state/cache.json. Room i's monsters get ids with id % 3 == i, which is
 how psdoom picks the arena they spawn in.
 
 The source data is never modified. A kill is logged to state/kills.jsonl and
-hidden from later lists (otherwise psdoom resurrects the monster).
+hidden from later lists (otherwise psdoom resurrects the monster). Then `lookup`
+reads that one record again through Connect AI, with the room's own query, and
+logs the row and the round trip to state/lookups.jsonl for the side panel.
 """
 import datetime as dt
 import hashlib
 import json
 import os
 import random
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -31,6 +34,7 @@ STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 CACHE = STATE / "cache.json"
 KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
+LOOKUPS = STATE / "lookups.jsonl"
 MISSION = STATE / "mission.json"
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
@@ -143,10 +147,39 @@ def cmd_kill(args):
     record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"), "mode": "dry-run"}
     append(KILLS, record)
     # stdout's first line is shown in-game (patched pr_kill); Doom's font is upper case.
-    action = "FOLLOW-UP QUEUED" if m["writable"] else "FLAGGED"
-    print(f"{m['app']}: {m['label']}"[:44].upper() + f", {action}", flush=True)
+    print(f"{m['app']}: {m['label']}"[:44].upper() + ", KILLED", flush=True)
     print(f"\n  KILL  {m['app']}  {m['label']}  ({m['detail']})  {m['id']}  [{record['mode']}]\n",
           file=sys.stderr)
+    mission = read_json(MISSION)
+    live = mission and not all("rows" in r for r in mission["rooms"]) and os.environ.get("CONNECT_AI_PAT")
+    if live:  # the demo has no Connect AI to ask; the game must not wait on the network
+        subprocess.Popen([sys.executable, __file__, "lookup", m["id"]], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def lookup_sql(room, record_id):
+    rid = record_id.replace("'", "''")
+    return f"SELECT * FROM ({room['query']}) AS q WHERE q.[Id] = '{rid}'"
+
+
+def cmd_lookup(args):
+    """Read one killed record live through Connect AI, with the query that built its room."""
+    record_id = args[0]
+    connection = record_id.split(":", 1)[0]
+    room = next((r for r in read_json(MISSION)["rooms"] if r["connection"] == connection), None)
+    if not room:
+        return
+    sql = lookup_sql(room, record_id.split(":", 1)[1])
+    entry = {"id": record_id, "connection": connection, "sql": sql}
+    start = time.time()
+    try:
+        rows = connect_ai_mcp.Client().query(sql)
+        entry["row"] = to_monster(rows[0], 0, room) if rows else None
+    except Exception as e:  # report it on the panel; the game is unaffected
+        entry["error"] = str(e).split("\n")[0][:200]
+    entry["ms"] = round((time.time() - start) * 1000)
+    entry["at"] = time.time()
+    append(LOOKUPS, entry)
 
 
 def cmd_hit(args):
@@ -239,6 +272,8 @@ def cmd_panel(args):
             by_id = {m["id"]: m for m in monsters}
             hits = [{**by_id[h["id"]], "at": h["at"]} for h in read_jsonl(HITS)
                     if h["at"] >= since and h["id"] in by_id]
+            looked = {e["id"]: e for e in read_jsonl(LOOKUPS)}
+            kills = [{**k, "lookup": looked.get(k["id"])} for k in kills]
             killed_now = {k["id"] for k in kills}
             rooms = []
             for i, room in enumerate((mission or {}).get("rooms", [])[:3]):
@@ -270,12 +305,12 @@ def cmd_panel(args):
 
 
 def cmd_reset(_):
-    for p in (KILLS, HITS):
+    for p in (KILLS, HITS, LOOKUPS):
         p.unlink(missing_ok=True)
     print("kills cleared")
 
 
-COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "poll": cmd_poll,
+COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "lookup": cmd_lookup, "poll": cmd_poll,
             "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel}
 
 if __name__ == "__main__":

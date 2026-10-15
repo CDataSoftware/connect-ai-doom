@@ -96,13 +96,29 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(events.count("HIT ×3"), 1)                      # a run of hits is one line
         self.assertLess(events.index("HIT ×3"), events.index("K29"))     # newest first
         self.assertLess(events.index("K29"), events.index("K18"))
-        self.assertIn("FOLLOW-UP QUEUED IN ZENDESK (DRY RUN)", events)
+        self.assertIn("No live read came back", events)                  # minutes old, no lookup logged
         rl = ids["rooms-live"]["html"]
         self.assertIn("12<small> / 15 cleared", rl)
         self.assertIn("3 left, 1 urgent", rl)
         self.assertIn("Room clear", rl)
         self.assertIn("PII vault", rl)                                   # the mission's blocked lookup
         self.assertTrue(ids["play"]["hidden"])
+
+    def test_kill_shows_connect_ais_live_read(self):
+        kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "high open", "writable": True,
+                "demon": 0, "killed_at": "2026-10-15T13:54:10",
+                "lookup": {"ms": 1850, "row": {"detail": "urgent pending"}, "at": 1}}
+        gone = {**kill, "id": "Zendesk:2", "killed_at": "2026-10-15T13:54:05", "lookup": {"ms": 900, "row": None, "at": 1}}
+        failed = {**kill, "id": "Zendesk:3", "killed_at": "2026-10-15T13:54:01",
+                  "lookup": {"ms": 30000, "error": "timed <out>", "at": 1}}
+        pending = {**kill, "id": "Zendesk:4", "lookup": None,
+                   "killed_at": datetime.datetime.now().isoformat(timespec="seconds")}
+        ids = self.render(kills=[failed, gone, kill, pending], kill_total=4, game={"mode": "player", "started": 0})
+        self.assertIn("Reading this record live from Zendesk", ids["now-big"]["html"])  # just killed
+        events = ids["events"]["html"]
+        self.assertIn("Read live from Zendesk in 1.9 s: still there, urgent pending", events)
+        self.assertIn("in 0.9 s: no longer returned by the room's query", events)
+        self.assertIn("Live read failed after 30.0 s: timed &lt;out&gt;", events)
 
     def test_claude_plays_mode(self):
         play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "look", "args": {}}]

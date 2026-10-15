@@ -242,10 +242,13 @@ class TempState:
     def __enter__(self):
         import connect_doom as cd
         self.tmp = tempfile.TemporaryDirectory()
-        self.saved = {k: getattr(cd, k) for k in ("STATE", "CACHE", "KILLS", "HITS", "MISSION")}
+        paths = {"CACHE": "cache.json", "KILLS": "kills.jsonl", "HITS": "hits.jsonl", "MISSION": "mission.json",
+                 "GAME": "game.json", "LOOKUPS": "lookups.jsonl", "LABELS": "labels.tsv"}
+        self.saved = {k: getattr(cd, k) for k in ("STATE", *paths)}
         state = Path(self.tmp.name)
-        cd.STATE, cd.CACHE, cd.KILLS = state, state / "cache.json", state / "kills.jsonl"
-        cd.HITS, cd.MISSION = state / "hits.jsonl", state / "mission.json"
+        cd.STATE = state
+        for k, name in paths.items():
+            setattr(cd, k, state / name)
         return state
 
     def __exit__(self, *exc):

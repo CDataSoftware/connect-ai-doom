@@ -136,6 +136,13 @@ class CommandsTest(unittest.TestCase):
         cd.write_cache([m], "test")
         self.assertEqual(cd.LABELS.read_text(), f"{m['pid']}\tSalesforce: Acme Corp\tURGENT: $5, late\n")
 
+    def test_each_game_starts_with_every_record_alive(self):
+        m = self.monsters[0]
+        self.run_cmd("kill", str(m["pid"]))
+        self.assertNotIn(str(m["pid"]), self.run_cmd("list"))
+        cd.GAME.write_text(json.dumps({"mode": "player", "started": time.time() + 1}))   # a later game
+        self.assertIn(str(m["pid"]), self.run_cmd("list"))
+
     def test_kill_message_is_capped_for_the_hud(self):
         m = cd.to_monster({"Id": "z", "Label": "A" * 80}, 0, ROOM)
         cd.write_cache([m], "test")
@@ -377,7 +384,7 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(s["kill_total"], 1)
         self.assertEqual([(h["id"], h["label"]) for h in s["hits"]], [(new["id"], new["label"])])
         self.assertEqual(sum(r["killed"] for r in s["rooms_live"]), 1)
-        self.assertEqual(s["standing"], 36 - 2)                  # earlier games' kills stay dead
+        self.assertEqual(s["standing"], 36 - 1)                  # earlier games' kills come back
 
     def test_corrupt_mission_is_null(self):
         (self.state / "mission.json").write_text("{")

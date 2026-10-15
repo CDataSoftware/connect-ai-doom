@@ -120,8 +120,16 @@ def read_jsonl(path):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+def game_kills():
+    """The kills that count: this game's while one runs (state/game.json), so every game
+    starts with every record alive; otherwise all of them."""
+    game = read_json(GAME)
+    since = game["started"] if game else 0
+    return [k for k in read_jsonl(KILLS) if dt.datetime.fromisoformat(k["killed_at"]).timestamp() >= since]
+
+
 def killed_ids():
-    return {k["id"] for k in read_jsonl(KILLS)}
+    return {k["id"] for k in game_kills()}
 
 
 def cached_monsters():
@@ -235,7 +243,7 @@ def cmd_poll(args):
 
 
 def cmd_score(_):
-    kills = read_jsonl(KILLS)
+    kills = game_kills()
     left = len([m for m in cached_monsters() if m["id"] not in killed_ids()])
     print(f"{len(kills)} cleared, {left} still standing")
     for k in kills[-10:]:
@@ -273,12 +281,10 @@ def cmd_panel(args):
             except (FileNotFoundError, json.JSONDecodeError):
                 mission = None
             game = read_json(GAME)
-            kills = read_jsonl(KILLS)
+            kills = game_kills()      # while a game runs, only that game's kills and hits
             dead = {k["id"] for k in kills}
             monsters = cached_monsters()
-            # While a game runs, the panel shows only that game's kills and hits.
             since = game["started"] if game else 0
-            kills = [k for k in kills if dt.datetime.fromisoformat(k["killed_at"]).timestamp() >= since]
             by_id = {m["id"]: m for m in monsters}
             hits = [{**by_id[h["id"]], "at": h["at"]} for h in read_jsonl(HITS)
                     if h["at"] >= since and h["id"] in by_id]

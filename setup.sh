@@ -33,7 +33,7 @@ build_sdl_lib SDL_mixer 1.2.12 --disable-music-mod --disable-music-mp3 --disable
 echo "psdoom-ng..."
 if [[ ! -d "$SRC/psdoom-ng" ]]; then
   git clone -q https://github.com/keymon/psdoom-ng.git "$SRC/psdoom-ng"
-  git -C "$SRC/psdoom-ng" apply "$ROOT/patches/psdoom-ng-nopslev-arena.patch"
+  git -C "$SRC/psdoom-ng" apply "$ROOT/patches/psdoom-ng-connect-doom.patch"
   fresh_config "$SRC/psdoom-ng/trunk"
 fi
 (
@@ -61,7 +61,7 @@ fi
 # Optional light branding from the CData brand kit (not in git). Without it the
 # arena uses plain walls.
 BRANDKIT_ZIP=${BRANDKIT_ZIP:-$HOME/Documents/dev/cdata/BRANDKIT.zip}
-SIGN=""
+BRAND=""
 if [[ -f "$BRANDKIT_ZIP" ]] && python3 -c 'import PIL' 2>/dev/null; then
   echo "Connect AI branding..."
   mkdir -p brand
@@ -69,11 +69,11 @@ if [[ -f "$BRANDKIT_ZIP" ]] && python3 -c 'import PIL' 2>/dev/null; then
   [[ -d brand/BRANDKIT ]] || /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand \
     'BRANDKIT/02 Logos/Product Logos/Connect AI/*'
   python3 tools/make_branding.py wads/freedoom2.wad brand/BRANDKIT wads/brand.wad
-  SIGN=--sign
+  BRAND=--brand
 else
   rm -f wads/brand.wad
 fi
-python3 tools/make_arena.py vendor/arena-raw.wad $SIGN
+python3 tools/make_arena.py vendor/arena-raw.wad $BRAND
 "$SRC/zdbsp/build/zdbsp" -o wads/arena.wad vendor/arena-raw.wad >>"$LOG"
 
 echo "Done. Try: ./raid.sh --demo"

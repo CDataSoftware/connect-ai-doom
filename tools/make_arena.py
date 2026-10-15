@@ -10,7 +10,9 @@ import struct
 import sys
 
 WALL = "TEKWALL4"
-SIGN = "CAISIGN"  # from wads/brand.wad (tools/make_branding.py)
+# --brand: textures from wads/brand.wad (tools/make_branding.py)
+BRAND_WALL = "CAIWALL"
+SIGN = "CAISIGN"
 # The middle 256 units of each arena's far (north) wall, facing the player.
 SIGN_SPANS = {(384, 1024), (2432, 1024), (4480, 1024)}
 ALCOVE_DEPTH = 16
@@ -53,7 +55,8 @@ def name8(s):
     return s.encode().ljust(8, b"\0")
 
 
-def build(signs=False):
+def build(brand=False):
+    wall = BRAND_WALL if brand else WALL
     verts = list(OUTLINE)
     sides = []    # (upper, lower, middle, sector)
     lines = []    # (v1, v2, flags, front side, back side)
@@ -70,22 +73,22 @@ def build(signs=False):
     n = len(OUTLINE)
     for i in range(n):
         x, y = OUTLINE[i]
-        if signs and (x, y) in SIGN_SPANS:
+        if brand and (x, y) in SIGN_SPANS:
             # Vanilla tiles wall textures every 128px vertically, so the sign
             # sits in a 128-tall alcove (floor 16, ceiling 144) instead of on
             # the 256-tall wall. flags 1|4 = impassable, two-sided.
             # full brightness so the sign's yellow isn't dimmed toward brown
             sectors.append((ALCOVE_FLOOR, ALCOVE_FLOOR + 128, 255))
             alcove = len(sectors) - 1
-            lines.append((i, (i + 1) % n, 5, side(0, upper=WALL, lower=WALL), side(alcove)))
+            lines.append((i, (i + 1) % n, 5, side(0, upper=wall, lower=wall), side(alcove)))
             x2 = OUTLINE[(i + 1) % n][0]
             a, b = vert((x, y + ALCOVE_DEPTH)), vert((x2, y + ALCOVE_DEPTH))
-            lines.append((i, a, 1, side(alcove, WALL), -1))
+            lines.append((i, a, 1, side(alcove, wall), -1))
             lines.append((a, b, 1, side(alcove, SIGN), -1))
-            lines.append((b, (i + 1) % n, 1, side(alcove, WALL), -1))
+            lines.append((b, (i + 1) % n, 1, side(alcove, wall), -1))
         else:
             # flags 1 = impassable; one-sided (back side -1)
-            lines.append((i, (i + 1) % n, 1, side(0, WALL), -1))
+            lines.append((i, (i + 1) % n, 1, side(0, wall), -1))
 
     verts = b"".join(struct.pack("<hh", x, y) for x, y in verts)
     lines = b"".join(struct.pack("<hhhhhhh", v1, v2, f, 0, 0, fr, bk) for v1, v2, f, fr, bk in lines)
@@ -108,5 +111,5 @@ def write_wad(path, lumps):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--sign"]
-    write_wad(args[0] if args else "arena-raw.wad", build(signs="--sign" in sys.argv))
+    args = [a for a in sys.argv[1:] if a != "--brand"]
+    write_wad(args[0] if args else "arena-raw.wad", build(brand="--brand" in sys.argv))

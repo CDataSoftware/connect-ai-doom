@@ -13,8 +13,31 @@ index 125d27b..f7e7a8d 100644
  // Add psdoom1.wad if this is registered (Doom 1) or retail (Ultimite Doom).
  // If we loaded it, set the flag to true so we can place the monsters in the
  // correct positions.
+diff --git i/trunk/src/g_game.c w/trunk/src/g_game.c
+index e630741..646e07f 100644
+--- i/trunk/src/g_game.c
++++ w/trunk/src/g_game.c
+@@ -505,6 +505,8 @@ static int G_NextWeapon(int direction)
+ // or reads it from the demo buffer. 
+ // If recording a demo, write it out 
+ // 
++void PR_AgentTiccmd(ticcmd_t *cmd);
++
+ void G_BuildTiccmd (ticcmd_t* cmd) 
+ { 
+     int		i; 
+@@ -763,6 +765,9 @@ void G_BuildTiccmd (ticcmd_t* cmd)
+ 	cmd->buttons = BT_SPECIAL | BTS_SAVEGAME | (savegameslot<<BTS_SAVESHIFT); 
+     } 
+ 
++    // connect-doom: an external agent may steer (pr_process.c)
++    PR_AgentTiccmd(cmd);
++
+     // low-res turning
+ 
+     if (lowres_turn)
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..db10741 100644
+index fa4fe83..d0f43ea 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -48,6 +71,242 @@ index fa4fe83..db10741 100644
  }
  
  // pr_renice
+@@ -890,3 +905,235 @@ void pr_renice(int pid) {
+   sprintf(buf, "%s %d", cmd, pid);
+   system(buf);
+ }
++
++// *** AGENT BEGIN ***
++// connect-doom "Claude plays": an external agent steers the player.
++// Enabled when PSDOOM_AGENT_DIR is set. The agent writes one command line to
++// <dir>/cmd ("<seq> MOVE x y" | "<seq> USE" | "<seq> ATTACK pid" | "<seq> TURN deg"
++// | "<seq> STOP"); the game writes <dir>/state.json every few tics with the
++// player, the process monsters, and the last finished command.
++
++#include "d_event.h"
++#include "d_player.h"
++#include "d_ticcmd.h"
++#include "tables.h"
++#include "r_main.h"
++
++// From p_local.h, which can't be included here (its enum 'close' clashes with unistd.h).
++extern thinker_t thinkercap;
++fixed_t P_AproxDistance(fixed_t dx, fixed_t dy);
++boolean P_CheckSight(mobj_t *t1, mobj_t *t2);
++void P_MobjThinker(mobj_t *mobj);
++#define AGENT_ANG1 (ANG45 / 45)
++
++static char *agent_dir = NULL;
++static int agent_seq = 0, agent_done_seq = 0, agent_tics = 0, agent_clock = 0;
++static char agent_verb[16] = "", agent_result[64] = "idle";
++static int agent_x, agent_y, agent_pid, agent_deg;
++static int agent_last_dist, agent_stuck;
++
++static void agent_finish(const char *result)
++{
++    agent_done_seq = agent_seq;
++    agent_verb[0] = '\0';
++    snprintf(agent_result, sizeof(agent_result), "%s", result);
++}
++
++static mobj_t *agent_find(int pid)
++{
++    thinker_t *th;
++    for (th = thinkercap.next; th != &thinkercap; th = th->next)
++    {
++        if (th->function.acp1 == (actionf_p1) P_MobjThinker
++         && ((mobj_t *) th)->m_pid == pid)
++            return (mobj_t *) th;
++    }
++    return NULL;
++}
++
++static void agent_read_cmd(void)
++{
++    char path[512], line[128], verb[16];
++    int seq, a = 0, b = 0;
++    FILE *f;
++    snprintf(path, sizeof(path), "%s/cmd", agent_dir);
++    f = fopen(path, "r");
++    if (!f)
++        return;
++    if (fgets(line, sizeof(line), f)
++     && sscanf(line, "%d %15s %d %d", &seq, verb, &a, &b) >= 2 && seq > agent_seq)
++    {
++        agent_seq = seq;
++        snprintf(agent_verb, sizeof(agent_verb), "%s", verb);
++        agent_x = a; agent_y = b; agent_pid = a; agent_deg = a;
++        agent_tics = 0;
++        agent_last_dist = 1 << 30;
++        agent_stuck = 0;
++        snprintf(agent_result, sizeof(agent_result), "running");
++    }
++    fclose(f);
++}
++
++// Turn toward an angle; returns the remaining error in degrees.
++static int agent_turn_to(ticcmd_t *cmd, mobj_t *mo, angle_t target)
++{
++    int delta = (int) (target - mo->angle);     // signed: shortest way round
++    int turn = delta >> 16;
++    if (turn > 1536) turn = 1536;
++    if (turn < -1536) turn = -1536;
++    cmd->angleturn = turn;
++    return abs(delta / (int) (AGENT_ANG1));
++}
++
++static void agent_write_state(player_t *p)
++{
++    char path[512], tmp[520];
++    FILE *f;
++    thinker_t *th;
++    int first = 1;
++    mobj_t *mo = p->mo;
++    snprintf(path, sizeof(path), "%s/state.json", agent_dir);
++    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
++    f = fopen(tmp, "w");
++    if (!f)
++        return;
++    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
++               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
++               "\"kills\": %d},\n",
++            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
++            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
++            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
++            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount);
++    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
++            agent_seq, agent_done_seq, agent_verb, agent_result);
++    fprintf(f, " \"monsters\": [");
++    for (th = thinkercap.next; th != &thinkercap; th = th->next)
++    {
++        mobj_t *m;
++        if (th->function.acp1 != (actionf_p1) P_MobjThinker)
++            continue;
++        m = (mobj_t *) th;
++        if (!m->m_pid)
++            continue;
++        fprintf(f, "%s\n  {\"pid\": %d, \"name\": \"%.7s\", \"x\": %d, \"y\": %d, \"health\": %d, "
++                   "\"visible\": %s, \"distance\": %d}",
++                first ? "" : ",", m->m_pid, m->m_pname, m->x >> FRACBITS, m->y >> FRACBITS, m->health,
++                m->health > 0 && P_CheckSight(mo, m) ? "true" : "false",
++                P_AproxDistance(m->x - mo->x, m->y - mo->y) >> FRACBITS);
++        first = 0;
++    }
++    fprintf(f, "]}\n");
++    fclose(f);
++    rename(tmp, path);
++}
++
++void PR_AgentTiccmd(ticcmd_t *cmd)
++{
++    player_t *p = &players[consoleplayer];
++    mobj_t *mo = p->mo;
++
++    if (agent_dir == NULL)
++    {
++        static int checked = 0;
++        if (checked)
++            return;
++        checked = 1;
++        agent_dir = getenv("PSDOOM_AGENT_DIR");
++        if (agent_dir == NULL)
++            return;
++    }
++    if (gamestate != GS_LEVEL || mo == NULL)
++        return;
++
++    if (getenv("PSDOOM_AGENT_GOD"))
++    {
++        // Claude thinks slowly: don't let it die mid-thought, and keep it on a
++        // full chaingun (hitscan, so aiming is reliable; rockets splash and run dry).
++        int i;
++        p->cheats |= CF_GODMODE;
++        p->weaponowned[wp_chaingun] = true;
++        for (i = 0; i < NUMAMMO; i++)
++            p->ammo[i] = p->maxammo[i];
++        if (p->readyweapon != wp_chaingun && p->pendingweapon == wp_nochange)
++            p->pendingweapon = wp_chaingun;
++    }
++
++    ++agent_clock;
++    if (agent_clock % 4 == 0)
++    {
++        agent_read_cmd();
++        agent_write_state(p);
++    }
++    if (!agent_verb[0])
++        return;
++    ++agent_tics;
++
++    if (!strcmp(agent_verb, "STOP"))
++    {
++        agent_finish("stopped");
++    }
++    else if (!strcmp(agent_verb, "SHOT"))
++    {
++        // Save the frame as DOOMnn.pcx in the working directory (no window needed).
++        gameaction = ga_screenshot;
++        agent_finish("shot");
++    }
++    else if (!strcmp(agent_verb, "USE"))
++    {
++        cmd->buttons |= BT_USE;
++        if (agent_tics >= 2)
++            agent_finish("used");
++    }
++    else if (!strcmp(agent_verb, "TURN"))
++    {
++        if (agent_turn_to(cmd, mo, (angle_t) agent_deg * AGENT_ANG1) < 3 || agent_tics > 70)
++            agent_finish("turned");
++    }
++    else if (!strcmp(agent_verb, "MOVE"))
++    {
++        fixed_t tx = agent_x << FRACBITS, ty = agent_y << FRACBITS;
++        int dist = P_AproxDistance(tx - mo->x, ty - mo->y) >> FRACBITS;
++        int err = agent_turn_to(cmd, mo, R_PointToAngle2(mo->x, mo->y, tx, ty));
++        if (dist < 16)
++        {
++            agent_finish("arrived");
++            return;
++        }
++        if (err < 45)
++            cmd->forwardmove = dist < 96 ? 0x19 : 0x32;
++        // Stuck against a wall or a closed door: give up after ~2 seconds without progress.
++        if (agent_tics % 35 == 0)
++        {
++            agent_stuck = dist >= agent_last_dist - 8 ? agent_stuck + 1 : 0;
++            agent_last_dist = dist;
++            if (agent_stuck >= 2)
++                agent_finish("blocked");
++        }
++        if (agent_tics > 35 * 20)
++            agent_finish("timeout");
++    }
++    else if (!strcmp(agent_verb, "ATTACK"))
++    {
++        mobj_t *t = agent_find(agent_pid);
++        int err;
++        if (t == NULL || t->health <= 0)
++        {
++            agent_finish(t == NULL ? "gone" : "killed");
++            return;
++        }
++        err = agent_turn_to(cmd, mo, R_PointToAngle2(mo->x, mo->y, t->x, t->y));
++        if (err < 6 && P_CheckSight(mo, t))
++            cmd->buttons |= BT_ATTACK;
++        // Close in on targets that are far away or behind something.
++        if (err < 45 && (!P_CheckSight(mo, t)
++                         || P_AproxDistance(t->x - mo->x, t->y - mo->y) > (400 << FRACBITS)))
++            cmd->forwardmove = 0x32;
++        if (agent_tics > 35 * 12)
++            agent_finish(P_CheckSight(mo, t) ? "timeout" : "out of sight");
++    }
++    else
++    {
++        agent_finish("unknown command");
++    }
++}
++// *** AGENT END ***
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
 index e60ec34..fb441a9 100644
 --- i/trunk/src/r_things.c

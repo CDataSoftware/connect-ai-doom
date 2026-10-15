@@ -26,8 +26,8 @@ WALL = "TEKWALL4"
 BRAND_WALL = "CAIWALL"     # tools/make_branding.py
 DOOR = "BIGDOOR2"
 JAMB = {"blue": "DOORBLU", "yellow": "DOORYEL", "red": "DOORRED"}
-# DR door specials: open on use, close again after a few seconds
-DOOR_SPECIAL = {"blue": 26, "yellow": 27, "red": 28, None: 1}
+# Keyed doors that stay open once unlocked (D1 open-stay), so the room stays reachable
+DOOR_SPECIAL = {"blue": 32, "yellow": 34, "red": 33, None: 31}
 KEY_THING = {"blue": 5, "yellow": 6}
 ARENA_X = (0, 2048, 4096)
 

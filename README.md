@@ -18,6 +18,7 @@ Nothing is faked: rooms come from the queries Claude ran, permissions from Conne
 ./raid.sh --again                 # replay the last briefing without a new Claude run
 ./raid.sh --demo                  # made-up data, no network
 ./raid.sh brief                   # only the briefing, for rehearsing
+./raid.sh --again --claude-plays  # optional: Claude drives the marine (off unless you pass the flag)
 python3 connect_doom.py score     # kill log; reset brings everyone back
 ```
 
@@ -30,6 +31,12 @@ make test          # V=1 lists each test; needs Pillow, plus node and shellcheck
 ```
 
 The suite runs offline against fakes: a fake Connect AI MCP server, a fake `claude` CLI that streams a canned run, a tiny stand-in for `freedoom2.wad`, and fake `psdoom`, `zdbsp`, `security`, `op` and `open`. It covers the MCP client, `brief.py`, every bridge command and the panel server, the level, sign and DeHackEd builders, the panel's script (in Node), and `raid.sh` end to end in demo, live, `--again` and `brief` modes. It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
+
+## Claude plays (optional)
+
+`--claude-plays` hands the marine to Claude. It gets a small Doom MCP server (`play.py mcp`) with three tools, `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, goes room by room, narrates each kill ("Hooli Corp's $15,127 overdue invoice is urgent, taking it down."), and tries the vault once. Its steps stream into the panel's Claude plays feed. It plays in god mode with a full chaingun, because it thinks in seconds, not tics. `PLAY_MODEL` (default sonnet) and `PLAY_MAX_TURNS` (default 60) tune it; a 20-turn run costs about $0.13.
+
+Under the hood, psdoom has an agent channel (in the patch, `pr_process.c`): with `PSDOOM_AGENT_DIR` set, the game reads one command per line from `<dir>/cmd` (`MOVE x y`, `USE`, `TURN deg`, `ATTACK pid`, `SHOT`, `STOP`) and writes the player, every data monster and the last finished command to `<dir>/state.json`. The tools turn those into routes through the hall and doors. `SHOT` saves the frame as `DOOMnn.pcx`, so the whole mode also runs headless with `SDL_VIDEODRIVER=dummy`, no window and no input, which is how it's tested.
 
 ## Account
 

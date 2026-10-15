@@ -33,6 +33,7 @@ build_sdl_lib SDL_mixer 1.2.12 --disable-music-mod --disable-music-mp3 --disable
 echo "psdoom-ng..."
 if [[ ! -d "$SRC/psdoom-ng" ]]; then
   git clone -q https://github.com/keymon/psdoom-ng.git "$SRC/psdoom-ng"
+  git -C "$SRC/psdoom-ng" checkout -q 83d02bafe91439117421a0ccc3e238a0b9544e93   # the commit the patch is for
   git -C "$SRC/psdoom-ng" apply "$ROOT/patches/psdoom-ng-connect-doom.patch"
   fresh_config "$SRC/psdoom-ng/trunk"
 fi
@@ -47,7 +48,10 @@ fi
 
 echo "zdbsp node builder..."
 if [[ ! -x "$SRC/zdbsp/build/zdbsp" ]]; then
-  [[ -d "$SRC/zdbsp" ]] || git clone -q --depth 1 https://github.com/rheit/zdbsp.git "$SRC/zdbsp"
+  if [[ ! -d "$SRC/zdbsp" ]]; then
+    git clone -q https://github.com/rheit/zdbsp.git "$SRC/zdbsp"
+    git -C "$SRC/zdbsp" checkout -q f324e34c8bdbf9800d53b18ebd578a51fd7f9998
+  fi
   (cd "$SRC/zdbsp" && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
      -DCMAKE_C_FLAGS="-Wno-implicit-function-declaration -Wno-int-conversion -include stdlib.h" \
    && cmake --build build -j8) >>"$LOG" 2>&1

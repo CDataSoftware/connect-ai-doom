@@ -14,7 +14,7 @@ index 125d27b..f7e7a8d 100644
  // If we loaded it, set the flag to true so we can place the monsters in the
  // correct positions.
 diff --git i/trunk/src/g_game.c w/trunk/src/g_game.c
-index e630741..646e07f 100644
+index e630741..c422923 100644
 --- i/trunk/src/g_game.c
 +++ w/trunk/src/g_game.c
 @@ -505,6 +505,8 @@ static int G_NextWeapon(int direction)
@@ -36,6 +36,16 @@ index e630741..646e07f 100644
      // low-res turning
  
      if (lowres_turn)
+@@ -990,7 +995,8 @@ boolean G_Responder (event_t* ev)
+     switch (ev->type) 
+     { 
+       case ev_keydown: 
+-	if (ev->data1 == key_pause) 
++	// connect-doom: P pauses too; Mac keyboards have no Pause key
++	if (ev->data1 == key_pause || ev->data1 == 'p') 
+ 	{ 
+ 	    sendpause = true; 
+ 	}
 diff --git i/trunk/src/hu_stuff.c w/trunk/src/hu_stuff.c
 index afe3974..d987c9a 100644
 --- i/trunk/src/hu_stuff.c

@@ -49,7 +49,8 @@ class Client:
                 self.session = resp.headers.get("Mcp-Session-Id") or self.session
                 raw = resp.read().decode()
         except urllib.error.HTTPError as e:
-            raise MCPError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}")
+            with e:
+                raise MCPError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}")
         if notify or not raw.strip():
             return None
         if not raw.lstrip().startswith("{"):  # server-sent events: the last data line is the reply

@@ -54,6 +54,8 @@ def to_patch(img, palette, left=0, top=0):
     """RGBA image -> Doom patch lump; alpha < 128 is transparent."""
     img = img.convert("RGBA")
     w, h = img.size
+    if h > 255:  # a post's start row is one byte; taller needs the DeePsea tall-patch format
+        raise ValueError(f"patch is {h} px tall; vanilla patches stop at 255")
     px = img.load()
     cache = {}
 

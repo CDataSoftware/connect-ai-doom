@@ -56,7 +56,9 @@ INSTRUCTIONS = f"""You are scouting live business data for a Doom level, using t
             "title": "<2 to 4 words, e.g. Deals slipping>", "query": "<the working SELECT>"}}]}}
 """
 
-REFUSAL = re.compile(r"Request blocked|Cannot obtain connection|permission|not authorized|denied", re.I)
+# Data Security blocks only: they are what the PII vault stands for. A plain permission
+# error (no access to a table or connection) is an ordinary failed step, not a vault.
+REFUSAL = re.compile(r"^(Error: )?Request blocked", re.I)
 
 
 def event(kind, **data):

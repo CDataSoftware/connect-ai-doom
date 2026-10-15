@@ -27,7 +27,7 @@ The default question asks for at-risk customers across the CRM, support and bill
 ## Tests
 
 ```bash
-make test          # V=1 lists each test; needs Pillow, plus node and shellcheck for those checks
+make test          # V=1 lists each test; needs Pillow (`requirements-dev.txt`), plus node and shellcheck for those checks
 ```
 
 The suite runs offline against fakes: a fake Connect AI MCP server, a fake `claude` CLI that streams a canned run, a tiny stand-in for `freedoom2.wad`, and fake `psdoom`, `zdbsp`, `security`, `op` and `open`. It covers the MCP client, `brief.py`, every bridge command and the panel server, the level, sign and DeHackEd builders, the panel's script (in Node), and `raid.sh` end to end in demo, live, `--again` and `brief` modes. It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.

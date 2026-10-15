@@ -200,6 +200,12 @@ class BrandingTest(unittest.TestCase):
         want = {(x, y): (x * 3 + y) % 128 for x in range(40) for y in range(200) if (x + y) % 7}
         self.assertEqual(px, want)
 
+    def test_too_tall_patch_is_a_clear_error(self):
+        from PIL import Image
+        make_branding.to_patch(Image.new("RGBA", (2, 255), (1, 1, 1, 255)), self.palette)
+        with self.assertRaisesRegex(ValueError, "256 px tall"):
+            make_branding.to_patch(Image.new("RGBA", (2, 256), (1, 1, 1, 255)), self.palette)
+
     def build(self, mission=None, kit="no-kit"):
         out = Path(self.tmp.name) / "brand.wad"
         make_branding.build(self.iwad, kit, out, mission=mission)

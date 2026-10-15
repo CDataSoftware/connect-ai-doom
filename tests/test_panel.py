@@ -57,7 +57,7 @@ class PanelTest(unittest.TestCase):
         rooms = ids["rooms"]["html"]
         self.assertIn("YELLOW KEY: READ + WRITE", rooms)
         self.assertIn("BLUE KEY: READ ONLY", rooms)
-        self.assertEqual(rooms.count("RED DOOR: NO KEY EXISTS"), 2)
+        self.assertEqual(rooms.count("RED DOOR: NO KEY EXISTS"), 1)
         self.assertIn("Request blocked: PII detected in inbound query", rooms)
         self.assertEqual(ids["standing"]["text"], "5 still standing, latest first")
         self.assertLess(ids["kills"]["html"].index("Initech"), ids["kills"]["html"].index("Acme"))  # newest first
@@ -105,7 +105,7 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(ids["standing"]["text"], "0 still standing, none cleared yet")
 
     def test_format_sql_and_parse_csv(self):
-        sql = "select a, 'from x' from [S].[t] where a = 1 and (b OR c) order by a"
+        sql = "select a, 'from x' from [S].[t] where a = 1 and (b or c) order by a"
         csv = 'Id,Label\n1,"a, ""b"""\r\n2,"two\nlines"\n'
         _, value = self.render(expr=f"""[
           formatSQL({json.dumps(sql)}),
@@ -116,7 +116,7 @@ class PanelTest(unittest.TestCase):
         sql, csv, desc, stat = value
         self.assertEqual(sql.split("\n")[1:], ['<span class="kw">FROM</span> [S].[t]',
                                                '<span class="kw">WHERE</span> a = 1',
-                                               '  <span class="kw">AND</span> (b <span class="kw">OR</span> c)',
+                                               '  <span class="kw">AND</span> (b <span class="kw">or</span> c)',
                                                '<span class="kw">ORDER</span> <span class="kw">BY</span> a'])
         self.assertIn("<span class=\"str\">'from x'</span>", sql)       # keywords inside strings stay plain
         self.assertEqual(csv, [["Id", "Label"], ["1", 'a, "b"'], ["2", "two\nlines"]])

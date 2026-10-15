@@ -65,6 +65,11 @@ class MonsterTest(unittest.TestCase):
             with self.subTest(hot=hot):
                 self.assertEqual(cd.to_monster({"Id": "1", "Hot": hot}, 0, ROOM)["demon"], demon)
 
+    def test_to_monster_dropped_label_alias(self):
+        row = {"Id": "287", "Subject": "Escalation - Desert Power", "Detail": "urgent open", "Hot": "1"}
+        m = cd.to_monster(row, 0, ROOM)
+        self.assertEqual((m["label"], m["name"]), ("Escalation - Desert Power", "ESCALAT"))
+
     def test_to_monster_defaults(self):
         m = cd.to_monster({"Id": "1"}, 0, {"connection": "Raw1"})
         self.assertEqual((m["app"], m["writable"], m["label"], m["detail"]), ("Raw1", False, "?", ""))
@@ -302,14 +307,15 @@ class PanelServerTest(unittest.TestCase):
 
     def test_empty_state(self):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
-                                             "kills": [], "kill_total": 0, "standing": 0})
+                                             "game": None, "kills": [], "kill_total": 0, "hits": [],
+                                             "rooms_live": [], "standing": 0})
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}
         (self.state / "mission.json").write_text(json.dumps(mission))
         cache_monsters = cd.fetch(mission)
         (self.state / "cache.json").write_text(json.dumps({"monsters": cache_monsters}))
-        kills = [{**m, "killed_at": "now", "mode": "dry-run"} for m in cache_monsters[:14]]
+        kills = [{**m, "killed_at": "2026-10-15T13:52:33", "mode": "dry-run"} for m in cache_monsters[:14]]
         (self.state / "kills.jsonl").write_text("".join(json.dumps(k) + "\n" for k in kills))
         (self.state / "run.jsonl").write_text('{"kind": "question", "text": "q"}\n{"kind": "ca')  # mid-write
         (self.state / "play.jsonl").write_text('{"kind": "call", "server": "doom", "tool": "look"}\n')
@@ -319,7 +325,31 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(set(s["mission"]), {"question", "answer", "rooms", "denied", "masked"})  # no raw calls
         self.assertEqual([k["id"] for k in s["kills"]], [k["id"] for k in kills[-12:]])
         self.assertEqual(s["kill_total"], 14)
+        self.assertEqual([r["left"] + r["killed"] for r in s["rooms_live"]], [12, 12, 12])
+        self.assertEqual(sum(r["killed"] for r in s["rooms_live"]), 14)
+        self.assertIsNone(s["game"])
         self.assertEqual(s["standing"], 36 - 14)
+
+    def test_game_shows_only_this_games_kills_and_hits(self):
+        mission = cd.demo_mission()
+        (self.state / "mission.json").write_text(json.dumps(mission))
+        monsters = cd.fetch(mission)
+        (self.state / "cache.json").write_text(json.dumps({"monsters": monsters}))
+        start = cd.dt.datetime(2026, 10, 15, 14, 0).timestamp()
+        (self.state / "game.json").write_text(json.dumps({"mode": "player", "started": start}))
+        old, new = monsters[0], monsters[1]
+        (self.state / "kills.jsonl").write_text(
+            json.dumps({**old, "killed_at": "2026-10-15T13:00:00"}) + "\n" +
+            json.dumps({**new, "killed_at": "2026-10-15T14:00:05"}) + "\n")
+        (self.state / "hits.jsonl").write_text(json.dumps({"id": old["id"], "at": start - 60}) + "\n" +
+                                               json.dumps({"id": new["id"], "at": start + 4}) + "\n")
+        s = self.state_json()
+        self.assertEqual(s["game"]["mode"], "player")
+        self.assertEqual([k["id"] for k in s["kills"]], [new["id"]])
+        self.assertEqual(s["kill_total"], 1)
+        self.assertEqual([(h["id"], h["label"]) for h in s["hits"]], [(new["id"], new["label"])])
+        self.assertEqual(sum(r["killed"] for r in s["rooms_live"]), 1)
+        self.assertEqual(s["standing"], 36 - 2)                  # earlier games' kills stay dead
 
     def test_corrupt_mission_is_null(self):
         (self.state / "mission.json").write_text("{")

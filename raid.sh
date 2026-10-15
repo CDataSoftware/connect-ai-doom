@@ -48,7 +48,8 @@ if [[ "$MODE" != demo ]]; then
 fi
 
 PIDS=()
-trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true' EXIT  # with set -e a failed kill would be the exit code
+# with set -e a failed kill would be the exit code; game.json tells the panel a game is on
+trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json' EXIT
 PANEL_PORT=${PANEL_PORT:-8666}
 if [[ "${NO_PANEL:-}" != 1 ]]; then
   [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites brand/BRANDKIT
@@ -81,6 +82,7 @@ export PSDOOMPSCMD="python3 $BRIDGE list"
 export PSDOOMKILLCMD="python3 $BRIDGE kill"
 export PSDOOMRENICECMD="python3 $BRIDGE hit"
 
+rm -f state/play.jsonl  # the panel's Claude plays feed is only for this game
 if [[ -n "$PLAYS" ]]; then
   # The agent channel patched into psdoom: Claude's commands in, game state out.
   mkdir -p state/agent && rm -f state/agent/*
@@ -88,6 +90,9 @@ if [[ -n "$PLAYS" ]]; then
   ( /bin/sleep 4; exec python3 play.py run ) 2>>state/play.err &
   PIDS+=($!)
 fi
+
+GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
+printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
 
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user

@@ -187,7 +187,8 @@
   .rl.done { opacity: .6; }
 
   #events { display: grid; gap: 4px; }
-  .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); animation: in .25s ease-out; }
+  .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); }
+  .ev.new { animation: in .25s ease-out; }
   .ev .t { font: 12px var(--mono); color: var(--balance); }
   .ev .k { font: 7px/1.8 var(--pixel); color: var(--doom-red); }
   .ev.hit { background: transparent; padding-top: 3px; padding-bottom: 3px; }
@@ -549,6 +550,10 @@ function renderMission(m, events) {
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 const action = m => m.writable ? `FOLLOW-UP QUEUED IN ${m.app.toUpperCase()} (DRY RUN)` : "FLAGGED FOR REVIEW (DRY RUN)";
 let lastEventKey = null;
+let seenEvents = null;  // events already on screen; only newer ones animate in
+const evKey = e => `${e.kind}:${e.id}:${e.at}`;
+// The panel polls twice a second; rewriting unchanged HTML would restart its animations.
+function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
 
 function gameEvents(s) {
   // kills and hits, newest first; a run of hits on the same record is one line
@@ -583,15 +588,17 @@ function renderGame(s) {
   for (const d of m.denied || [])
     cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
       <div class="app">PII vault</div><div class="sub">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div></div>`);
-  $("rooms-live").innerHTML = cards.join("");
+  setHTML($("rooms-live"), cards.join(""));
 
   const evs = gameEvents(s);
-  $("events").innerHTML = evs.length ? evs.map(e => e.kind === "kill"
-    ? `<div class="ev kill"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
+  const isNew = e => seenEvents && !seenEvents.has(evKey(e)) ? " new" : "";
+  setHTML($("events"), evs.length ? evs.map(e => e.kind === "kill"
+    ? `<div class="ev kill${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span><span class="act">${action(e)}</span></span></div>`
-    : `<div class="ev hit"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
+    : `<div class="ev hit${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)}</span></div>`).join("")
-    : '<div class="empty">Nothing yet. Shoot something.</div>';
+    : '<div class="empty">Nothing yet. Shoot something.</div>');
+  seenEvents = new Set([...(seenEvents || []), ...evs.map(evKey)]);
 
   const last = evs[0];
   const key = last ? `${last.kind}:${last.id}:${last.at}` : null;

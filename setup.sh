@@ -58,18 +58,8 @@ if [[ ! -f wads/freedoom2.wad ]]; then
   curl -sSL -o vendor/freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
   unzip -o -q -j vendor/freedoom.zip '*/freedoom2.wad' -d wads
 fi
-# Optional: the Connect AI logo for the Esc menu, from the CData brand kit (not in git).
-# raid.sh builds the level and its signs for each run.
-BRANDKIT_ZIP=${BRANDKIT_ZIP:-$HOME/Documents/dev/cdata/BRANDKIT.zip}
-if [[ -f "$BRANDKIT_ZIP" && ! -d brand/BRANDKIT ]]; then
-  echo "Connect AI brand kit..."
-  mkdir -p brand
-  # SharePoint zips are streamed (no central directory); bsdtar reads them, unzip can't.
-  /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand 'BRANDKIT/02 Logos/Product Logos/Connect AI/*' \
-    'BRANDKIT/02 Logos/Primary Logos/SVG/*'
-fi
 # Homebrew's Python refuses plain pip installs (PEP 668); a --user install leaves Homebrew's files alone.
 python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --user pillow >>"$LOG" 2>&1 \
   || python3 -m pip install --user --break-system-packages pillow >>"$LOG"
-python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites brand/BRANDKIT   # the panel's sprites and logos
+python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand   # the panel's sprites and logos
 echo "Done. Try: ./raid.sh --demo"

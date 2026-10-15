@@ -22,7 +22,7 @@ raid.sh
 - `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
 - `connect_doom.py`: the psdoom bridge (`list`, `kill`, `hit`), the poller, the live `lookup`, `score`/`reset`, and the panel server.
 - `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.
-- `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, and (with the CData brand kit) the Connect AI logo on the Esc menu. The kit stays out of git; `setup.sh` extracts it from `~/Documents/dev/cdata/BRANDKIT.zip` (override with `BRANDKIT_ZIP`).
+- `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, and the Connect AI logo on the Esc menu, the pause screen and the HUD corner. The logos it needs from the CData brand kit are in `assets/brand/`.
 - `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
 - `panel/index.html`: the side panel; it polls `/state.json` twice a second.
 

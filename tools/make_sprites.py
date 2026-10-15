@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Export the side panel's images.
 
-  make_sprites.py <freedoom2.wad> <out dir> [brand kit dir]
+  make_sprites.py <freedoom2.wad> <out dir> [brand dir]
 
 The game's own sprites as PNGs for the legend, so it shows exactly what's on
 screen: the pink demon (an urgent record), the shotgun soldier (a record), the
-keycards and the marine. With the CData brand kit (kept out of git), also the
-Connect AI and CData logos, into <out dir>/../brand; the panel falls back to
-text without them.
+keycards and the marine. With the brand dir (assets/brand), also the Connect AI
+and CData logos, into <out dir>/../brand; the panel falls back to text without them.
 """
 import shutil
 import sys
@@ -27,9 +26,9 @@ SPRITES = {
 }
 
 
-LOGOS = {
-    "connect-ai.svg": "02 Logos/Product Logos/Connect AI/SVG/connect-ai-agility-clarity.svg",
-    "cdata.svg": "02 Logos/Primary Logos/SVG/cdata-logotype-clarity.svg",
+LOGOS = {  # from the CData brand kit: connect-ai-agility-clarity.svg, cdata-logotype-clarity.svg
+    "connect-ai.svg": "connect-ai.svg",
+    "cdata.svg": "cdata.svg",
 }
 
 

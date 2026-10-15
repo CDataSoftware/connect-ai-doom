@@ -18,8 +18,8 @@ With --mission (state/mission.json from brief.py) it also draws the run's signs:
   CAIVAULT the PII vault's sign, with Connect AI's refusal
   CAIXXXX  the vault's walls: masked values
 
-Usage: make_branding.py <freedoom2.wad> <brand kit dir> <out.wad> [--mission mission.json]
-The brand kit dir is the extracted BRANDKIT folder (kept out of git).
+Usage: make_branding.py <freedoom2.wad> <brand dir> <out.wad> [--mission mission.json]
+The brand dir is assets/brand: the Connect AI logo from the CData brand kit.
 """
 import json
 import struct
@@ -36,7 +36,7 @@ CLARITY = (241, 238, 233)     # brand Clarity #F1EEE9
 KEY_BLUE, KEY_YELLOW, KEY_RED = (64, 96, 255), AGILITY, (255, 48, 32)
 DOOM_RED = (232, 41, 11)
 FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
-LOGO = "02 Logos/Product Logos/Connect AI/PNG/connect-ai-agility-clarity.png"  # for dark backgrounds
+LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds
 
 
 def read_wad(path):
@@ -217,7 +217,7 @@ def build(iwad, kit, out, mission=None):
     sign = Image.new("RGBA", (256, 128))
     for x in range(0, 256, tw):
         sign.paste(wall, (x, 0))
-    has_kit = (Path(kit) / LOGO).exists()  # without the brand kit: text instead of the logo
+    has_kit = (Path(kit) / LOGO).exists()  # without the logo: text signs, stock menus
     if has_kit:
         plate = sign_image(kit)
         sign.alpha_composite(plate, ((256 - plate.width) // 2, (128 - plate.height) // 2))

@@ -96,7 +96,10 @@ class RaidTest(unittest.TestCase):
         for flag in ("-nopslev", "-psallusers", "-window"):
             self.assertIn(flag, args)
         self.assertEqual(args[args.index("-config") + 1], "state/controls.cfg")
-        self.assertIn("key_up 17", (self.state / "controls.cfg").read_text())        # W
+        controls = (self.state / "controls.cfg").read_text()
+        self.assertIn("key_up 17", controls)        # W
+        self.assertIn("key_fire 57", controls)      # Space
+        self.assertIn("key_use 18", controls)       # E
         listed = (self.state / "psdoom-list.txt").read_text().splitlines()
         self.assertTrue(listed and all(line.startswith("connectai ") for line in listed))
         self.assertRegex((self.state / "psdoom-kill.txt").read_text().splitlines()[0], r", KILLED$")

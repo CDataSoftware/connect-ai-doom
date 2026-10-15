@@ -96,7 +96,7 @@ class PanelTest(unittest.TestCase):
         ids = self.render(play_events=play)
         self.assertFalse(ids["play"]["hidden"])
         item = ids["playfeed"]["children"][0]
-        self.assertIn("Moved toward <b>Acme</b>", item["html"])
+        self.assertIn("Headed to <b>Acme</b>", item["html"])
         self.assertIn("DOOM", item["html"])
 
     def test_empty_state(self):

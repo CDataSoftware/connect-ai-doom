@@ -51,6 +51,7 @@ PIDS=()
 trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true' EXIT  # with set -e a failed kill would be the exit code
 PANEL_PORT=${PANEL_PORT:-8666}
 if [[ "${NO_PANEL:-}" != 1 ]]; then
+  [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites
   python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
   PIDS+=($!)
   /bin/sleep 0.5

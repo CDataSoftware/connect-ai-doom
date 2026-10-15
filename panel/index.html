@@ -170,6 +170,24 @@
     .item > .row { grid-template-columns: 78px 1fr; }
     .item > .row .res { grid-column: 2; }
   }
+  /* legend: what each thing in the game means */
+  details.legend { background: var(--depth-2); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
+  details.legend summary { cursor: pointer; font: 9px/1.4 var(--pixel); letter-spacing: 1px; color: var(--agility); list-style: none; }
+  details.legend summary::-webkit-details-marker { display: none; }
+  details.legend summary::after { content: " +"; color: var(--balance); }
+  details.legend[open] summary::after { content: " -"; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 10px; }
+  .tile { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: center; background: var(--depth-3); border-radius: 3px; padding: 8px; }
+  .tile .pic { height: 58px; display: flex; align-items: flex-end; justify-content: center; }
+  .tile img { max-height: 58px; max-width: 58px; image-rendering: pixelated; }
+  .tile .name { font: 8px/1.5 var(--pixel); color: var(--clarity); }
+  .tile .what { font-size: 13px; line-height: 1.35; color: #D6D3CC; }
+  .tile .sign { width: 54px; height: 30px; border: 2px solid var(--agility); background: var(--depth); color: var(--agility);
+                font: 6px/1.3 var(--pixel); display: flex; align-items: center; justify-content: center; text-align: center; }
+  .legend .note { font-size: 13px; color: var(--balance); margin-top: 10px; line-height: 1.45; }
+  .legend .note .badge { display: inline-block; vertical-align: middle; margin: 0 2px; }
+  .keycard .keyimg { float: right; height: 34px; image-rendering: pixelated; margin-left: 8px; }
+  .keycard .roomno { font: 7px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -186,6 +204,30 @@
   <div class="stat model"><div class="num" id="s-model">STANDBY</div><div class="lbl">MODEL</div></div>
 </div>
 <main>
+  <section>
+    <details class="legend" id="legend" open>
+      <summary>WHAT YOU'RE LOOKING AT</summary>
+      <div class="tiles">
+        <div class="tile"><div class="pic"><img src="sprites/demon.png" alt="pink demon"></div>
+          <div><div class="name">PINK DEMON</div><div class="what">An urgent record: an overdue deal, an urgent ticket, a late invoice. The name over its head is the customer.</div></div></div>
+        <div class="tile"><div class="pic"><img src="sprites/soldier.png" alt="soldier"></div>
+          <div><div class="name">SOLDIER</div><div class="what">Any other record Claude found for the question. Same name tag.</div></div></div>
+        <div class="tile"><div class="pic"><div class="sign">APP<br>NAME</div></div>
+          <div><div class="name">ROOM = APP</div><div class="what" id="legend-rooms">Each room is one app Claude reached through Connect AI. The sign on the wall names it.</div></div></div>
+        <div class="tile"><div class="pic"><img src="sprites/bluekey.png" alt="blue keycard"></div>
+          <div><div class="name">BLUE KEYCARD</div><div class="what">Connect AI lets this user <b>read</b> the app behind a blue door.</div></div></div>
+        <div class="tile"><div class="pic"><img src="sprites/yellowkey.png" alt="yellow keycard"></div>
+          <div><div class="name">YELLOW KEYCARD</div><div class="what">Connect AI lets this user <b>read and write</b> the app behind a yellow door.</div></div></div>
+        <div class="tile"><div class="pic"><img src="sprites/redkey.png" alt="red keycard"></div>
+          <div><div class="name">RED DOOR, NO KEY</div><div class="what">The PII vault. Connect AI's Data Security blocked the request, so no red key exists. Try the door: it shows the real refusal.</div></div></div>
+        <div class="tile"><div class="pic"><img src="sprites/marine.png" alt="marine"></div>
+          <div><div class="name">THE MARINE</div><div class="what">You, or Claude when Claude plays is on. A kill flags the record or queues a follow-up. Dry run: nothing changes in the app.</div></div></div>
+      </div>
+      <div class="note">Monsters are live: every 15 seconds the game re-reads each app through Connect AI, so a record closed in the app disappears from the room.
+        In the feed below, <span class="badge">CONNECT AI</span> is a call through the MCP server, <span class="badge claude">CLAUDE</span> is Claude's own words,
+        and <span class="badge doom">DOOM</span> is Claude moving in the game. Click any row to see the details.</div>
+    </details>
+  </section>
   <section><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
   <section><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
   <section><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
@@ -204,10 +246,19 @@ function describe(c) {
   const a = c.args || {};
   const app = c.connection ? `<b>${esc(c.connection)}</b>` : "";
   if (c.server === "doom") {
+    // play.py's tools answer in JSON; use it to say who was hit and where Claude went
+    let out = {};
+    try { out = JSON.parse((c.result && c.result.text) || "{}"); } catch (e) { /* still running */ }
     switch (c.tool) {
-      case "look": return "Looked around the level";
-      case "go_to": return `Moved toward <b>${esc(a.target || a.where || [a.x, a.y].filter(v => v != null).join(", "))}</b>`;
-      case "attack": return `Opened fire${a.target ? ` on <b>${esc(a.target)}</b>` : ""}`;
+      case "look": {
+        const n = (out.visible_monsters || []).length;
+        return `Looked around${out.you_are_in ? ` the <b>${esc(out.you_are_in)}</b>` : " the level"}${c.result ? `: ${n} record${n === 1 ? "" : "s"} in sight` : ""}`;
+      }
+      case "go_to": return `Headed to <b>${esc(a.place || a.target || "")}</b>`;
+      case "attack": {
+        const who = out.record ? `<b>${esc(out.record)}</b>${out.app ? ` in ${esc(out.app)}` : ""}` : `monster ${esc(a.pid ?? "")}`;
+        return `Opened fire on ${who}${out.detail ? ` <span class="more">${esc(out.detail)}</span>` : ""}`;
+      }
       case "use": return "Pressed use";
       default: return `${esc(c.tool)} <span class="more">${esc(JSON.stringify(a)).slice(0, 80)}</span>`;
     }
@@ -232,6 +283,16 @@ function status(c) {
   if (r.error) return ["", "error"];
   const ms = r.ms != null ? `${(r.ms / 1000).toFixed(1)}s` : "";
   if (c.tool === "queryData" && /\bXXXX\b/.test(text)) return ["masked", `masked <span>${ms}</span>`];
+  if (c.server === "doom" && c.tool !== "look") {
+    let out = {};
+    try { out = JSON.parse(text); } catch (e) { return ["", ms]; }
+    const res = String(out.result || "");
+    if (c.tool === "attack")
+      return res === "killed" ? ["", `<span class="ok">KILLED</span> ${ms}`] : ["", `${esc(res)} ${ms}`];
+    if (/won't open|locked/i.test(res)) return ["blocked", /red door/i.test(res) ? "DENIED BY CONNECT AI" : "LOCKED"];
+    if (res === "arrived") return ["", `<span class="ok">arrived</span> ${ms}`];
+    return ["", `${/monsters in the way/i.test(res) ? "blocked by monsters" : "stopped"} ${ms}`];
+  }
   if (c.tool === "getCatalogs") return ["", `<span class="ok">${r.rows} apps</span> ${ms}`];
   if (c.tool === "queryData") return ["", `<span class="ok">${r.rows} rows</span> ${ms}`];
   return ["", ms];
@@ -341,6 +402,7 @@ class Feed {
     const open = c.el.classList.contains("open");
     c.el.className = `item ${cls}${open ? " open" : ""}`;
     c.el.querySelector(".res").innerHTML = `${res} <span class="chev">&#9654;</span>`;
+    c.el.querySelector(".what").innerHTML = describe(c);  // Doom steps name their target once the result is in
     c.el.querySelector(".detail").innerHTML = detail(c, this.model);
   }
   live(text) {
@@ -400,12 +462,14 @@ function renderMission(m, events) {
   if (!done || !m) return;
   const meta = feed.doneMeta;
   $("answer").innerHTML = `${esc(m.answer || "")}${meta ? `<div class="meta">${meta.turns ?? "?"} turns, ${((meta.duration_ms || 0) / 1000).toFixed(0)} s${meta.cost_usd != null ? `, $${meta.cost_usd.toFixed(2)}` : ""}</div>` : ""}`;
-  const cards = (m.rooms || []).map(r => `<div class="keycard ${r.writable ? "write" : "read"}"><div class="app">${esc(r.app)}</div>
+  const cards = (m.rooms || []).map((r, i) => `<div class="keycard ${r.writable ? "write" : "read"}"><img class="keyimg" src="sprites/${r.writable ? "yellow" : "blue"}key.png" alt=""><div class="roomno">ROOM ${i + 1}</div><div class="app">${esc(r.app)}</div>
       <div class="title">${esc(r.title)}</div><div class="access">${r.writable ? "YELLOW KEY: READ + WRITE" : "BLUE KEY: READ ONLY"}</div></div>`);
   for (const d of m.denied || [])
-    cards.push(`<div class="keycard vault"><div class="app">${esc(d.connection || "PII vault")}</div>
+    cards.push(`<div class="keycard vault"><img class="keyimg" src="sprites/redkey.png" alt=""><div class="roomno">PII VAULT</div><div class="app">${esc(d.connection || "PII vault")}</div>
       <div class="title">${esc((d.error || "").split("\n")[0])}</div><div class="access">RED DOOR: NO KEY EXISTS</div></div>`);
   $("rooms").innerHTML = cards.join("") || '<div class="empty">Nothing reached</div>';
+  $("legend-rooms").innerHTML = "Each room is one app Claude reached through Connect AI; the sign on the wall names it. " +
+    (m.rooms || []).map((r, i) => `Room ${i + 1}: <b>${esc(r.app)}</b> (${esc(r.title)})`).join(", ") + ".";
 }
 
 let killCount = -1;
@@ -418,6 +482,12 @@ function renderKills(kills, standing) {
     <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="d">${esc(k.detail)}</span></span>
     <span class="act">${k.writable ? "FOLLOW-UP QUEUED" : "FLAGGED"} (DRY RUN)</span></div>`).join("");
 }
+
+try {
+  const lg = $("legend");
+  if (localStorage.getItem("legend") === "closed") lg.open = false;
+  lg.addEventListener("toggle", () => { try { localStorage.setItem("legend", lg.open ? "open" : "closed"); } catch (e) {} });
+} catch (e) { /* storage blocked: the legend just starts open */ }
 
 async function tick() {
   try {

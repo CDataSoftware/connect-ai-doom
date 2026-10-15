@@ -9,6 +9,8 @@ state/mission.json: the rooms Claude found (one per app, with the query that
 fills it with monsters) and the doors Connect AI kept shut (real refusals
 taken from the tool results, never from Claude's own summary).
 """
+import csv
+import io
 import json
 import os
 import re
@@ -79,6 +81,15 @@ def tool_text(content):
     return "\n".join(c.get("text", "") for c in content or [] if isinstance(c, dict))
 
 
+def count_rows(text):
+    """Rows in a CSV tool result (the text ends with a 'Query ID' line)."""
+    body = text.split("\nQuery ID:")[0].strip()
+    try:
+        return max(len(list(csv.reader(io.StringIO(body)))) - 1, 0)
+    except csv.Error:
+        return max(len(body.splitlines()) - 1, 0)
+
+
 def catalog_of(args):
     if args.get("catalogName"):
         return args["catalogName"]
@@ -95,7 +106,7 @@ def run(question):
            "--mcp-config", str(mcp_config()), "--strict-mcp-config",
            "--allowedTools", "mcp__connectai",
            "--append-system-prompt", INSTRUCTIONS,
-           "--output-format", "stream-json", "--verbose"]
+           "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             env=env, cwd=STATE)
     calls, pending, final = [], {}, ""
@@ -104,25 +115,37 @@ def run(question):
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
+        kind = msg.get("type")
+        if kind == "system" and msg.get("subtype") == "init":
+            event("session", model=msg.get("model"),
+                  tools=[t for t in msg.get("tools", []) if t.startswith("mcp__")])
+        elif kind == "stream_event":
+            delta = msg.get("event", {}).get("delta") or {}
+            if delta.get("type") == "text_delta" and delta.get("text"):
+                event("text_delta", text=delta["text"])
+        elif kind == "result":
+            final = msg.get("result", "")
+            event("done", cost_usd=msg.get("total_cost_usd"), duration_ms=msg.get("duration_ms"),
+                  turns=msg.get("num_turns"))
         for c in (msg.get("message") or {}).get("content") or []:
             if not isinstance(c, dict):
                 continue
             if c.get("type") == "tool_use" and c["name"].startswith("mcp__connectai__"):
                 tool = c["name"].removeprefix("mcp__connectai__")
-                pending[c["id"]] = {"tool": tool, "args": c.get("input", {})}
-                event("call", tool=tool, args=c.get("input", {}), connection=catalog_of(c.get("input", {})))
+                args = c.get("input", {})
+                pending[c["id"]] = {"tool": tool, "args": args, "start": time.time()}
+                event("call", id=c["id"], server="connectai", tool=tool, args=args,
+                      connection=catalog_of(args))
             elif c.get("type") == "tool_result" and c.get("tool_use_id") in pending:
                 call = pending.pop(c["tool_use_id"])
                 text = tool_text(c.get("content"))
                 call.update(text=text[:4000], error=bool(c.get("is_error")) or text.startswith("Error:"))
                 calls.append(call)
-                rows = max(len(text.split("\nQuery ID:")[0].strip().splitlines()) - 1, 0)
-                event("result", tool=call["tool"], connection=catalog_of(call["args"]),
-                      error=call["error"], rows=rows, text=text[:300])
-            elif c.get("type") == "text" and msg.get("type") == "assistant":
-                event("thought", text=c["text"][:500])
-        if msg.get("type") == "result":
-            final = msg.get("result", "")
+                event("result", id=c["tool_use_id"], tool=call["tool"], connection=catalog_of(call["args"]),
+                      error=call["error"], rows=0 if call["error"] else count_rows(text),
+                      text=text[:4000], ms=round((time.time() - call["start"]) * 1000))
+            elif c.get("type") == "text" and kind == "assistant":
+                event("thought", text=c["text"][:2000])
     proc.wait()
     if proc.returncode:
         event("failed", text=proc.stderr.read()[-500:])

@@ -4,139 +4,435 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Access Granted</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --depth: #15151C; --panel: #1F1F28; --line: #2E2E3A; --clarity: #F1EEE9; --muted: #B5B9BC;
-    --agility: #FFE500; --blue: #4D7CFF; --red: #FF3B2F; --green: #3DDC84;
+    /* CData Connect AI */
+    --depth: #15151C; --depth-2: #1D1D26; --depth-3: #262632; --line: #34344A;
+    --clarity: #F1EEE9; --balance: #B5B9BC; --agility: #FFE500; --resolve: #002660;
+    /* Doom */
+    --doom-red: #E8290B; --doom-red-dim: #7A1505; --metal-hi: #8A8A86; --metal: #5E5E5A; --metal-lo: #34342F;
+    /* keycards */
+    --key-blue: #3D6BFF; --key-yellow: #FFE500; --key-red: #FF3B2F;
+    --ok: #3DDC84;
+    --pixel: "Press Start 2P", monospace;
+    --digits: "VT323", monospace;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--depth); color: var(--clarity);
-         font: 15px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif; }
-  header { padding: 18px 22px 12px; border-bottom: 3px solid var(--agility); }
-  header h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  main { padding: 16px 22px 40px; display: grid; gap: 18px; }
-  h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--agility); }
-  .ask { font-size: 19px; font-weight: 600; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
-  #steps { display: grid; gap: 6px; }
-  .step { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: baseline;
-          padding: 7px 10px; border-radius: 6px; background: var(--panel); animation: in .25s ease-out; }
-  .step .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); align-self: center; }
-  .step.ok .dot { background: var(--green); }
-  .step.wait .dot { background: var(--agility); animation: pulse 1s infinite; }
-  .step.blocked { background: #3A1512; border: 1px solid var(--red); }
-  .step.blocked .dot { background: var(--red); }
-  .step.masked { border: 1px solid var(--agility); }
-  .step .what b { color: var(--agility); font-weight: 600; }
-  .step .res { color: var(--muted); font-size: 13px; white-space: nowrap; }
-  .step.blocked .res { color: var(--red); font-weight: 700; white-space: normal; }
-  #rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-  .room { border-left: 6px solid var(--blue); }
-  .room.write { border-left-color: var(--agility); }
-  .room.vault { border-left-color: var(--red); }
-  .room .app { font-size: 17px; font-weight: 700; }
-  .room .key { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
-  .room.read .key { color: var(--blue); } .room.write .key { color: var(--agility); } .room.vault .key { color: var(--red); }
-  #answer { color: var(--clarity); }
-  #kills { display: grid; gap: 4px; font-size: 14px; }
-  .kill { display: flex; justify-content: space-between; gap: 10px; }
-  .kill .act { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .empty { color: var(--muted); font-style: italic; }
-  .stat { font-size: 13px; color: var(--muted); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--clarity); font: 15px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 64px),
+      var(--depth);
+  }
+
+  /* ---------- header: Doom title, Connect AI colors ---------- */
+  header { position: relative; padding: 18px 20px 16px; background: linear-gradient(180deg, #0E0E14, var(--depth)); }
+  header::after {  /* hazard stripe: Doom's caution tape in Agility yellow */
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+    background: repeating-linear-gradient(-45deg, var(--agility) 0 12px, var(--depth) 12px 24px);
+  }
+  .brandline { font: 8px/1 var(--pixel); letter-spacing: 1px; color: var(--balance); display: flex; gap: 8px; align-items: center; }
+  .brandline .x { color: var(--doom-red); }
+  .brandline .cai { color: var(--agility); }
+  h1 {
+    margin: 10px 0 6px; font: 26px/1.05 var(--pixel); letter-spacing: 1px;
+    color: var(--doom-red);
+    text-shadow: 0 3px 0 var(--doom-red-dim), 0 6px 0 #000, 0 0 18px rgba(232,41,11,.35);
+  }
+  h1 span { color: var(--agility); text-shadow: 0 3px 0 #8A7C00, 0 6px 0 #000, 0 0 18px rgba(255,229,0,.25); }
+  .sub { color: var(--balance); font-size: 13px; padding-bottom: 8px; }
+
+  /* ---------- Doom status bar ---------- */
+  .statusbar {
+    display: grid; grid-template-columns: repeat(4, 1fr) 1.3fr; gap: 3px; padding: 3px;
+    background: var(--metal-lo); border-top: 2px solid var(--metal-hi); border-bottom: 2px solid #1A1A17;
+  }
+  .stat {
+    background: linear-gradient(180deg, var(--metal-hi), var(--metal) 45%, var(--metal-lo));
+    border: 2px solid; border-color: #9C9C97 #2A2A26 #2A2A26 #9C9C97;
+    padding: 4px 6px 5px; text-align: center; min-width: 0;
+  }
+  .stat .num {
+    font: 46px/0.9 var(--digits); color: var(--doom-red);
+    text-shadow: 2px 2px 0 #3A0A02, 0 0 10px rgba(232,41,11,.45);
+  }
+  .stat.blocked .num { color: var(--key-red); }
+  .stat .lbl { font: 7px/1 var(--pixel); color: #E9E6DF; text-shadow: 1px 1px 0 #000; margin-top: 3px; letter-spacing: .5px; }
+  .stat.model .num { font: 22px/1.9 var(--digits); color: var(--agility); text-shadow: 2px 2px 0 #3B3500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  main { padding: 14px 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; max-width: 760px; }
+  main > section, .feed, .item, .detail, .what { min-width: 0; }
+  h2 {
+    margin: 0 0 8px; font: 9px/1.4 var(--pixel); letter-spacing: 1px; color: var(--agility);
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2::before { content: ""; width: 8px; height: 8px; background: var(--doom-red); box-shadow: 0 0 6px var(--doom-red); }
+  .ask { font-size: 18px; font-weight: 600; border-left: 4px solid var(--agility); padding: 4px 0 4px 12px; }
+  .empty { color: var(--balance); font-style: italic; font-size: 14px; }
+
+  /* ---------- live feed ---------- */
+  .feed {
+    background: #0D0D12; border: 1px solid var(--line); border-radius: 4px;
+    max-height: 62vh; overflow-y: auto; padding: 6px; display: grid; gap: 4px; align-content: start;
+    box-shadow: inset 0 0 0 1px #000, inset 0 8px 24px rgba(0,0,0,.5);
+  }
+  .item { border-radius: 3px; background: var(--depth-2); border: 1px solid transparent; animation: in .2s ease-out; }
+  .item > .row {
+    display: grid; grid-template-columns: 86px 1fr auto; gap: 10px; align-items: center;
+    padding: 7px 9px; cursor: pointer; user-select: none;
+  }
+  .item > .row:hover { background: var(--depth-3); }
+  .item.open { border-color: var(--line); }
+  .badge {
+    font: 6px/1 var(--pixel); padding: 6px 3px; text-align: center; border-radius: 2px; letter-spacing: 0; white-space: nowrap;
+    background: var(--agility); color: var(--depth);
+  }
+  .badge.doom { background: var(--doom-red); color: #fff; }
+  .badge.claude { background: var(--resolve); color: var(--clarity); border: 1px solid #2B4F9E; }
+  .what { min-width: 0; }
+  .what b { color: var(--agility); font-weight: 600; }
+  .res { font: 13px/1.2 var(--mono); color: var(--balance); white-space: nowrap; display: flex; gap: 8px; align-items: center; }
+  .res .ok { color: var(--ok); }
+  .item.wait .res::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
+  .item.blocked { background: #2E0F0B; border-color: var(--key-red); }
+  .item.blocked .res { color: var(--key-red); font-weight: 700; white-space: normal; text-align: right; }
+  .item.masked { border-color: var(--agility); }
+  .item.thought .what { color: #D9D6CF; font-style: italic; }
+  .chev { color: var(--balance); font-size: 11px; transition: transform .15s; }
+  .item.open .chev { transform: rotate(90deg); }
+
+  .detail { display: none; padding: 4px 10px 12px; border-top: 1px dashed var(--line); }
+  .item.open .detail { display: block; }
+  .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; font-size: 13px; margin: 6px 0; }
+  .kv dt { font: 7px/2 var(--pixel); color: var(--balance); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-word; }
+  pre.code {
+    margin: 6px 0; padding: 10px; background: #08080C; border: 1px solid var(--line); border-left: 3px solid var(--agility);
+    font: 12.5px/1.5 var(--mono); color: var(--clarity); white-space: pre-wrap; word-break: break-word; overflow-x: auto;
+  }
+  pre.code .kw { color: var(--agility); font-weight: 700; }
+  pre.code .str { color: #8FD3FF; }
+  pre.err { border-left-color: var(--key-red); color: #FFB4AC; }
+  .tablewrap { overflow-x: auto; margin: 6px 0; border: 1px solid var(--line); }
+  table.preview { border-collapse: collapse; font: 12px/1.35 var(--mono); width: max-content; min-width: 100%; }
+  table.preview th { background: var(--depth-3); color: var(--agility); text-align: left; position: sticky; top: 0; }
+  table.preview th, table.preview td { padding: 4px 8px; border-bottom: 1px solid #22222C; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.preview td.x { color: var(--agility); font-weight: 700; }
+  .more { font-size: 12px; color: var(--balance); margin-top: 4px; }
+
+  .live {
+    padding: 8px 10px; border-radius: 3px; background: #10131F; border: 1px solid #22305A;
+    font-size: 14px; color: #E5E2DA; white-space: pre-wrap;
+  }
+  .live .who { font: 7px/1 var(--pixel); color: #8FA8FF; margin-bottom: 6px; display: block; }
+  .live .caret { display: inline-block; width: 8px; height: 15px; background: var(--agility); vertical-align: -2px; animation: blink .7s steps(1) infinite; }
+
+  /* ---------- keycards ---------- */
+  #rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .keycard {
+    position: relative; border-radius: 8px; padding: 12px 12px 12px 44px; min-height: 92px;
+    background: linear-gradient(135deg, var(--depth-3), var(--depth-2)); border: 2px solid var(--kc);
+    box-shadow: 0 0 0 1px #000, 0 0 14px color-mix(in srgb, var(--kc) 25%, transparent);
+  }
+  .keycard::before {  /* the card's color stripe, like Doom's keycards */
+    content: ""; position: absolute; left: 10px; top: 12px; bottom: 12px; width: 20px; border-radius: 3px;
+    background: repeating-linear-gradient(180deg, var(--kc) 0 6px, color-mix(in srgb, var(--kc) 55%, #000) 6px 9px);
+  }
+  .keycard.read { --kc: var(--key-blue); } .keycard.write { --kc: var(--key-yellow); } .keycard.vault { --kc: var(--key-red); }
+  .keycard .app { font-weight: 800; font-size: 17px; }
+  .keycard .title { color: #D9D6CF; font-size: 14px; }
+  .keycard .access { font: 7px/1.6 var(--pixel); color: var(--kc); margin-top: 6px; }
+
+  .answer { background: var(--depth-2); border: 1px solid var(--line); border-left: 4px solid var(--resolve); padding: 12px 14px; border-radius: 4px; }
+  .meta { font: 12px var(--mono); color: var(--balance); margin-top: 8px; }
+
+  #kills { display: grid; gap: 4px; }
+  .kill { display: flex; justify-content: space-between; gap: 10px; background: var(--depth-2); padding: 7px 10px; border-left: 4px solid var(--doom-red); border-radius: 3px; animation: in .25s ease-out; }
+  .kill .act { font: 7px/1.8 var(--pixel); color: var(--balance); white-space: nowrap; }
+  .kill .d { color: var(--balance); font-size: 13px; }
+
+  #play[hidden] { display: none; }
   @keyframes in { from { opacity: 0; transform: translateY(4px); } }
-  @keyframes pulse { 50% { opacity: .3; } }
-  @media (max-width: 480px) { header, main { padding-left: 16px; padding-right: 16px; } }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (max-width: 520px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    h1 { font-size: 19px; }
+    .statusbar { grid-template-columns: repeat(4, 1fr); }
+    .stat.model { grid-column: 1 / -1; }
+    .stat .num { font-size: 38px; }
+    .item > .row { grid-template-columns: 78px 1fr; }
+    .item > .row .res { grid-column: 2; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Access Granted</h1>
-  <div class="sub">Claude, working through the Connect AI MCP server. Every step below is a live call.</div>
+  <div class="brandline"><span class="cai">CDATA CONNECT AI</span><span class="x">X</span><span>DOOM</span></div>
+  <h1>ACCESS <span>GRANTED</span></h1>
+  <div class="sub">Claude, working through the Connect AI MCP server. Every step below is a live call. Click one to see what happened.</div>
 </header>
+<div class="statusbar">
+  <div class="stat"><div class="num" id="s-apps">0</div><div class="lbl">APPS</div></div>
+  <div class="stat"><div class="num" id="s-records">0</div><div class="lbl">RECORDS</div></div>
+  <div class="stat blocked"><div class="num" id="s-blocked">0</div><div class="lbl">BLOCKED</div></div>
+  <div class="stat"><div class="num" id="s-kills">0</div><div class="lbl">KILLS</div></div>
+  <div class="stat model"><div class="num" id="s-model">STANDBY</div><div class="lbl">MODEL</div></div>
+</div>
 <main>
-  <section><h2>The ask</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
-  <section><h2>What Claude did through Connect AI</h2><div id="steps"><div class="empty">No calls yet</div></div></section>
-  <section><h2>What Connect AI let it reach</h2><div id="rooms"><div class="empty">Building the level when Claude is done</div></div></section>
-  <section><h2>Claude's answer</h2><div class="card" id="answer"><span class="empty">Still working</span></div></section>
-  <section><h2>In the game</h2><div class="stat" id="standing"></div><div id="kills"></div></section>
+  <section><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
+  <section><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
+  <section><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
+  <section><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
+  <section id="play" hidden><h2>CLAUDE PLAYS</h2><div class="feed" id="playfeed"></div></section>
+  <section><h2>IN THE GAME</h2><div class="meta" id="standing"></div><div id="kills"></div></section>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const params = new URLSearchParams(location.search);
+const EXPAND = params.has("expand") ? Number(params.get("expand")) : null;  // open step N (testing, demos)
 
-// Plain words for each MCP tool: the audience sees what happened, not SQL.
-function describe(e) {
-  const app = e.connection ? `<b>${esc(e.connection)}</b>` : "";
-  switch (e.tool) {
-    case "getCatalogs": return "Asked Connect AI which apps this user can reach";
-    case "getSchemas": case "getTables": case "getColumns": return `Looked around in ${app}`;
-    case "getInstructions": return `Read Connect AI's guide for <b>${esc(e.args?.driverName)}</b>`;
-    case "queryData": return `Read data from ${app}`;
-    default: return `${esc(e.tool)} ${app}`;
-  }
-}
-
-function result(call, r) {
-  if (!r) return ["wait", "working"];
-  const text = r.text || "";
-  if (r.error && /blocked|denied|permission|cannot obtain/i.test(text))
-    return ["blocked", "Blocked by Connect AI: " + esc(text.split("\n")[0].replace(/^Error:\s*/, ""))];
-  if (r.error) return ["", "error, retried"];
-  if (call.tool === "queryData" && text.includes("XXXX")) return ["masked", "masked by Data Security"];
-  if (call.tool === "getCatalogs") return ["ok", `${r.rows} apps`];
-  if (call.tool === "queryData") return ["ok", `${r.rows} records`];
-  return ["ok", ""];
-}
-
-function renderSteps(events) {
-  const calls = [];
-  for (const e of events) {
-    if (e.kind === "question") $("ask").textContent = e.text;
-    if (e.kind === "call") calls.push({...e, r: null});
-    if (e.kind === "result") {
-      const c = calls.find(c => !c.r && c.tool === e.tool && c.connection === e.connection);
-      if (c) c.r = e;
+// ---------- plain words for each step (the collapsed view never shows SQL) ----------
+function describe(c) {
+  const a = c.args || {};
+  const app = c.connection ? `<b>${esc(c.connection)}</b>` : "";
+  if (c.server === "doom") {
+    switch (c.tool) {
+      case "look": return "Looked around the level";
+      case "go_to": return `Moved toward <b>${esc(a.target || a.where || [a.x, a.y].filter(v => v != null).join(", "))}</b>`;
+      case "attack": return `Opened fire${a.target ? ` on <b>${esc(a.target)}</b>` : ""}`;
+      case "use": return "Pressed use";
+      default: return `${esc(c.tool)} <span class="more">${esc(JSON.stringify(a)).slice(0, 80)}</span>`;
     }
   }
-  if (!calls.length) return;
-  $("steps").innerHTML = calls.map(c => {
-    const [cls, res] = result(c, c.r);
-    return `<div class="step ${cls}"><span class="dot"></span><span class="what">${describe(c)}</span><span class="res">${res}</span></div>`;
-  }).join("");
+  switch (c.tool) {
+    case "getCatalogs": return "Asked Connect AI which apps this user can reach";
+    case "getSchemas": return `Looked around in ${app}`;
+    case "getTables": return `Listed what's in ${app}`;
+    case "getColumns": return `Checked the fields of <b>${esc(a.tableName)}</b> in ${app}`;
+    case "getInstructions": return `Read Connect AI's guide for <b>${esc(a.driverName)}</b>`;
+    case "queryData": return `Read data from ${app}`;
+    default: return `${esc(c.tool)} ${app}`;
+  }
 }
 
-function renderMission(m) {
-  if (!m) return;
-  $("answer").textContent = m.answer || "";
-  const rooms = (m.rooms || []).map(r => {
-    const write = r.writable;
-    return `<div class="card room ${write ? "write" : "read"}"><div class="app">${esc(r.app)}</div>
-      <div>${esc(r.title)}</div><div class="key">${write ? "Yellow key: read + write" : "Blue key: read only"}</div></div>`;
-  });
+function status(c) {
+  const r = c.result;
+  if (!r) return ["wait", "working"];
+  const text = r.text || "";
+  if (r.error && /blocked|denied|permission|cannot obtain|not authorized/i.test(text))
+    return ["blocked", "BLOCKED BY CONNECT AI"];
+  if (r.error) return ["", "error"];
+  const ms = r.ms != null ? `${(r.ms / 1000).toFixed(1)}s` : "";
+  if (c.tool === "queryData" && /\bXXXX\b/.test(text)) return ["masked", `masked <span>${ms}</span>`];
+  if (c.tool === "getCatalogs") return ["", `<span class="ok">${r.rows} apps</span> ${ms}`];
+  if (c.tool === "queryData") return ["", `<span class="ok">${r.rows} rows</span> ${ms}`];
+  return ["", ms];
+}
+
+// ---------- detail view ----------
+const SQL_BREAK = /\s+(FROM|WHERE|LEFT JOIN|RIGHT JOIN|INNER JOIN|JOIN|GROUP BY|ORDER BY|HAVING|LIMIT|UNION)\s+/gi;
+const SQL_KW = /\b(SELECT|TOP|FROM|WHERE|LEFT|RIGHT|INNER|JOIN|ON|AND|OR|NOT|IN|IS|NULL|AS|CASE|WHEN|THEN|ELSE|END|GROUP|ORDER|BY|ASC|DESC|LIMIT|HAVING|CAST|DISTINCT|COUNT|SUM|MAX|MIN|LIKE|BETWEEN|UNION)\b/g;
+function formatSQL(sql) {
+  let s = String(sql).replace(/\s+/g, " ").trim()
+    .replace(SQL_BREAK, (_, k) => `\n${k.toUpperCase()} `)
+    .replace(/\s+(AND|OR)\s+(?![^(]*\))/gi, (_, k) => `\n  ${k.toUpperCase()} `);
+  // escape, then color strings and keywords (strings first so keywords inside them stay plain)
+  const parts = esc(s).split(/('(?:[^']|'')*')/);
+  return parts.map((p, i) => i % 2 ? `<span class="str">${p}</span>` : p.replace(SQL_KW, '<span class="kw">$1</span>')).join("");
+}
+
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n") { row.push(cell.replace(/\r$/, "")); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell.replace(/\r$/, "")); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0] !== "");
+}
+
+function resultView(c) {
+  const r = c.result;
+  if (!r) return `<div class="empty">Waiting for Connect AI</div>`;
+  const text = r.text || "";
+  if (r.error) return `<pre class="code err">${esc(text.replace(/^Error:\s*/, ""))}</pre>`;
+  const body = text.split(/\r?\nQuery ID:/)[0].trim();
+  const qid = (text.match(/Query ID:\s*(\S+)/) || [])[1];
+  const rows = body.includes(",") || body.includes("\n") ? parseCSV(body) : [];
+  if (rows.length > 1 && rows[0].length > 1) {
+    const [head, ...data] = rows;
+    const shown = data.slice(0, 10);
+    const td = v => `<td class="${/^X{4}$/.test(v) ? "x" : ""}" title="${esc(v)}">${esc(v)}</td>`;
+    return `<div class="tablewrap"><table class="preview"><tr>${head.map(h => `<th>${esc(h)}</th>`).join("")}</tr>
+      ${shown.map(rw => `<tr>${rw.map(td).join("")}</tr>`).join("")}</table></div>
+      <div class="more">${data.length > shown.length ? `First ${shown.length} of ${data.length} rows shown. ` : ""}${qid ? `Query ID ${esc(qid)}` : ""}</div>`;
+  }
+  return `<pre class="code">${esc(body.slice(0, 1500)) || "(empty)"}</pre>`;
+}
+
+function detail(c, model) {
+  const a = c.args || {};
+  const server = c.server === "doom" ? "Doom (Claude plays)" : "Connect AI MCP server";
+  let request;
+  if (a.query) {
+    request = `<pre class="code">${formatSQL(a.query)}</pre>`;
+    if (a.parameters && Object.keys(a.parameters).length)
+      request += `<dl class="kv"><dt>PARAMETERS</dt><dd></dd></dl><pre class="code">${esc(Object.entries(a.parameters).map(([k, v]) => `${k} = ${typeof v === "object" ? JSON.stringify(v) : v}`).join("\n"))}</pre>`;
+  }
+  else request = `<pre class="code">${esc(JSON.stringify(a, null, 2))}</pre>`;
+  const r = c.result || {};
+  return `<dl class="kv">
+      <dt>SERVER</dt><dd>${server}</dd>
+      <dt>TOOL</dt><dd>${esc(c.tool)}</dd>
+      <dt>MODEL</dt><dd>${esc(model || "unknown")}</dd>
+      ${c.connection ? `<dt>CONNECTION</dt><dd>${esc(c.connection)}</dd>` : ""}
+      ${r.ms != null ? `<dt>TIME</dt><dd>${(r.ms / 1000).toFixed(2)} s</dd>` : ""}
+      ${c.tool === "queryData" && !r.error && c.result ? `<dt>ROWS</dt><dd>${r.rows}</dd>` : ""}
+    </dl>
+    <dl class="kv"><dt>${a.query ? "SQL" : "ARGUMENTS"}</dt><dd></dd></dl>${request}
+    <dl class="kv"><dt>${r.error ? "REFUSAL" : "RESULT"}</dt><dd></dd></dl>${resultView(c)}`;
+}
+
+// ---------- a feed: incremental, so open items and scroll position survive updates ----------
+class Feed {
+  constructor(el, emptyText) { this.el = el; this.emptyText = emptyText; this.reset(); }
+  reset() {
+    this.seen = 0; this.calls = new Map(); this.liveEl = null; this.liveText = ""; this.model = null; this.steps = 0;
+    this.el.innerHTML = `<div class="empty">${this.emptyText}</div>`;
+  }
+  atBottom() { return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40; }
+  add(node) {
+    const stick = this.atBottom();
+    const empty = this.el.querySelector(":scope > .empty");
+    if (empty) empty.remove();
+    if (this.liveEl && node !== this.liveEl) this.el.insertBefore(node, this.liveEl); else this.el.appendChild(node);
+    if (stick) this.el.scrollTop = this.el.scrollHeight;
+  }
+  item(cls, badge, badgeCls, what, res, detailHTML) {
+    const n = document.createElement("div");
+    n.className = `item ${cls}`;
+    n.innerHTML = `<div class="row"><span class="badge ${badgeCls}">${badge}</span><span class="what">${what}</span>
+      <span class="res">${res} <span class="chev">&#9654;</span></span></div><div class="detail">${detailHTML}</div>`;
+    n.querySelector(".row").addEventListener("click", () => n.classList.toggle("open"));
+    if (EXPAND !== null && this.steps === EXPAND) n.classList.add("open");
+    this.steps++;
+    this.add(n);
+    return n;
+  }
+  drawCall(c) {
+    const [cls, res] = status(c);
+    const isDoom = c.server === "doom";
+    if (!c.el) c.el = this.item("", isDoom ? "DOOM" : "CONNECT AI", isDoom ? "doom" : "", describe(c), "", "");
+    const open = c.el.classList.contains("open");
+    c.el.className = `item ${cls}${open ? " open" : ""}`;
+    c.el.querySelector(".res").innerHTML = `${res} <span class="chev">&#9654;</span>`;
+    c.el.querySelector(".detail").innerHTML = detail(c, this.model);
+  }
+  live(text) {
+    this.liveText += text;
+    const plan = /^\s*(\{|```)/.test(this.liveText);
+    if (!this.liveEl) {
+      this.liveEl = document.createElement("div");
+      this.liveEl.className = "live";
+      this.add(this.liveEl);
+    }
+    const shown = plan ? "Drawing up the level plan..." : this.liveText;
+    this.liveEl.innerHTML = `<span class="who">CLAUDE IS THINKING</span>${esc(shown)}<span class="caret"></span>`;
+    if (this.atBottom() || true) this.el.scrollTop = this.el.scrollHeight;
+  }
+  endLive() { if (this.liveEl) this.liveEl.remove(); this.liveEl = null; this.liveText = ""; }
+  apply(events) {
+    if (events.length < this.seen) this.reset();      // a new run started
+    for (const e of events.slice(this.seen)) {
+      if (e.kind === "session") this.model = e.model;
+      else if (e.kind === "text_delta") this.live(e.text);
+      else if (e.kind === "thought") {
+        this.endLive();
+        const t = e.text.trim();
+        if (/^(\{|```)/.test(t)) this.item("thought", "CLAUDE", "claude", "Wrote the level plan for the map builder", "", `<pre class="code">${esc(t)}</pre>`);
+        else if (t) this.item("thought", "CLAUDE", "claude", esc(t.length > 160 ? t.slice(0, 157) + "..." : t), "",
+          `<dl class="kv"><dt>MODEL</dt><dd>${esc(this.model || "unknown")}</dd></dl><pre class="code">${esc(t)}</pre>`);
+      } else if (e.kind === "call") {
+        this.endLive();
+        const c = {...e, result: null};
+        this.calls.set(e.id ?? `${e.tool}:${this.calls.size}`, c);
+        this.drawCall(c);
+      } else if (e.kind === "result") {
+        const c = this.calls.get(e.id) || [...this.calls.values()].find(c => !c.result && c.tool === e.tool && c.connection === e.connection);
+        if (c) { c.result = e; this.drawCall(c); }
+      } else if (e.kind === "done") {
+        this.endLive();
+        this.doneMeta = e;
+      }
+    }
+    this.seen = events.length;
+  }
+}
+
+const feed = new Feed($("feed"), "No calls yet");
+const playFeed = new Feed($("playfeed"), "Claude hasn't started playing");
+
+function renderMission(m, events) {
+  const done = events.some(e => e.kind === "mission");
+  const q = events.find(e => e.kind === "question");
+  if (q) $("ask").textContent = q.text;
+  const calls = events.filter(e => e.kind === "result" && e.tool === "queryData" && !e.error);
+  $("s-records").textContent = calls.reduce((n, e) => n + (e.rows || 0), 0);
+  $("s-blocked").textContent = events.filter(e => e.kind === "result" && e.error && /blocked|denied|permission|cannot obtain/i.test(e.text || "")).length;
+  const touched = new Set(events.filter(e => e.kind === "call" && e.connection).map(e => e.connection));
+  $("s-apps").textContent = done && m ? m.rooms.length : touched.size;
+  if (feed.model) $("s-model").textContent = feed.model.replace(/^claude-/, "").toUpperCase();
+  if (!done || !m) return;
+  const meta = feed.doneMeta;
+  $("answer").innerHTML = `${esc(m.answer || "")}${meta ? `<div class="meta">${meta.turns ?? "?"} turns, ${((meta.duration_ms || 0) / 1000).toFixed(0)} s${meta.cost_usd != null ? `, $${meta.cost_usd.toFixed(2)}` : ""}</div>` : ""}`;
+  const cards = (m.rooms || []).map(r => `<div class="keycard ${r.writable ? "write" : "read"}"><div class="app">${esc(r.app)}</div>
+      <div class="title">${esc(r.title)}</div><div class="access">${r.writable ? "YELLOW KEY: READ + WRITE" : "BLUE KEY: READ ONLY"}</div></div>`);
   for (const d of m.denied || [])
-    rooms.push(`<div class="card room vault"><div class="app">${esc(d.connection || "PII vault")}</div>
-      <div>${esc((d.error || "").split("\n")[0])}</div><div class="key">Red door: no key exists</div></div>`);
-  $("rooms").innerHTML = rooms.join("") || '<div class="empty">Nothing reached</div>';
+    cards.push(`<div class="keycard vault"><div class="app">${esc(d.connection || "PII vault")}</div>
+      <div class="title">${esc((d.error || "").split("\n")[0])}</div><div class="access">RED DOOR: NO KEY EXISTS</div></div>`);
+  $("rooms").innerHTML = cards.join("") || '<div class="empty">Nothing reached</div>';
 }
 
+let killCount = -1;
 function renderKills(kills, standing) {
-  $("standing").textContent = `${standing} still standing, ${kills.length ? "latest first:" : "none cleared yet"}`;
-  $("kills").innerHTML = kills.slice().reverse().map(k => `<div class="kill card">
-    <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="stat">${esc(k.detail)}</span></span>
-    <span class="act">${k.writable ? "follow-up queued" : "flagged"} (dry run)</span></div>`).join("");
+  $("s-kills").textContent = kills.length;
+  $("standing").textContent = `${standing} still standing${kills.length ? ", latest first" : ", none cleared yet"}`;
+  if (kills.length === killCount) return;
+  killCount = kills.length;
+  $("kills").innerHTML = kills.slice().reverse().map(k => `<div class="kill">
+    <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="d">${esc(k.detail)}</span></span>
+    <span class="act">${k.writable ? "FOLLOW-UP QUEUED" : "FLAGGED"} (DRY RUN)</span></div>`).join("");
 }
 
 async function tick() {
   try {
     const s = await (await fetch("/state.json", {cache: "no-store"})).json();
-    renderSteps(s.events || []);
-    renderMission(s.mission && (s.events || []).some(e => e.kind === "mission") ? s.mission : null);
+    const events = s.events || [];
+    feed.apply(events);
+    renderMission(s.mission, events);
+    const play = s.play_events || [];
+    $("play").hidden = !play.length;
+    if (play.length) playFeed.apply(play);
     renderKills(s.kills || [], s.standing || 0);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }
 }
 tick();
-setInterval(tick, 1000);
+setInterval(tick, 500);
 </script>
 </body>
 </html>

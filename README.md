@@ -23,6 +23,14 @@ python3 connect_doom.py score     # kill log; reset brings everyone back
 
 The default question asks for at-risk customers across the CRM, support and billing apps, plus a compliance lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. That lookup is what Connect AI blocks.
 
+## Tests
+
+```bash
+make test          # V=1 lists each test; needs Pillow, plus node and shellcheck for those checks
+```
+
+The suite runs offline against fakes: a fake Connect AI MCP server, a fake `claude` CLI that streams a canned run, a tiny stand-in for `freedoom2.wad`, and fake `psdoom`, `zdbsp`, `security`, `op` and `open`. It covers the MCP client, `brief.py`, every bridge command and the panel server, the level, sign and DeHackEd builders, the panel's script (in Node), and `raid.sh` end to end in demo, live, `--again` and `brief` modes. It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
+
 ## Account
 
 It runs as the Tech Evangelism account `te_us@cdata.com`, which has the Credit Card Number and US Social Security Number rules in **Data Security** and 47 connections with mixed permissions. Set `CONNECT_AI_USER` and `CONNECT_AI_PAT`, or let `raid.sh` read them from the macOS Keychain (service `connect-doom`, account = the user). If the Data Security rules are switched off, the SSN lookup goes through, no vault appears, and the panel shows the unmasked answer, which is its own demo moment.

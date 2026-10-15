@@ -42,7 +42,7 @@ Under the hood, psdoom has an agent channel (in the patch, `pr_process.c`): with
 
 It runs as the Tech Evangelism account `te_us@cdata.com`, which has the Credit Card Number and US Social Security Number rules in **Data Security** and 47 connections with mixed permissions. Set `CONNECT_AI_USER` and `CONNECT_AI_PAT`, or let `raid.sh` read them from the macOS Keychain (service `connect-doom`, account = the user). If the Data Security rules are switched off, the SSN lookup goes through, no vault appears, and the panel shows the unmasked answer, which is its own demo moment.
 
-All data in these accounts is synthetic. The game only reads: Claude gets Connect AI's read-only tools (`?ops=` on the MCP URL), and kills are dry run, logged to `state/kills.jsonl`.
+All data in these accounts is synthetic. The game only reads: Claude gets Connect AI's read-only tools (`?ops=` on the MCP URL), and kills write nothing back: each one is logged to `state/kills.jsonl`, and the record is read again live through Connect AI with its room's query (in the background, so the game doesn't wait). The panel shows what came back and how long the round trip took.
 
 ## How it works
 

@@ -189,6 +189,12 @@
   #events { display: grid; gap: 4px; }
   .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); }
   .ev.new { animation: in .25s ease-out; }
+  .read { font: 12.5px/1.45 var(--mono); color: #8FD3FF; margin-top: 4px; }
+  .read .tag { font: 7px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
+  .read.wait { color: var(--balance); }
+  .read.wait .tag::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
+  .read.err { color: #FFB4AC; }
+  .now .read { font-size: 14px; margin-top: 6px; }
   .ev .t { font: 12px var(--mono); color: var(--balance); }
   .ev .k { font: 7px/1.8 var(--pixel); color: var(--doom-red); }
   .ev.hit { background: transparent; padding-top: 3px; padding-bottom: 3px; }
@@ -257,7 +263,7 @@
   <div class="sub">A Doom level built from your live business data. Every monster is a real record Claude found through the Connect AI MCP server.</div>
   <ol class="how">
     <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
-    <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent.</li>
+    <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent. A kill reads that record live through Connect AI.</li>
     <li><b>Try the red door</b>It guards data Connect AI blocked. There is no key.</li>
   </ol>
 </header>
@@ -288,7 +294,7 @@
         <div class="tile"><img src="sprites/redkey.png" alt=""><span><b>Red door</b> blocked by Connect AI</span></div>
       </div>
       <div class="note" id="legend-rooms"></div>
-      <div class="note">Name tags show the customer. Monsters refresh live every 15 s. Kills are a dry run: nothing changes in your apps.</div>
+      <div class="note">Name tags show the customer. Monsters refresh live every 15 s. Each kill reads its record again, live, through Connect AI. Nothing is written to your apps.</div>
     </details>
   </section>
   <section class="brief"><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
@@ -548,7 +554,17 @@ function renderMission(m, events) {
 
 // ---------- the game view ----------
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
-const action = m => m.writable ? `FOLLOW-UP QUEUED IN ${m.app.toUpperCase()} (DRY RUN)` : "FLAGGED FOR REVIEW (DRY RUN)";
+// What Connect AI said when the kill read the record again (connect_doom.py lookup).
+function liveRead(k, demo) {
+  if (demo) return `<div class="read"><span class="tag">DEMO DATA</span>No live read in demo mode</div>`;
+  const l = k.lookup;
+  if (!l && Date.now() / 1000 - k.at > 60) return `<div class="read err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
+  if (!l) return `<div class="read wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;
+  const took = `${(l.ms / 1000).toFixed(1)} s`;
+  if (l.error) return `<div class="read err"><span class="tag">CONNECT AI</span>Live read failed after ${took}: ${esc(l.error)}</div>`;
+  if (!l.row) return `<div class="read"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: no longer returned by the room's query</div>`;
+  return `<div class="read"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: still there, ${esc(l.row.detail)}</div>`;
+}
 let lastEventKey = null;
 let seenEvents = null;  // events already on screen; only newer ones animate in
 const evKey = e => `${e.kind}:${e.id}:${e.at}`;
@@ -591,24 +607,25 @@ function renderGame(s) {
   setHTML($("rooms-live"), cards.join(""));
 
   const evs = gameEvents(s);
+  const demo = (m.rooms || []).length > 0 && m.rooms.every(r => r.rows);
   const isNew = e => seenEvents && !seenEvents.has(evKey(e)) ? " new" : "";
   setHTML($("events"), evs.length ? evs.map(e => e.kind === "kill"
     ? `<div class="ev kill${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
-        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span><span class="act">${action(e)}</span></span></div>`
+        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo)}</span></div>`
     : `<div class="ev hit${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)}</span></div>`).join("")
     : '<div class="empty">Nothing yet. Shoot something.</div>');
   seenEvents = new Set([...(seenEvents || []), ...evs.map(evKey)]);
 
   const last = evs[0];
-  const key = last ? `${last.kind}:${last.id}:${last.at}` : null;
+  const key = last ? `${evKey(last)}:${last.lookup ? last.lookup.at : ""}` : null;  // redraw when the read lands
   if (key === lastEventKey) return;
   const fresh = lastEventKey !== null;  // not the state the page loaded with
   lastEventKey = key;
   if (!last) return;
   $("now-big").innerHTML = last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
-       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div><div class="act">→ ${action(last)}</div>`
+       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo)}`
     : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${last.demon ? "Urgent: " : ""}${esc(last.detail)}</div>`;
   if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }

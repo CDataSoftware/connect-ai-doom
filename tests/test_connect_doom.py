@@ -123,8 +123,8 @@ class CommandsTest(unittest.TestCase):
     def test_kill_logs_hides_and_prints_the_in_game_message(self):
         acme, initech = self.monsters[0], self.monsters[2]
         out = self.run_cmd("kill", str(acme["pid"]))
-        self.assertEqual(out.splitlines()[0], "SALESFORCE: ACME CORP, FOLLOW-UP QUEUED")
-        self.assertEqual(self.run_cmd("kill", str(initech["pid"])).splitlines()[0], "ZENDESK: INITECH, FLAGGED")
+        self.assertEqual(out.splitlines()[0], "SALESFORCE: ACME CORP, KILLED")
+        self.assertEqual(self.run_cmd("kill", str(initech["pid"])).splitlines()[0], "ZENDESK: INITECH, KILLED")
         kills = cd.read_jsonl(cd.KILLS)
         self.assertEqual([k["id"] for k in kills], [acme["id"], initech["id"]])
         self.assertTrue(all(k["mode"] == "dry-run" and k["killed_at"] for k in kills))
@@ -135,7 +135,7 @@ class CommandsTest(unittest.TestCase):
         m = cd.to_monster({"Id": "z", "Label": "A" * 80}, 0, ROOM)
         cd.write_cache([m], "test")
         first = self.run_cmd("kill", str(m["pid"])).splitlines()[0]
-        self.assertEqual(first, ("SALESFORCE: " + "A" * 80)[:44] + ", FOLLOW-UP QUEUED")
+        self.assertEqual(first, ("SALESFORCE: " + "A" * 80)[:44] + ", KILLED")
 
     def test_kill_and_hit_of_unknown_pid_do_nothing(self):
         self.assertEqual(self.run_cmd("kill", "12345"), "")
@@ -211,7 +211,8 @@ class PollCLITest(unittest.TestCase):
             listed = bridge(tmp, "list").stdout.splitlines()
             self.assertEqual(len(listed), 36)
             pid = listed[0].split()[1]
-            self.assertTrue(bridge(tmp, "kill", pid).stdout.endswith(", FOLLOW-UP QUEUED\n"))
+            self.assertTrue(bridge(tmp, "kill", pid).stdout.endswith(", KILLED\n"))
+            self.assertFalse((Path(tmp) / "lookups.jsonl").exists(), "the demo has no Connect AI to read from")
             self.assertEqual(len(bridge(tmp, "list").stdout.splitlines()), 35)
             self.assertIn("1 cleared, 35 still standing", bridge(tmp, "score").stdout)
 
@@ -224,6 +225,28 @@ class PollCLITest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn("connect-ai-mcp: 1 monsters", r.stderr)
             self.assertEqual(bridge(tmp, "list").stdout.split()[2:], ["INITECH", "1"])
+
+    def test_kill_reads_the_record_live_in_the_background(self):
+        with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
+            mission = {"rooms": [{"connection": "Zendesk1", "app": "Zendesk", "query": query("Zendesk1")}]}
+            (Path(tmp) / "mission.json").write_text(json.dumps(mission))
+            env = {"CONNECT_AI_MCP_URL": mcp.url, "CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}
+            bridge(tmp, "poll", "--once", env=env)
+            pid = bridge(tmp, "list").stdout.split()[1]
+            r = bridge(tmp, "kill", pid, env=env)
+            self.assertEqual(r.stdout.splitlines()[0], "ZENDESK: INITECH, KILLED")   # without waiting on the read
+            lookups = Path(tmp) / "lookups.jsonl"
+            for _ in range(100):
+                if lookups.exists():
+                    break
+                time.sleep(0.05)
+            entry = json.loads(lookups.read_text())
+            self.assertEqual((entry["id"], entry["row"]["label"]), ("Zendesk1:Z1", "Initech"))
+            self.assertIn("AS q WHERE q.[Id] = 'Z1'", entry["sql"])
+            self.assertGreaterEqual(entry["ms"], 0)
+
+    def test_lookup_sql_quotes_the_id(self):
+        self.assertTrue(cd.lookup_sql({"query": "SELECT 1"}, "o'neil").endswith("q.[Id] = 'o''neil'"))
 
     def test_poll_failure_keeps_the_last_good_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,7 +263,7 @@ class PollCLITest(unittest.TestCase):
             for args in ((), ("bogus",)):
                 r = bridge(tmp, *args)
                 self.assertNotEqual(r.returncode, 0)
-                self.assertIn("usage: connect_doom.py {list|kill|hit|poll|score|reset|panel}", r.stderr)
+                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|poll|score|reset|panel}", r.stderr)
 
 
 class PanelServerTest(unittest.TestCase):

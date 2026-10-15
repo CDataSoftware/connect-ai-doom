@@ -91,7 +91,7 @@ class RaidTest(unittest.TestCase):
             self.assertIn(flag, args)
         listed = (self.state / "psdoom-list.txt").read_text().splitlines()
         self.assertTrue(listed and all(line.startswith("connectai ") for line in listed))
-        self.assertRegex((self.state / "psdoom-kill.txt").read_text().splitlines()[0], r", (FOLLOW-UP QUEUED|FLAGGED)$")
+        self.assertRegex((self.state / "psdoom-kill.txt").read_text().splitlines()[0], r", KILLED$")
         self.assertEqual(len((self.state / "hits.jsonl").read_text().splitlines()), 1)
         self.assertIn("1 cleared", r.stdout)                   # the closing score
         self.assertIn("KILL", r.stderr)                         # psdoom's stderr is filtered to kills

@@ -1,6 +1,6 @@
 # connect-doom: Revenue Raid
 
-Open Stripe invoices, pulled live through CData Connect AI, become Doom monsters. Invoices more than 90 days overdue are pink demons; newer ones are shotgun guys. Each monster is named with the customer's initials and the amount due (`CSI1499`). Kill one and it's logged as chased; the monster stays dead.
+The 40 biggest open Salesforce opportunities, pulled live through CData Connect AI, become Doom monsters. Deals past their close date are pink demons; on-track deals are shotgun guys. Each monster is named with the account's initials and the amount (`COG250k` = Continental Oil & Gas, $250k). Kill one and it's logged as chased; the monster stays dead. Nothing in Salesforce changes.
 
 Built on [psdoom-ng](https://github.com/keymon/psdoom-ng), the Chocolate Doom fork that turns Unix processes into monsters. Its process hooks (`PSDOOMPSCMD`, `PSDOOMKILLCMD`, `PSDOOMRENICECMD`) point at `connect_doom.py` instead of `ps` and `kill`.
 
@@ -8,8 +8,8 @@ Built on [psdoom-ng](https://github.com/keymon/psdoom-ng), the Chocolate Doom fo
 
 ```bash
 ./setup.sh                 # one time: builds SDL 1.2 libs, psdoom-ng, zdbsp, Freedoom, arena map
-./raid.sh --demo           # made-up invoices, no network
-CONNECT_AI_USER=you@cdata.com CONNECT_AI_PAT=... ./raid.sh   # live Stripe data
+./raid.sh --demo           # made-up deals, no network
+./raid.sh                  # live Salesforce data via Connect AI (approve the 1Password prompt)
 python3 connect_doom.py score   # kill log
 python3 connect_doom.py reset   # bring everyone back
 ```
@@ -26,7 +26,8 @@ psdoom-ng ── list ──> connect_doom.py ── reads ──> state/cache.j
 - psdoom calls the hooks synchronously in the game loop, so `list`/`kill` only touch local files (~40 ms). The background `poll` does the network.
 - Source data is never modified. A killed record is hidden from `list`, otherwise psdoom resurrects it like an Arch-vile.
 - `SANDBOX=1` also inserts each kill into `SANDBOX_TABLE` (default `[Snowflake_WH].[PUBLIC].[DOOM_FOLLOW_UPS]`, which has to be created first). Untested until a PAT exists.
-- Swap the data with `SOURCE_QUERY` (columns `Id`, `CustomerName`, `AmountDue`, `DueDate`), `MAX_MONSTERS`, `DEMON_DAYS`.
+- Credentials: `CONNECT_AI_USER` + `CONNECT_AI_PAT`, or the 1Password item `op://Personal/Connect AI Dev Edition PAT` (override with `CONNECT_AI_OP_ITEM`). `raid.sh` reads it once and passes it to the poller.
+- Swap the data with `SOURCE_QUERY` (any SELECT returning `Id`, `Label`, `Amount` in dollars, `DueDate`), `MAX_MONSTERS`, `DEMON_DAYS`. The default reads `Salesforce1` Opportunity joined to Account.
 
 ## Pieces
 

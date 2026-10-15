@@ -34,9 +34,11 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual(brief.tool_text(None), "")
 
     def test_refusal_pattern(self):
-        for text in (BLOCKED, "Cannot obtain connection", "Permission denied", "User is not authorized"):
+        for text in (BLOCKED, "Request blocked: Credit card number detected in inbound query"):
             self.assertRegex(text, brief.REFUSAL)
-        self.assertNotRegex("Error: syntax error near FROM", brief.REFUSAL)
+        for text in ("Error: syntax error near FROM", "Error: Cannot obtain connection", "Permission denied",
+                     "Error: permission denied for table Tickets", "Detail mentions Request blocked later"):
+            self.assertNotRegex(text, brief.REFUSAL)
 
     def test_mcp_config_is_read_only_and_holds_no_secret(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(brief, "STATE", Path(tmp)), \
@@ -168,7 +170,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(mission["answer"], PLAN["answer"])
         self.assertEqual([(r["app"], r["writable"]) for r in mission["rooms"]],
                          [("Salesforce", True), ("Zendesk", False)])
-        self.assertEqual([d["connection"] for d in mission["denied"]], ["PostgreSQLPII", "Zendesk1"])
+        self.assertEqual([d["connection"] for d in mission["denied"]], ["PostgreSQLPII"])   # not the permission error
         self.assertEqual(mission["denied"][0]["error"], "Request blocked: PII detected in inbound query")
         self.assertEqual([m["connection"] for m in mission["masked"]], ["Zendesk1"])
 

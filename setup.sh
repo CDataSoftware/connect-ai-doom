@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build everything Revenue Raid needs on macOS (Apple Silicon or Intel).
+# Build everything connect-doom needs on macOS (Apple Silicon or Intel).
 # Homebrew dropped SDL 1.2 mixer/net, so those two are built into vendor/local.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -67,5 +67,7 @@ if [[ -f "$BRANDKIT_ZIP" && ! -d brand/BRANDKIT ]]; then
   # SharePoint zips are streamed (no central directory); bsdtar reads them, unzip can't.
   /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand 'BRANDKIT/02 Logos/Product Logos/Connect AI/*'
 fi
-python3 -c 'import PIL' 2>/dev/null || pip3 install --user pillow >>"$LOG"
+# Homebrew's Python refuses plain pip installs (PEP 668); a --user install leaves Homebrew's files alone.
+python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --user pillow >>"$LOG" 2>&1 \
+  || python3 -m pip install --user --break-system-packages pillow >>"$LOG"
 echo "Done. Try: ./raid.sh --demo"

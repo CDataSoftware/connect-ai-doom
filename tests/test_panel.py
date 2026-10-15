@@ -66,7 +66,7 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(ids["play"]["hidden"])
 
     def test_feed(self):
-        feed = self.render()["feed"]["children"]
+        feed = self.render()["feed"]["children"][::-1]                   # newest first on the page
         self.assertEqual(len(feed), 6)                                   # 1 thought + 5 calls, no duplicates
         self.assertEqual([c["className"].split() for c in feed][0], ["item", "thought"])
         classes = [c["className"] for c in feed[1:]]
@@ -79,6 +79,14 @@ class PanelTest(unittest.TestCase):
         self.assertIn("REFUSAL", pii)
         self.assertIn("123-45-6789", pii)
         self.assertIn("claude-sonnet-5-5", pii)
+
+    def test_kill_feed_past_the_cap(self):
+        """The server sends the last 12 kills; the count and the redraw follow kill_total."""
+        kills = [{"app": "Zendesk", "label": f"K{i}", "detail": "", "writable": False} for i in range(18, 30)]
+        ids = self.render(kills=kills, kill_total=30)
+        self.assertEqual(ids["s-kills"]["text"], 30)
+        html = ids["kills"]["html"]
+        self.assertLess(html.index("K29"), html.index("K18"))
 
     def test_live_text_while_running(self):
         running = [e for e in self.events if e["kind"] in ("question", "session", "text_delta")]
@@ -127,7 +135,7 @@ class PanelTest(unittest.TestCase):
         """Every key the panel reads from /state.json is one connect_doom.py serves."""
         script = (ROOT / "panel/index.html").read_text()
         served = (ROOT / "connect_doom.py").read_text()
-        for key in ("events", "play_events", "mission", "kills", "standing"):
+        for key in ("events", "play_events", "mission", "kills", "kill_total", "standing"):
             self.assertIn(f"s.{key}", script)
             self.assertIn(f'"{key}":', served)
 

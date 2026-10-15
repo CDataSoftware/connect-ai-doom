@@ -216,12 +216,14 @@ def cmd_panel(args):
                 mission = json.loads(MISSION.read_text())
             except (FileNotFoundError, json.JSONDecodeError):
                 mission = None
-            dead = killed_ids()
+            kills = read_jsonl(KILLS)
+            dead = {k["id"] for k in kills}
             body = json.dumps({
                 "events": live_events(STATE / "run.jsonl"),
                 "play_events": live_events(STATE / "play.jsonl"),
                 "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
-                "kills": read_jsonl(KILLS)[-12:],
+                "kills": kills[-12:],
+                "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
                 "standing": len([m for m in cached_monsters() if m["id"] not in dead]),
             }).encode()
             self.send_response(200)

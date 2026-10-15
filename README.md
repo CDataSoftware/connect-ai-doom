@@ -1,13 +1,6 @@
 # Connect AI × DOOM
 
-A Connect AI MCP server demo in Doom. You ask Claude a business question. Claude answers it by working through the Connect AI MCP server, and the Doom level is built from what Connect AI let it reach:
-
-- **One room per app** Claude pulled data from (Salesforce, Zendesk, QuickBooks, whatever answers the question). The records it found are the monsters; urgent ones are pink demons. A sign in each room shows the app, what Claude found there, and the access level.
-- **Keycard doors are permissions.** Connect AI reports what this user may do on each connection. Read-only apps get a blue door, read and write apps a yellow door, and the keycards wait in the lobby ("READ ACCESS GRANTED BY CONNECT AI").
-- **The PII vault.** If Connect AI's Data Security blocked anything during the run (for example a lookup by SSN), the level gets a vault behind a red door. There is no red key. Using the door shows Connect AI's actual refusal, for example `CONNECT AI: PII DETECTED IN INBOUND QUERY`, and the window shows walls of masked `XXXX` values.
-- **A side panel** at http://localhost:8666 shows every step Claude takes through the MCP server, in plain words, as it happens; the blocked call shows in red. It also shows Claude's answer and a live kill feed.
-
-Nothing is faked: rooms come from the queries Claude ran, permissions from Connect AI, and refusals from the tool results. Claude's own summary is only used for the room titles and the answer.
+You ask Claude a business question. Claude answers it through the Connect AI MCP server, and a Doom level is built from what Connect AI let it reach. Each app becomes a room, each record a monster, each permission a keycard door, and each blocked request a locked vault.
 
 ## Run
 
@@ -18,54 +11,52 @@ Nothing is faked: rooms come from the queries Claude ran, permissions from Conne
 ./raid.sh --again                 # replay the last briefing without a new Claude run
 ./raid.sh --demo                  # made-up data, no network
 ./raid.sh brief                   # only the briefing, for rehearsing
-./raid.sh --again --claude-plays  # optional: Claude drives the marine (off unless you pass the flag)
-python3 connect_doom.py score     # kill log; reset brings everyone back
+./raid.sh --again --claude-plays  # Claude drives the marine
 ```
 
-The default question asks for at-risk customers across the CRM, support and billing apps, plus a compliance lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. That lookup is what Connect AI blocks.
+The side panel opens at http://localhost:8666. The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
 
-## Tests
+## How the MCP server drives the game
 
-```bash
-make test          # V=1 lists each test; needs Pillow (`requirements-dev.txt`), plus node and shellcheck for those checks
+Connect AI is involved at three points: Claude's briefing, the monster refresh during play, and a live read on every kill.
+
+```
+                  Connect AI MCP server (read-only tools)
+                 ▲              ▲                     ▲
+   1. briefing   │   2. every   │ 15 s     3. each    │ kill
+                 │              │                     │
+  brief.py ── claude -p    connect_doom.py poll    connect_doom.py lookup
+        │                       │                     │
+  state/mission.json       state/cache.json      state/lookups.jsonl
+        │                       │                     │
+  level builders ──> WAD   psdoom ── list/kill/hit ──>│
+                                │                     │
+                         side panel at localhost:8666 reads it all
 ```
 
-The suite runs offline against fakes: a fake Connect AI MCP server, a fake `claude` CLI that streams a canned run, a tiny stand-in for `freedoom2.wad`, and fake `psdoom`, `zdbsp`, `security`, `op` and `open`. It covers the MCP client, `brief.py`, every bridge command and the panel server, the level, sign and DeHackEd builders, the panel's script (in Node), and `raid.sh` end to end in demo, live, `--again` and `brief` modes. It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
+**1. The briefing builds the level.** `brief.py` runs Claude Code headless (`claude -p`) with one MCP server: Connect AI, limited to its read-only tools. Claude explores the catalogs and tables it needs, answers the question, and returns a level plan: up to three apps, each with one SELECT that returns the columns `Id`, `Label`, `Detail` and `Hot`. That column contract is what lets any connector become a room. Then `brief.py` turns what Connect AI reported into the level:
 
-## Claude plays (optional)
+- **Rooms and monsters.** Each query's rows are the room's monsters. `Label` is the name tag, and rows with `Hot = 1` are pink demons.
+- **Keycard doors.** Connect AI reports this user's permissions on each connection. An app with Insert or Update gets a yellow door, a read-only app a blue door. The colors reflect real permissions, but they are only a picture of them: picking up a key in the game changes no access anywhere.
+- **The PII vault.** Every call that Connect AI's Data Security refused becomes a vault behind a red door with no red key. Using the door shows the actual refusal, for example `CONNECT AI: PII DETECTED IN INBOUND QUERY`.
 
-`--claude-plays` hands the marine to Claude. It gets a small Doom MCP server (`play.py mcp`) with three tools, `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, goes room by room, narrates each kill ("Hooli Corp's $15,127 overdue invoice is urgent, taking it down."), and tries the vault once. Its steps stream into the panel's Claude plays feed. It plays in god mode with a full chaingun, because it thinks in seconds, not tics. `PLAY_MODEL` (default sonnet) and `PLAY_MAX_TURNS` (default 60) tune it; a 20-turn run costs about $0.13.
+Claude's own words are used only for the room titles and the answer. Rooms come from the queries it ran, doors from Connect AI's permissions, and the vault from the tool results. `tools/make_arena.py`, `make_branding.py` and `make_deh.py` turn the plan into the map, the signs and the keycard messages.
 
-Under the hood, psdoom has an agent channel (in the patch, `pr_process.c`): with `PSDOOM_AGENT_DIR` set, the game reads one command per line from `<dir>/cmd` (`MOVE x y`, `USE`, `TURN deg`, `ATTACK pid`, `SHOT`, `STOP`) and writes the player, every data monster and the last finished command to `<dir>/state.json`. The tools turn those into routes through the hall and doors. `SHOT` saves the frame as `DOOMnn.pcx`, so the whole mode also runs headless with `SDL_VIDEODRIVER=dummy`, no window and no input, which is how it's tested.
+**2. Monsters stay live.** psdoom-ng is a Doom port that spawns a monster per process. Here it calls `connect_doom.py` instead of `ps`: `list` for the monsters, `kill` when one dies, `hit` when one is shot. These calls run inside the game loop, so they only read local files. `connect_doom.py poll` keeps those files fresh by re-running each room's query through the MCP server every 15 seconds. `connect_ai_mcp.py` is the small MCP client it uses.
+
+**3. Each kill reads the record again.** A kill writes nothing back to your apps. It logs the kill and starts a background `lookup` that reads that one record live through Connect AI, using the room's own query. The game doesn't wait for it. The panel shows what came back and how long the round trip took.
+
+**The side panel** shows Claude's steps through the MCP server as they happen during the briefing, with blocked calls in red. While a game is running it switches to a game view: the latest kill or hit, each room's progress, and the kill feed with each live read.
+
+## Claude plays
+
+`--claude-plays` hands the marine to Claude. It gets a second MCP server, `play.py mcp`, with the tools `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, clears the rooms room by room, narrates each kill, and tries the vault once. Its steps stream into the panel.
 
 ## Account
 
-It runs as the Tech Evangelism account `demo@example.com`, which has the Credit Card Number and US Social Security Number rules in **Data Security** and 47 connections with mixed permissions. Set `CONNECT_AI_USER` and `CONNECT_AI_PAT`, or let `raid.sh` read them from the macOS Keychain (service `connect-doom`, account = the user). If the Data Security rules are switched off, the SSN lookup goes through, no vault appears, and the panel shows the unmasked answer, which is its own demo moment.
+It runs as `demo@example.com`, an account with Data Security rules for credit card and US Social Security numbers and connections with mixed permissions. Set `CONNECT_AI_USER` and `CONNECT_AI_PAT`, or let `raid.sh` read the token from the macOS Keychain (service `connect-doom`). All data in the account is synthetic.
 
-All data in these accounts is synthetic. The game only reads: Claude gets Connect AI's read-only tools (`?ops=` on the MCP URL), and kills write nothing back: each one is logged to `state/kills.jsonl`, and the record is read again live through Connect AI with its room's query (in the background, so the game doesn't wait). The panel shows what came back and how long the round trip took.
+## More
 
-## How it works
-
-```
-raid.sh
-  brief.py ── claude -p, Connect AI MCP only (read-only tools) ── state/run.jsonl  (panel feed)
-                                                              └─ state/mission.json (rooms, permissions, refusals)
-  tools/make_arena.py + make_branding.py + make_deh.py ── state/level.wad, brand.wad, level.deh
-  connect_doom.py poll ── re-runs each room's query through the MCP server every 15 s ── state/cache.json
-  psdoom-ng ── list / kill / hit ──> connect_doom.py (local files only)
-  connect_doom.py panel ── http://localhost:8666
-```
-
-- `brief.py` runs Claude Code headless with only the Connect AI MCP server. The token stays in the environment: the MCP config says `Basic ${CONNECT_AI_BASIC}` and Claude Code expands it. Claude must return, per app, one SELECT with the columns `Id`, `Label`, `Detail`, `Hot`; that contract is what lets any connector become a room.
-- psdoom spawns monsters into three fixed boxes and picks the box from the monster's id mod 3, so room *i*'s records get ids with `id % 3 == i`.
-- psdoom calls the hooks synchronously in the game loop, so `list` and `kill` only touch local files. A killed record is hidden from `list`, otherwise psdoom resurrects it.
-
-## Pieces
-
-- `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
-- `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.
-- `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, and (with the CData brand kit) the Connect AI logo on the Esc menu. The kit stays out of git; `setup.sh` extracts it from `~/Documents/dev/cdata/BRANDKIT.zip` (override with `BRANDKIT_ZIP`).
-- `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
-- `patches/psdoom-ng-connect-doom.patch`: `-nopslev` always means arena mode (upstream checks the game mode before Freedoom is identified, so monsters landed in the void); name tags show only the short name; the kill command's first output line becomes the on-screen message.
-- Vanilla limits that shaped the signs: wall textures tile every 128 px vertically (hence the 128-tall alcoves), and multi-patch textures cap at 64 KB (hence one baked patch per sign).
-- psdoom ignores SIGTERM; close the window or `pkill -9 -f trunk/src/psdoom`. On macOS a crash shows a system alert that outlives the game; click OK.
+- [docs/internals.md](docs/internals.md): files, the psdoom patch, the agent channel, Doom limits
+- [docs/testing.md](docs/testing.md): the offline test suite

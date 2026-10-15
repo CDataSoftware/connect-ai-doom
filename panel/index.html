@@ -176,16 +176,14 @@
   details.legend summary::-webkit-details-marker { display: none; }
   details.legend summary::after { content: " +"; color: var(--balance); }
   details.legend[open] summary::after { content: " -"; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 10px; }
-  .tile { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: center; background: var(--depth-3); border-radius: 3px; padding: 8px; }
-  .tile .pic { height: 58px; display: flex; align-items: flex-end; justify-content: center; }
-  .tile img { max-height: 58px; max-width: 58px; image-rendering: pixelated; }
-  .tile .name { font: 8px/1.5 var(--pixel); color: var(--clarity); }
-  .tile .what { font-size: 13px; line-height: 1.35; color: #D6D3CC; }
-  .tile .sign { width: 54px; height: 30px; border: 2px solid var(--agility); background: var(--depth); color: var(--agility);
-                font: 6px/1.3 var(--pixel); display: flex; align-items: center; justify-content: center; text-align: center; }
-  .legend .note { font-size: 13px; color: var(--balance); margin-top: 10px; line-height: 1.45; }
-  .legend .note .badge { display: inline-block; vertical-align: middle; margin: 0 2px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; margin-top: 10px; }
+  .tile { display: flex; gap: 10px; align-items: center; background: var(--depth-3); border-radius: 3px; padding: 6px 8px; font-size: 13px; color: #D6D3CC; min-height: 44px; }
+  .tile img { height: 32px; width: 32px; object-fit: contain; object-position: bottom; image-rendering: pixelated; flex: none; }
+  .tile b { color: var(--clarity); display: block; font: 7px/1.6 var(--pixel); letter-spacing: .5px; }
+  .tile .sign { width: 32px; height: 20px; flex: none; border: 2px solid var(--agility); background: var(--depth); color: var(--agility);
+                font: 5px/1 var(--pixel); display: flex; align-items: center; justify-content: center; }
+  .legend .note { font-size: 13px; color: var(--balance); margin-top: 8px; line-height: 1.45; }
+  .legend .note:empty { display: none; }
   .keycard .keyimg { float: right; height: 34px; image-rendering: pixelated; margin-left: 8px; }
   .keycard .roomno { font: 7px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
   /* logos and footer */
@@ -203,6 +201,13 @@
                      box-shadow: 0 3px 0 #9E8E00; border: 0; letter-spacing: .5px; }
   footer nav a.cta:hover { color: var(--depth); filter: brightness(1.08); }
   footer .fine { font-size: 12px; color: var(--balance); }
+  /* the three-step explainer under the title */
+  .how { list-style: none; counter-reset: step; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .how li { counter-increment: step; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-top: 3px solid var(--agility);
+            border-radius: 3px; padding: 8px 9px; font-size: 12.5px; line-height: 1.35; color: #D6D3CC; }
+  .how li b { display: block; font: 8px/1.6 var(--pixel); color: var(--agility); margin-bottom: 3px; }
+  .how li b::before { content: counter(step) ". "; color: var(--doom-red); }
+  @media (max-width: 520px) { .how { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -212,7 +217,12 @@
        onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CDATA CONNECT AI'}))"></a>
     <span class="x">X</span><span>DOOM</span></div>
   <h1>ACCESS <span>GRANTED</span></h1>
-  <div class="sub">Claude, working through the Connect AI MCP server. Every step below is a live call. Click one to see what happened.</div>
+  <div class="sub">Claude answers a business question through the Connect AI MCP server, and Doom turns the answer into a level you can play.</div>
+  <ol class="how">
+    <li><b>Ask</b>Someone asks Claude a question about the business.</li>
+    <li><b>Reach</b>Claude reads live data from your apps through Connect AI, only where this user has access.</li>
+    <li><b>Play</b>Each app is a room, each record a monster. Anything Connect AI blocks stays locked.</li>
+  </ol>
 </header>
 <div class="statusbar">
   <div class="stat"><div class="num" id="s-apps">0</div><div class="lbl">APPS</div></div>
@@ -226,24 +236,15 @@
     <details class="legend" id="legend" open>
       <summary>WHAT YOU'RE LOOKING AT</summary>
       <div class="tiles">
-        <div class="tile"><div class="pic"><img src="sprites/demon.png" alt="pink demon"></div>
-          <div><div class="name">PINK DEMON</div><div class="what">An urgent record: an overdue deal, an urgent ticket, a late invoice. The name over its head is the customer.</div></div></div>
-        <div class="tile"><div class="pic"><img src="sprites/soldier.png" alt="soldier"></div>
-          <div><div class="name">SOLDIER</div><div class="what">Any other record Claude found for the question. Same name tag.</div></div></div>
-        <div class="tile"><div class="pic"><div class="sign">APP<br>NAME</div></div>
-          <div><div class="name">ROOM = APP</div><div class="what" id="legend-rooms">Each room is one app Claude reached through Connect AI. The sign on the wall names it.</div></div></div>
-        <div class="tile"><div class="pic"><img src="sprites/bluekey.png" alt="blue keycard"></div>
-          <div><div class="name">BLUE KEYCARD</div><div class="what">Connect AI lets this user <b>read</b> the app behind a blue door.</div></div></div>
-        <div class="tile"><div class="pic"><img src="sprites/yellowkey.png" alt="yellow keycard"></div>
-          <div><div class="name">YELLOW KEYCARD</div><div class="what">Connect AI lets this user <b>read and write</b> the app behind a yellow door.</div></div></div>
-        <div class="tile"><div class="pic"><img src="sprites/redkey.png" alt="red keycard"></div>
-          <div><div class="name">RED DOOR, NO KEY</div><div class="what">The PII vault. Connect AI's Data Security blocked the request, so no red key exists. Try the door: it shows the real refusal.</div></div></div>
-        <div class="tile"><div class="pic"><img src="sprites/marine.png" alt="marine"></div>
-          <div><div class="name">THE MARINE</div><div class="what">You, or Claude when Claude plays is on. A kill flags the record or queues a follow-up. Dry run: nothing changes in the app.</div></div></div>
+        <div class="tile"><img src="sprites/demon.png" alt=""><span><b>Pink demon</b> urgent record</span></div>
+        <div class="tile"><img src="sprites/soldier.png" alt=""><span><b>Soldier</b> record</span></div>
+        <div class="tile"><span class="sign">APP</span><span><b>Room</b> one app</span></div>
+        <div class="tile"><img src="sprites/bluekey.png" alt=""><span><b>Blue key</b> read access</span></div>
+        <div class="tile"><img src="sprites/yellowkey.png" alt=""><span><b>Yellow key</b> read + write</span></div>
+        <div class="tile"><img src="sprites/redkey.png" alt=""><span><b>Red door</b> blocked by Connect AI</span></div>
       </div>
-      <div class="note">Monsters are live: every 15 seconds the game re-reads each app through Connect AI, so a record closed in the app disappears from the room.
-        In the feed below, <span class="badge">CONNECT AI</span> is a call through the MCP server, <span class="badge claude">CLAUDE</span> is Claude's own words,
-        and <span class="badge doom">DOOM</span> is Claude moving in the game. Click any row to see the details.</div>
+      <div class="note" id="legend-rooms"></div>
+      <div class="note">Name tags show the customer. Monsters refresh live every 15 s. Kills are a dry run: nothing changes in your apps.</div>
     </details>
   </section>
   <section><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
@@ -502,8 +503,8 @@ function renderMission(m, events) {
     cards.push(`<div class="keycard vault"><img class="keyimg" src="sprites/redkey.png" alt=""><div class="roomno">PII VAULT</div><div class="app">${esc(d.connection || "PII vault")}</div>
       <div class="title">${esc((d.error || "").split("\n")[0])}</div><div class="access">RED DOOR: NO KEY EXISTS</div></div>`);
   $("rooms").innerHTML = cards.join("") || '<div class="empty">Nothing reached</div>';
-  $("legend-rooms").innerHTML = "Each room is one app Claude reached through Connect AI; the sign on the wall names it. " +
-    (m.rooms || []).map((r, i) => `Room ${i + 1}: <b>${esc(r.app)}</b> (${esc(r.title)})`).join(", ") + ".";
+  $("legend-rooms").innerHTML = "This run: " +
+    (m.rooms || []).map((r, i) => `room ${i + 1} is <b>${esc(r.app)}</b>`).join(", ") + ".";
 }
 
 let killCount = -1;

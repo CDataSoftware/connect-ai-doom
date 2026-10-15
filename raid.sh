@@ -6,10 +6,11 @@
 #   ./raid.sh --again             replay the last briefing (no Claude run)
 #   ./raid.sh --demo              made-up data, no network
 #   ./raid.sh brief [question]    only run the briefing
+#   ./raid.sh login               save your Connect AI email and token in the Keychain
 #   --claude-plays                Claude drives the marine (optional, off by default); combine
 #                                 with any mode above, e.g. ./raid.sh --again --claude-plays
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
-# Kills are dry run: logged to state/kills.jsonl, nothing is written to any app.
+# Kills write nothing back: each is logged and its record read again live through Connect AI.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,6 +22,14 @@ mkdir -p state
 MODE=live QUESTION="" PLAYS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    login)
+      read -rp "Connect AI email: " CONNECT_AI_USER
+      read -rsp "Connect AI personal access token: " CONNECT_AI_PAT; echo
+      security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
+        -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
+      echo "$CONNECT_AI_USER" > state/account
+      echo "Saved. Now run ./raid.sh"
+      exit ;;
     --demo) MODE=demo; shift ;;
     --again) MODE=again; shift ;;
     --claude-plays) PLAYS=1; shift ;;
@@ -30,22 +39,40 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]]; then
+  echo "The game isn't built yet: run ./setup.sh first." >&2
+  exit 1
+fi
+if [[ "$MODE" == live || "$MODE" == brief ]] && ! command -v claude >/dev/null; then
+  echo "The briefing needs Claude Code's CLI (claude), signed in. Or replay one: ./raid.sh --again, or play offline: ./raid.sh --demo" >&2
+  exit 1
+fi
+
 if [[ "$MODE" != demo ]]; then
-  # Token lookup: env, then the macOS Keychain (no prompt), then 1Password once.
-  # The 1Password CLI re-asks per terminal window and after 10 idle minutes, so
-  # the first 1Password read is copied into the Keychain for every later launch.
-  : "${CONNECT_AI_USER:=te_us@cdata.com}"
-  if [[ -z "${CONNECT_AI_PAT:-}" ]]; then
+  # Token lookup: env, then the macOS Keychain (no prompt; ./raid.sh login stores it), then,
+  # if CONNECT_AI_OP_ITEM names one, 1Password once. The 1Password CLI re-asks per terminal
+  # window and after 10 idle minutes, so that read is copied into the Keychain.
+  if [[ -z "${CONNECT_AI_USER:-}" && -f state/account ]]; then   # the account ./raid.sh login saved
+    CONNECT_AI_USER=$(<state/account)
+  fi
+  if [[ -z "${CONNECT_AI_PAT:-}" && -n "${CONNECT_AI_USER:-}" ]]; then
     CONNECT_AI_PAT=$(security find-generic-password -s connect-doom -a "$CONNECT_AI_USER" -w 2>/dev/null || true)
   fi
-  if [[ -z "$CONNECT_AI_PAT" ]]; then
-    OP_ITEM="${CONNECT_AI_OP_ITEM:-op://Personal/Connect AI Dev Edition PAT}"
-    CONNECT_AI_PAT=$(op --account my.1password.com read "$OP_ITEM/credential")
+  if [[ -z "${CONNECT_AI_PAT:-}" && -n "${CONNECT_AI_OP_ITEM:-}" && -n "${CONNECT_AI_USER:-}" ]]; then
+    CONNECT_AI_PAT=$(op --account my.1password.com read "$CONNECT_AI_OP_ITEM/credential")
     security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
       -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
   fi
+  if [[ -z "${CONNECT_AI_PAT:-}" ]]; then
+    echo "No Connect AI token: run ./raid.sh login (or set CONNECT_AI_USER and CONNECT_AI_PAT)." >&2
+    echo "To play offline with made-up data: ./raid.sh --demo" >&2
+    exit 1
+  fi
   export CONNECT_AI_USER CONNECT_AI_PAT
 fi
+
+# A previous run's panel or poller (say, after a crash) would hold the port and serve stale state.
+pkill -f "$BRIDGE (panel|poll)" 2>/dev/null || true
 
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
@@ -131,13 +158,35 @@ if [[ -n "$PLAYS" ]]; then
   PIDS+=($!)
 fi
 
+# Controls for people who grew up after 1993: WASD to move, mouse to turn and fire (left
+# button), Space opens doors, Shift runs, P pauses. Arrows still turn. Written fresh each
+# launch (values are keyboard scancodes), so a booth machine always plays the same.
+cat > state/controls.cfg <<'CFG'
+key_up 17
+key_down 31
+key_strafeleft 30
+key_straferight 32
+key_left 75
+key_right 77
+key_fire 29
+key_use 57
+key_speed 42
+key_strafe 56
+use_mouse 1
+mouseb_fire 0
+mouseb_strafe 1
+mouseb_forward -1
+mouse_sensitivity 6
+CFG
+printf 'novert 1\ngrabmouse 1\n' > state/controls-extra.cfg   # the mouse turns; it doesn't walk
+
 GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
 printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
 
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user
 "$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
-  -nopslev -psallusers -warp 1 -skill 3 -window -geometry "$GEOMETRY" "$@" \
+  -nopslev -psallusers -warp 1 -skill 3 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
   >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
 
 python3 "$BRIDGE" score

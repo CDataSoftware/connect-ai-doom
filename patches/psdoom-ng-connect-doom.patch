@@ -83,7 +83,7 @@ index 15e4a6b..1fb7e65 100644
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..e39c4d9 100644
+index fa4fe83..b958fc3 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -117,7 +117,7 @@ index fa4fe83..e39c4d9 100644
  }
  
  // pr_renice
-@@ -890,3 +905,339 @@ void pr_renice(int pid) {
+@@ -890,3 +905,351 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -126,7 +126,7 @@ index fa4fe83..e39c4d9 100644
 +// connect-doom "Claude plays": an external agent steers the player.
 +// Enabled when PSDOOM_AGENT_DIR is set. The agent writes one command line to
 +// <dir>/cmd ("<seq> MOVE x y" | "<seq> USE" | "<seq> ATTACK pid" | "<seq> TURN deg"
-+// | "<seq> STOP"); the game writes <dir>/state.json every few tics with the
++// | "<seq> KEY code" | "<seq> STOP"); KEY presses a key, e.g. to screenshot the menus; the game writes <dir>/state.json every few tics with the
 +// player, the process monsters, and the last finished command.
 +
 +#include "d_event.h"
@@ -134,6 +134,8 @@ index fa4fe83..e39c4d9 100644
 +#include "d_ticcmd.h"
 +#include "tables.h"
 +#include "r_main.h"
++
++void D_PostEvent(event_t *ev);
 +
 +// From p_local.h, which can't be included here (its enum 'close' clashes with unistd.h).
 +extern thinker_t thinkercap;
@@ -288,6 +290,17 @@ index fa4fe83..e39c4d9 100644
 +    {
 +        agent_finish("stopped");
 +    }
++    else if (!strcmp(agent_verb, "KEY"))
++    {
++        event_t ev;
++        ev.type = ev_keydown;
++        ev.data1 = agent_x;
++        ev.data2 = ev.data3 = 0;
++        D_PostEvent(&ev);
++        ev.type = ev_keyup;
++        D_PostEvent(&ev);
++        agent_finish("pressed");
++    }
 +    else if (!strcmp(agent_verb, "SHOT"))
 +    {
 +        // Save the frame as DOOMnn.pcx in the working directory (no window needed).
@@ -430,11 +443,10 @@ index fa4fe83..e39c4d9 100644
 +{
 +    mobj_t *mo = players[consoleplayer].mo;
 +    int i, y, x, rows;
-+    if (gamestate != GS_LEVEL || automapactive)
++    // Not over the menu's or the pause screen's own Connect AI logo.
++    if (gamestate != GS_LEVEL || automapactive || menuactive || paused || mo == NULL)
 +        return;
 +    corner_logo();
-+    if (menuactive || mo == NULL)
-+        return;
 +    P_AimLineAttack(mo, mo->angle, 2048 * FRACUNIT);
 +    if (linetarget == NULL || !linetarget->m_pid || linetarget->health <= 0)
 +        return;

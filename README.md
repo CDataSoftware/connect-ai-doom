@@ -4,8 +4,11 @@ You ask Claude a business question. Claude answers it through the Connect AI MCP
 
 ## Run
 
+You need a Mac with [Homebrew](https://brew.sh), Claude Code signed in (the `claude` CLI), and a Connect AI account with a few connections and a personal access token. Google Chrome is optional; it gives the panel its own window.
+
 ```bash
 ./setup.sh                        # one time: SDL 1.2 libs, psdoom-ng, zdbsp, Freedoom
+./raid.sh login                   # one time: your Connect AI email and token, kept in the Keychain
 ./raid.sh                         # Claude runs the default question (about a minute), then you play
 ./raid.sh -q "Which vendors are we late paying?"
 ./raid.sh --again                 # replay the last briefing without a new Claude run
@@ -16,7 +19,9 @@ You ask Claude a business question. Claude answers it through the Connect AI MCP
 
 The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, and `GEOMETRY=1280x800` sets the game's size.
 
-Aim at a monster to see its record (app, name, detail) above the status bar.
+**Controls:** WASD to move, the mouse to turn and fire (left button), Space to open doors, Shift to run, P to pause, Esc for the menu. Aim at a monster to see its record (app, name, detail) above the status bar. Clear all the rooms, then try the red door.
+
+**At a booth:** run one live briefing before the doors open, then `./raid.sh --again` for each player: every game starts with all the records back, and no new Claude run is needed. If the network drops, `./raid.sh --demo` plays offline with made-up data.
 
 The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
 

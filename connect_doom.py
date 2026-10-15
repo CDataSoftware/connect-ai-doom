@@ -192,6 +192,16 @@ def cmd_panel(args):
 
     port = int(args[0]) if args else 8666
 
+    def live_events(path):
+        """A run's event log; skips a last line that's still being written."""
+        events = []
+        for line in path.read_text().splitlines() if path.exists() else []:
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+        return events
+
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(ROOT / "panel"), **kw)
@@ -208,7 +218,8 @@ def cmd_panel(args):
                 mission = None
             dead = killed_ids()
             body = json.dumps({
-                "events": read_jsonl(STATE / "run.jsonl"),
+                "events": live_events(STATE / "run.jsonl"),
+                "play_events": live_events(STATE / "play.jsonl"),
                 "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
                 "kills": read_jsonl(KILLS)[-12:],
                 "standing": len([m for m in cached_monsters() if m["id"] not in dead]),

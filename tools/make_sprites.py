@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Export the game's own sprites as PNGs for the side panel's legend.
+"""Export the side panel's images.
 
-  make_sprites.py <freedoom2.wad> <out dir>
+  make_sprites.py <freedoom2.wad> <out dir> [brand kit dir]
 
-The legend shows exactly what's on screen: the pink demon (an urgent record),
-the shotgun soldier (a record), the keycards and the marine.
+The game's own sprites as PNGs for the legend, so it shows exactly what's on
+screen: the pink demon (an urgent record), the shotgun soldier (a record), the
+keycards and the marine. With the CData brand kit (kept out of git), also the
+Connect AI and CData logos, into <out dir>/../brand; the panel falls back to
+text without them.
 """
+import shutil
 import sys
 from pathlib import Path
 
@@ -23,7 +27,13 @@ SPRITES = {
 }
 
 
-def main(iwad, out):
+LOGOS = {
+    "connect-ai.svg": "02 Logos/Product Logos/Connect AI/SVG/connect-ai-agility-clarity.svg",
+    "cdata.svg": "02 Logos/Primary Logos/SVG/cdata-logotype-clarity.svg",
+}
+
+
+def main(iwad, out, kit=None):
     lumps = read_wad(iwad)
     pal = lumps["PLAYPAL"][:768]
     palette = [tuple(pal[3 * i:3 * i + 3]) for i in range(256)]
@@ -35,7 +45,13 @@ def main(iwad, out):
             img.putpixel((x, y), palette[v] + (255,))
         scale = 4 if max(w, h) < 24 else 2  # keys are tiny; keep the pixels crisp
         img.resize((w * scale, h * scale), Image.NEAREST).save(Path(out) / f"{name}.png")
+    if kit:
+        brand = Path(out).parent / "brand"
+        brand.mkdir(exist_ok=True)
+        for name, src in LOGOS.items():
+            if (Path(kit) / src).exists():
+                shutil.copy(Path(kit) / src, brand / name)
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    main(*sys.argv[1:4])

@@ -403,20 +403,18 @@ function detail(c, model) {
     <dl class="kv"><dt>${r.error ? "REFUSAL" : "RESULT"}</dt><dd></dd></dl>${resultView(c)}`;
 }
 
-// ---------- a feed: incremental, so open items and scroll position survive updates ----------
+// ---------- a feed: incremental and newest first, so open items and scroll position survive updates ----------
 class Feed {
   constructor(el, emptyText) { this.el = el; this.emptyText = emptyText; this.reset(); }
   reset() {
     this.seen = 0; this.calls = new Map(); this.liveEl = null; this.liveText = ""; this.model = null; this.steps = 0;
     this.el.innerHTML = `<div class="empty">${this.emptyText}</div>`;
   }
-  atBottom() { return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40; }
   add(node) {
-    const stick = this.atBottom();
     const empty = this.el.querySelector(":scope > .empty");
     if (empty) empty.remove();
-    if (this.liveEl && node !== this.liveEl) this.el.insertBefore(node, this.liveEl); else this.el.appendChild(node);
-    if (stick) this.el.scrollTop = this.el.scrollHeight;
+    // Claude's live text stays on top; each finished step lands just under it.
+    if (this.liveEl && node !== this.liveEl) this.liveEl.after(node); else this.el.prepend(node);
   }
   item(cls, badge, badgeCls, what, res, detailHTML) {
     const n = document.createElement("div");
@@ -449,7 +447,6 @@ class Feed {
     }
     const shown = plan ? "Drawing up the level plan..." : this.liveText;
     this.liveEl.innerHTML = `<span class="who">CLAUDE IS THINKING</span>${esc(shown)}<span class="caret"></span>`;
-    if (this.atBottom() || true) this.el.scrollTop = this.el.scrollHeight;
   }
   endLive() { if (this.liveEl) this.liveEl.remove(); this.liveEl = null; this.liveText = ""; }
   apply(events) {
@@ -507,11 +504,11 @@ function renderMission(m, events) {
 }
 
 let killCount = -1;
-function renderKills(kills, standing) {
-  $("s-kills").textContent = kills.length;
-  $("standing").textContent = `${standing} still standing${kills.length ? ", latest first" : ", none cleared yet"}`;
-  if (kills.length === killCount) return;
-  killCount = kills.length;
+function renderKills(kills, total, standing) {
+  $("s-kills").textContent = total;
+  $("standing").textContent = `${standing} still standing${total ? ", latest first" : ", none cleared yet"}`;
+  if (total === killCount) return;
+  killCount = total;
   $("kills").innerHTML = kills.slice().reverse().map(k => `<div class="kill">
     <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="d">${esc(k.detail)}</span></span>
     <span class="act">${k.writable ? "FOLLOW-UP QUEUED" : "FLAGGED"} (DRY RUN)</span></div>`).join("");
@@ -532,7 +529,7 @@ async function tick() {
     const play = s.play_events || [];
     $("play").hidden = !play.length;
     if (play.length) playFeed.apply(play);
-    renderKills(s.kills || [], s.standing || 0);
+    renderKills(s.kills || [], s.kill_total ?? (s.kills || []).length, s.standing || 0);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }
 }
 tick();

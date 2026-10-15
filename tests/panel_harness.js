@@ -27,6 +27,8 @@ class El {
     return this.subs[sel] ??= new El(sel);
   }
   appendChild(n) { n.parent = this; this.children.push(n); return n; }
+  prepend(n) { n.parent = this; this.children.unshift(n); return n; }
+  after(n) { const p = this.parent; n.parent = p; p.children.splice(p.children.indexOf(this) + 1, 0, n); return n; }
   insertBefore(n, ref) { n.parent = this; this.children.splice(Math.max(this.children.indexOf(ref), 0), 0, n); return n; }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); }
   addEventListener(type, fn) { this.listener = fn; }

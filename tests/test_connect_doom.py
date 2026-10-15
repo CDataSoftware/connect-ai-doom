@@ -302,7 +302,7 @@ class PanelServerTest(unittest.TestCase):
 
     def test_empty_state(self):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
-                                             "kills": [], "standing": 0})
+                                             "kills": [], "kill_total": 0, "standing": 0})
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}
@@ -318,6 +318,7 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(s["play_events"][0]["tool"], "look")
         self.assertEqual(set(s["mission"]), {"question", "answer", "rooms", "denied", "masked"})  # no raw calls
         self.assertEqual([k["id"] for k in s["kills"]], [k["id"] for k in kills[-12:]])
+        self.assertEqual(s["kill_total"], 14)
         self.assertEqual(s["standing"], 36 - 14)
 
     def test_corrupt_mission_is_null(self):

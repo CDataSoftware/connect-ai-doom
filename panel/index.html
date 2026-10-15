@@ -154,11 +154,48 @@
   .answer { background: var(--depth-2); border: 1px solid var(--line); border-left: 4px solid var(--resolve); padding: 12px 14px; border-radius: 4px; }
   .meta { font: 12px var(--mono); color: var(--balance); margin-top: 8px; }
 
-  #kills { display: grid; gap: 4px; }
-  .kill { display: flex; justify-content: space-between; gap: 10px; background: var(--depth-2); padding: 7px 10px; border-left: 4px solid var(--doom-red); border-radius: 3px; animation: in .25s ease-out; }
-  .kill .act { font: 7px/1.8 var(--pixel); color: var(--balance); white-space: nowrap; }
-  .kill .d { color: var(--balance); font-size: 13px; }
+  /* ---------- the game view: replaces the briefing while psdoom runs ---------- */
+  body.in-game .brief, body:not(.in-game) .ingame { display: none !important; }
+  .now {
+    position: sticky; top: 0; z-index: 10; margin: 0 -16px; padding: 12px 16px 14px;
+    background: var(--depth); border-bottom: 3px solid var(--doom-red); box-shadow: 0 8px 20px rgba(0,0,0,.6);
+  }
+  .now .mode { display: flex; align-items: center; gap: 8px; font: 9px/1.4 var(--pixel); color: var(--agility); }
+  .now .mode::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--doom-red); animation: pulse 1s infinite; }
+  .now .big { margin-top: 10px; display: grid; gap: 4px; }
+  .now .verb { font: 14px/1.3 var(--pixel); color: var(--doom-red); }
+  .now .verb.hit { color: var(--agility); }
+  .now .who { font-size: 22px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+  .now .d { color: var(--balance); font-size: 14px; }
+  .now .act { font: 8px/1.8 var(--pixel); color: var(--ok); }
+  .now .hint { font-size: 16px; color: #D9D6CF; }
+  .now.flash { animation: flash 1s ease-out; }
+  @keyframes flash { 0% { background: #5A1206; } 100% { background: var(--depth); } }
 
+  #rooms-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .rl { --kc: var(--key-blue); background: var(--depth-2); border: 2px solid var(--kc); border-radius: 6px; padding: 10px; display: grid; gap: 6px; }
+  .rl.write { --kc: var(--key-yellow); } .rl.vault { --kc: var(--key-red); background: #2E0F0B; }
+  .rl .top { display: flex; align-items: center; gap: 8px; }
+  .rl .top img { width: 18px; image-rendering: pixelated; }
+  .rl .no { font: 7px/1.4 var(--pixel); color: var(--balance); }
+  .rl .app { font-weight: 800; font-size: 17px; }
+  .rl .num { font: 30px/1 var(--digits); color: var(--clarity); }
+  .rl .num small { font-size: 18px; color: var(--balance); }
+  .rl .bar { height: 8px; background: #0D0D12; border-radius: 4px; overflow: hidden; }
+  .rl .bar span { display: block; height: 100%; background: var(--doom-red); transition: width .4s; }
+  .rl .sub { font-size: 12.5px; color: var(--balance); }
+  .rl.done { opacity: .6; }
+
+  #events { display: grid; gap: 4px; }
+  .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); animation: in .25s ease-out; }
+  .ev .t { font: 12px var(--mono); color: var(--balance); }
+  .ev .k { font: 7px/1.8 var(--pixel); color: var(--doom-red); }
+  .ev.hit { background: transparent; padding-top: 3px; padding-bottom: 3px; }
+  .ev.hit .k { color: var(--agility); }
+  .ev.kill { border-left: 4px solid var(--doom-red); }
+  .ev .w { min-width: 0; }
+  .ev .w .d { color: var(--balance); font-size: 13px; }
+  .ev .w .act { font: 7px/1.8 var(--pixel); color: var(--ok); margin-left: 6px; white-space: nowrap; }
   #play[hidden] { display: none; }
   @keyframes in { from { opacity: 0; transform: translateY(4px); } }
   @keyframes pulse { 50% { opacity: .25; } }
@@ -231,6 +268,13 @@
   <div class="stat model"><div class="num" id="s-model">STANDBY</div><div class="lbl">MODEL</div></div>
 </div>
 <main>
+  <div class="now ingame" id="now">
+    <div class="mode" id="now-mode">YOU'RE PLAYING · LIVE</div>
+    <div class="big" id="now-big"><div class="hint">Grab the keycards in the lobby, then clear the rooms. Every kill shows up here.</div></div>
+  </div>
+  <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
+  <section class="ingame"><h2>WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
+  <section id="play" hidden><h2>CLAUDE PLAYS</h2><div class="feed" id="playfeed"></div></section>
   <section>
     <details class="legend" id="legend" open>
       <summary>WHAT YOU'RE LOOKING AT</summary>
@@ -246,12 +290,10 @@
       <div class="note">Name tags show the customer. Monsters refresh live every 15 s. Kills are a dry run: nothing changes in your apps.</div>
     </details>
   </section>
-  <section><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
-  <section><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
-  <section><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
-  <section><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
-  <section id="play" hidden><h2>CLAUDE PLAYS</h2><div class="feed" id="playfeed"></div></section>
-  <section><h2>IN THE GAME</h2><div class="meta" id="standing"></div><div id="kills"></div></section>
+  <section class="brief"><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
+  <section class="brief"><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
+  <section class="brief"><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
+  <section class="brief"><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
 </main>
 <footer>
   <div class="hazard"></div>
@@ -503,15 +545,66 @@ function renderMission(m, events) {
     (m.rooms || []).map((r, i) => `room ${i + 1} is <b>${esc(r.app)}</b>`).join(", ") + ".";
 }
 
-let killCount = -1;
-function renderKills(kills, total, standing) {
-  $("s-kills").textContent = total;
-  $("standing").textContent = `${standing} still standing${total ? ", latest first" : ", none cleared yet"}`;
-  if (total === killCount) return;
-  killCount = total;
-  $("kills").innerHTML = kills.slice().reverse().map(k => `<div class="kill">
-    <span><b>${esc(k.app)}</b>: ${esc(k.label)} <span class="d">${esc(k.detail)}</span></span>
-    <span class="act">${k.writable ? "FOLLOW-UP QUEUED" : "FLAGGED"} (DRY RUN)</span></div>`).join("");
+// ---------- the game view ----------
+const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
+const action = m => m.writable ? `FOLLOW-UP QUEUED IN ${m.app.toUpperCase()} (DRY RUN)` : "FLAGGED FOR REVIEW (DRY RUN)";
+let lastEventKey = null;
+
+function gameEvents(s) {
+  // kills and hits, newest first; a run of hits on the same record is one line
+  const evs = [...(s.kills || []).map(k => ({...k, kind: "kill", at: Date.parse(k.killed_at) / 1000})),
+               ...(s.hits || []).map(h => ({...h, kind: "hit"}))].sort((a, b) => b.at - a.at);
+  const out = [];
+  for (const e of evs) {
+    const prev = out[out.length - 1];
+    if (prev && e.kind === "hit" && prev.id === e.id) { if (prev.kind === "hit") prev.n++; continue; }
+    out.push({...e, n: 1});
+  }
+  return out;
+}
+
+function renderGame(s) {
+  const game = s.game;
+  document.body.classList.toggle("in-game", !!game);
+  $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
+  if (!game) return;
+  $("now-mode").textContent = game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE";
+
+  const m = s.mission || {};
+  const cards = (s.rooms_live || []).map((r, i) => {
+    const total = r.left + r.killed;
+    return `<div class="rl ${r.writable ? "write" : "read"}${r.left ? "" : " done"}">
+      <div class="top"><img src="sprites/${r.writable ? "yellow" : "blue"}key.png" alt=""><span class="no">ROOM ${i + 1} · ${r.writable ? "READ + WRITE" : "READ ONLY"}</span></div>
+      <div class="app">${esc(r.app)}</div>
+      <div class="num">${r.killed}<small> / ${total} cleared</small></div>
+      <div class="bar"><span style="width:${total ? Math.round(100 * r.killed / total) : 0}%"></span></div>
+      <div class="sub">${r.left ? `${r.left} left${r.urgent_left ? `, ${r.urgent_left} urgent` : ""}` : "Room clear"} · ${esc(r.title)}</div></div>`;
+  });
+  for (const d of m.denied || [])
+    cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
+      <div class="app">PII vault</div><div class="sub">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div></div>`);
+  $("rooms-live").innerHTML = cards.join("");
+
+  const evs = gameEvents(s);
+  $("events").innerHTML = evs.length ? evs.map(e => e.kind === "kill"
+    ? `<div class="ev kill"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
+        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span><span class="act">${action(e)}</span></span></div>`
+    : `<div class="ev hit"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
+        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)}</span></div>`).join("")
+    : '<div class="empty">Nothing yet. Shoot something.</div>';
+
+  const last = evs[0];
+  const key = last ? `${last.kind}:${last.id}:${last.at}` : null;
+  if (key === lastEventKey) return;
+  const fresh = lastEventKey !== null;  // not the state the page loaded with
+  lastEventKey = key;
+  if (!last) return;
+  $("now-big").innerHTML = last.kind === "kill"
+    ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
+       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div><div class="act">→ ${action(last)}</div>`
+    : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>
+       <div class="who">${esc(last.label)}</div><div class="d">${last.demon ? "Urgent: " : ""}${esc(last.detail)}</div>`;
+  if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
 }
 
 try {
@@ -527,9 +620,9 @@ async function tick() {
     feed.apply(events);
     renderMission(s.mission, events);
     const play = s.play_events || [];
-    $("play").hidden = !play.length;
+    $("play").hidden = !play.length || s.game?.mode !== "claude";
     if (play.length) playFeed.apply(play);
-    renderKills(s.kills || [], s.kill_total ?? (s.kills || []).length, s.standing || 0);
+    renderGame(s);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }
 }
 tick();

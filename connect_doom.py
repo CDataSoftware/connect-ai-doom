@@ -32,6 +32,7 @@ CACHE = STATE / "cache.json"
 KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
 MISSION = STATE / "mission.json"
+GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 
 
@@ -50,6 +51,11 @@ def short_name(label):
 
 
 def to_monster(row, room_index, room):
+    # Connect AI keeps a plain column's own name ("[Subject] AS [Label]" comes back as Subject),
+    # so a missing Label is the one column that isn't Id, Detail or Hot.
+    if not row.get("Label"):
+        rest = [v for k, v in row.items() if k not in ("Id", "Label", "Detail", "Hot")]
+        row = {**row, "Label": rest[0] if len(rest) == 1 else None}
     rid = f"{room['connection']}:{row.get('Id')}"
     return {
         "pid": monster_id(rid, room_index),
@@ -85,6 +91,13 @@ def write_cache(monsters, source):
     tmp = CACHE.with_suffix(".tmp")
     tmp.write_text(json.dumps({"source": source, "fetched_at": time.time(), "monsters": monsters}, indent=1))
     tmp.replace(CACHE)  # atomic, so `list` never reads a half-written file
+
+
+def read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
 
 
 def read_jsonl(path):
@@ -216,15 +229,35 @@ def cmd_panel(args):
                 mission = json.loads(MISSION.read_text())
             except (FileNotFoundError, json.JSONDecodeError):
                 mission = None
+            game = read_json(GAME)
             kills = read_jsonl(KILLS)
             dead = {k["id"] for k in kills}
+            monsters = cached_monsters()
+            # While a game runs, the panel shows only that game's kills and hits.
+            since = game["started"] if game else 0
+            kills = [k for k in kills if dt.datetime.fromisoformat(k["killed_at"]).timestamp() >= since]
+            by_id = {m["id"]: m for m in monsters}
+            hits = [{**by_id[h["id"]], "at": h["at"]} for h in read_jsonl(HITS)
+                    if h["at"] >= since and h["id"] in by_id]
+            killed_now = {k["id"] for k in kills}
+            rooms = []
+            for i, room in enumerate((mission or {}).get("rooms", [])[:3]):
+                mine = [m for m in monsters if m["pid"] % 3 == i]   # monster_id puts the room in pid mod 3
+                alive = [m for m in mine if m["id"] not in dead]
+                rooms.append({"app": room.get("app", room["connection"]), "writable": room.get("writable", False),
+                              "title": room.get("title", ""), "left": len(alive),
+                              "urgent_left": sum(m["demon"] for m in alive),
+                              "killed": sum(m["id"] in killed_now for m in mine)})
             body = json.dumps({
                 "events": live_events(STATE / "run.jsonl"),
                 "play_events": live_events(STATE / "play.jsonl"),
                 "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
+                "game": game,
                 "kills": kills[-12:],
                 "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
-                "standing": len([m for m in cached_monsters() if m["id"] not in dead]),
+                "hits": hits[-40:],
+                "rooms_live": rooms,
+                "standing": len([m for m in monsters if m["id"] not in dead]),
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

@@ -18,7 +18,7 @@ class El {
       add: c => { if (!el.classList.contains(c)) el.className = `${el.className} ${c}`.trim(); },
       remove: c => { el.className = el.className.split(/\s+/).filter(x => x !== c).join(" "); },
       contains: c => el.className.split(/\s+/).includes(c),
-      toggle: c => el.classList.contains(c) ? el.classList.remove(c) : el.classList.add(c),
+      toggle: (c, force = !el.classList.contains(c)) => force ? el.classList.add(c) : el.classList.remove(c),
     };
   }
   // .empty placeholders exist only while innerHTML says so; other selectors get a stable child
@@ -41,7 +41,7 @@ class El {
 
 const byId = {};
 const ctx = {
-  document: { getElementById: id => byId[id] ??= new El(id), createElement: tag => new El(tag) },
+  document: { getElementById: id => byId[id] ??= new El(id), createElement: tag => new El(tag), body: byId.body = new El("body") },
   location: { search: "" },
   URLSearchParams, console,
   fetch: async url => {

@@ -117,6 +117,9 @@ class RaidTest(unittest.TestCase):
         self.assertEqual(panel["mission"]["question"], "Who is late?")
         self.assertEqual(panel["standing"], 2)                 # the fake psdoom already killed one
         self.assertEqual(len(panel["kills"]), 1)
+        self.assertEqual(panel["game"]["mode"], "player")      # the panel switches to the game view
+        self.assertEqual(sum(r["killed"] for r in panel["rooms_live"]), 1)
+        self.assertFalse((self.state / "game.json").exists(), "the game view ends with the game")
         self.assertEqual(panel["events"][-1]["kind"], "mission")
         self.assertIn("http://localhost:", (self.logs / "open.txt").read_text())
         self.assertFalse((self.logs / "security.txt").exists(), "a PAT in the environment wins")

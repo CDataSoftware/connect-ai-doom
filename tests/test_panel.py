@@ -1,4 +1,5 @@
 """panel/index.html: the side panel's script, rendered in Node from a real brief.py run's state."""
+import datetime
 import json
 import shutil
 import subprocess
@@ -59,10 +60,6 @@ class PanelTest(unittest.TestCase):
         self.assertIn("BLUE KEY: READ ONLY", rooms)
         self.assertEqual(rooms.count("RED DOOR: NO KEY EXISTS"), 1)
         self.assertIn("Request blocked: PII detected in inbound query", rooms)
-        self.assertEqual(ids["standing"]["text"], "5 still standing, latest first")
-        self.assertLess(ids["kills"]["html"].index("Initech"), ids["kills"]["html"].index("Acme"))  # newest first
-        self.assertIn("Acme &lt;b&gt;Corp&lt;/b&gt;", ids["kills"]["html"])                         # escaped
-        self.assertIn("FOLLOW-UP QUEUED (DRY RUN)", ids["kills"]["html"])
         self.assertTrue(ids["play"]["hidden"])
 
     def test_feed(self):
@@ -80,13 +77,38 @@ class PanelTest(unittest.TestCase):
         self.assertIn("123-45-6789", pii)
         self.assertIn("claude-sonnet-5-5", pii)
 
-    def test_kill_feed_past_the_cap(self):
-        """The server sends the last 12 kills; the count and the redraw follow kill_total."""
-        kills = [{"app": "Zendesk", "label": f"K{i}", "detail": "", "writable": False} for i in range(18, 30)]
-        ids = self.render(kills=kills, kill_total=30)
+    def test_game_view(self):
+        kills = [{"id": f"Zendesk:{i}", "app": "Zendesk", "label": f"K{i}", "detail": "high open", "writable": True,
+                  "demon": i % 2, "killed_at": f"2026-10-15T13:54:{i}"} for i in range(18, 30)]
+        hits = [{"id": "Stripe:9", "app": "Stripe", "label": "Acme <b>Corp</b>", "detail": "$5", "demon": 0,
+                 "at": datetime.datetime(2026, 10, 15, 13, 54, 40).timestamp() + n} for n in range(3)]
+        rooms = [{"app": "Zendesk", "writable": True, "title": "Escalated", "left": 3, "urgent_left": 1, "killed": 12},
+                 {"app": "Stripe", "writable": False, "title": "Unpaid", "left": 0, "urgent_left": 0, "killed": 4}]
+        ids = self.render(kills=kills, kill_total=30, hits=hits, rooms_live=rooms,
+                          game={"mode": "player", "started": 0})
+        self.assertIn("in-game", ids["body"]["className"])              # the briefing sections hide
         self.assertEqual(ids["s-kills"]["text"], 30)
-        html = ids["kills"]["html"]
-        self.assertLess(html.index("K29"), html.index("K18"))
+        self.assertEqual(ids["now-mode"]["text"], "YOU'RE PLAYING · LIVE")
+        now = ids["now-big"]["html"]                                     # the latest event is the hits
+        self.assertIn("SHOOTING A STRIPE RECORD", now)
+        self.assertIn("Acme &lt;b&gt;Corp&lt;/b&gt;", now)                # escaped
+        events = ids["events"]["html"]
+        self.assertEqual(events.count("HIT ×3"), 1)                      # a run of hits is one line
+        self.assertLess(events.index("HIT ×3"), events.index("K29"))     # newest first
+        self.assertLess(events.index("K29"), events.index("K18"))
+        self.assertIn("FOLLOW-UP QUEUED IN ZENDESK (DRY RUN)", events)
+        rl = ids["rooms-live"]["html"]
+        self.assertIn("12<small> / 15 cleared", rl)
+        self.assertIn("3 left, 1 urgent", rl)
+        self.assertIn("Room clear", rl)
+        self.assertIn("PII vault", rl)                                   # the mission's blocked lookup
+        self.assertTrue(ids["play"]["hidden"])
+
+    def test_claude_plays_mode(self):
+        play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "look", "args": {}}]
+        ids = self.render(play_events=play, game={"mode": "claude", "started": 0})
+        self.assertEqual(ids["now-mode"]["text"], "CLAUDE IS PLAYING · LIVE")
+        self.assertFalse(ids["play"]["hidden"])
 
     def test_live_text_while_running(self):
         running = [e for e in self.events if e["kind"] in ("question", "session", "text_delta")]
@@ -101,7 +123,7 @@ class PanelTest(unittest.TestCase):
     def test_play_feed(self):
         play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "go_to", "args": {"target": "Acme"}},
                 {"kind": "result", "id": "p1", "tool": "go_to", "text": "ok", "ms": 20}]
-        ids = self.render(play_events=play)
+        ids = self.render(play_events=play, game={"mode": "claude", "started": 0})
         self.assertFalse(ids["play"]["hidden"])
         item = ids["playfeed"]["children"][0]
         self.assertIn("Headed to <b>Acme</b>", item["html"])
@@ -110,7 +132,7 @@ class PanelTest(unittest.TestCase):
     def test_empty_state(self):
         ids = self.render(events=[], mission=None)
         self.assertEqual(ids["s-apps"]["text"], 0)
-        self.assertEqual(ids["standing"]["text"], "0 still standing, none cleared yet")
+        self.assertNotIn("in-game", ids["body"]["className"])
 
     def test_format_sql_and_parse_csv(self):
         sql = "select a, 'from x' from [S].[t] where a = 1 and (b or c) order by a"
@@ -135,7 +157,7 @@ class PanelTest(unittest.TestCase):
         """Every key the panel reads from /state.json is one connect_doom.py serves."""
         script = (ROOT / "panel/index.html").read_text()
         served = (ROOT / "connect_doom.py").read_text()
-        for key in ("events", "play_events", "mission", "kills", "kill_total", "standing"):
+        for key in ("events", "play_events", "mission", "game", "kills", "kill_total", "hits", "rooms_live"):
             self.assertIn(f"s.{key}", script)
             self.assertIn(f'"{key}":', served)
 

@@ -272,6 +272,7 @@ def cmd_poll(args):
     if "--demo" in args:
         MISSION.write_text(json.dumps(demo_mission(), indent=1))
     while True:
+        started = time.time()
         now = dt.datetime.now()
         try:
             mission = json.loads(MISSION.read_text())
@@ -284,7 +285,7 @@ def cmd_poll(args):
             print(f"{now:%H:%M:%S} poll failed: {e}", file=sys.stderr)
         if "--once" in args or "--demo" in args:
             return
-        time.sleep(interval)
+        time.sleep(max(1, interval - (time.time() - started)))  # a refresh every 15 s, not 15 s apart
 
 
 def cmd_score(_):

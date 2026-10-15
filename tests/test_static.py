@@ -40,10 +40,18 @@ class ShellTest(unittest.TestCase):
             self.assertTrue((ROOT / script).stat().st_mode & 0o111, f"{script} is not executable")
 
     def test_raid_usage_matches_readme(self):
-        """Every raid.sh mode the README shows is one raid.sh parses."""
+        """Every raid.sh mode and flag the README and CONTRIBUTING show is one raid.sh parses."""
         raid = (ROOT / "raid.sh").read_text()
-        for flag in set(re.findall(r"\./raid\.sh (--?[a-z-]+|brief)", (ROOT / "README.md").read_text())):
-            self.assertRegex(raid, rf"\n\s+(\S+\|)?{re.escape(flag)}(\|\S+)?\)", flag)
+        docs = (ROOT / "README.md").read_text() + (ROOT / "CONTRIBUTING.md").read_text()
+        words = re.findall(r"\./raid\.sh ((?:--?)?[a-z][a-z-]*)", docs) + re.findall(r"(--claude-plays)", docs)
+        self.assertIn("new", words)
+        for word in set(words):
+            self.assertRegex(raid, rf"\n\s+(\S+\|)?{re.escape(word)}(\|\S+)?\)", word)
+
+    def test_open_source_files(self):
+        self.assertIn("MIT License", (ROOT / "LICENSE").read_text())
+        for path in ("CONTRIBUTING.md", ".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/bug_report.md"):
+            self.assertTrue((ROOT / path).exists(), path)
 
     def test_setup_builds_what_raid_runs(self):
         setup, raid = (ROOT / "setup.sh").read_text(), (ROOT / "raid.sh").read_text()

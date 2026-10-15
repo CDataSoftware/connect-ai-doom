@@ -17,6 +17,26 @@ raid.sh
 - A killed record is hidden from `list`, otherwise psdoom resurrects it. `python3 connect_doom.py score` prints the kill log; `reset` brings everyone back.
 - `POLL_SECONDS` (default 15) and `MAX_PER_ROOM` (default 20) tune the refresh.
 
+## Configuration
+
+| Setting | What it does |
+|---|---|
+| `./raid.sh login` | Saves your Connect AI email (in `state/account`) and token (in the macOS Keychain, service `connect-doom`). |
+| `CONNECT_AI_USER`, `CONNECT_AI_PAT` | Override the saved account and token. |
+| `CONNECT_AI_OP_ITEM` | An `op://` path: the first run reads the token from 1Password and copies it into the Keychain. |
+| `CONNECT_AI_MCP_URL` | The MCP server (default `https://mcp.cloud.cdata.com/mcp`). |
+| `LAYOUT=off` | Keep psdoom's default window and open the panel in a browser tab, not side by side. |
+| `GEOMETRY=WxH` | The game window's size; psdoom snaps it to its own screen modes. |
+| `NO_PANEL=1` | No side panel. |
+| `PANEL_PORT` | The panel's port (default 8666). |
+| `POLL_SECONDS`, `MAX_PER_ROOM` | The refresh interval (15) and the most monsters per room (20). |
+| `BRIEF_MODEL`, `PLAY_MODEL`, `PLAY_MAX_TURNS` | The Claude model for the briefing and for Claude plays (sonnet), and Claude plays' turn limit (60). |
+| `QUESTION` | The default question for `./raid.sh new`. |
+
+The old mode names still work: `--again` (replay), `--demo` (offline) and `brief` (brief-only).
+
+**For the full show, an account needs** a few connections, at least one read-only and one writable (blue and yellow doors), and a Data Security rule for US Social Security numbers (the red door). The demo was built on `te_us@cdata.com`, whose data is synthetic.
+
 ## Files
 
 - `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once.

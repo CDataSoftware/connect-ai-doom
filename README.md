@@ -1,77 +1,109 @@
 # Connect AI × DOOM
 
-You ask Claude a business question. Claude answers it through the Connect AI MCP server, and a Doom level is built from what Connect AI let it reach. Each app becomes a room, each record a monster, each permission a keycard door, and each blocked request a locked vault.
+[![test](https://github.com/JoeKarlsson/connect-doom/actions/workflows/test.yml/badge.svg)](https://github.com/JoeKarlsson/connect-doom/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-## Run
+**But can it run Connect AI?** Ask Claude a business question, and Claude answers it through the [CData Connect AI](https://www.cdata.com/ai/) MCP server. A Doom level is built from what it finds, and every monster in it is a live record from your apps.
 
-You need a Mac with [Homebrew](https://brew.sh), Claude Code signed in (the `claude` CLI), and a Connect AI account with a few connections and a personal access token. Google Chrome is optional; it gives the panel its own window.
+![Claude playing a level built from live Salesforce data, with the side panel showing each Connect AI read](assets/demo.gif)
+
+- **Each room is a data source**: Salesforce, Zendesk, Stripe, whatever answers the question.
+- **Each monster is a record** from that source. Aim at one to see it. Pink demons are urgent.
+- **Keycards are your permissions**: blue for read-only apps, yellow for read + write.
+- **The red door is data Connect AI blocked**, like a lookup by Social Security number. There is no key.
+
+Play it yourself, or let Claude play while a side panel shows every step it takes through Connect AI.
+
+## Install
+
+You need a Mac (Apple Silicon or Intel) and about 10 minutes.
+
+1. **[Homebrew](https://brew.sh)**, if you don't have it. Its installer also sets up Xcode's command line tools (git, a C compiler).
+
+2. **[Claude Code](https://code.claude.com/docs/en/setup)**. Install it, then run `claude` once and sign in.
+
+3. **A Connect AI account** with a few connections (a CRM, a support desk, billing) and a personal access token: in Connect AI, open Settings (the gear icon) → *Personal Access Tokens* → *Create PAT*, and copy the token. It's shown only once.
+
+4. **Clone and build.** `setup.sh` installs SDL 1.2 with Homebrew, builds the game ([psdoom-ng](https://github.com/keymon/psdoom-ng)) and a map builder from source, and downloads [Freedoom](https://freedoom.github.io/) for the game's art. It takes about five minutes.
+
+   ```bash
+   git clone https://github.com/JoeKarlsson/connect-doom.git
+   cd connect-doom
+   ./setup.sh
+   ./raid.sh offline        # check the build: made-up data, no account needed
+   ```
+
+5. **Log in**, once. Your email and token go into the macOS Keychain.
+
+   ```bash
+   ./raid.sh login
+   ```
+
+## Play
 
 ```bash
-./setup.sh                        # one time: SDL 1.2 libs, psdoom-ng, zdbsp, Freedoom
-./raid.sh login                   # one time: your Connect AI email and token, kept in the Keychain
-./raid.sh new                     # Claude asks Connect AI the default question (about a minute), then you play
+./raid.sh new                       # Claude briefs on your data (about a minute), then you play
 ./raid.sh new -q "Which vendors are we late paying?"
-./raid.sh replay                  # play the last level again, without a new Claude run
-./raid.sh offline                 # made-up data, no network
-./raid.sh brief-only              # only Claude's run, no game (for rehearsing)
-./raid.sh replay --claude-plays   # Claude plays instead of you; works with any mode
+./raid.sh replay                    # play the last level again, no new Claude run
+./raid.sh replay --claude-plays     # watch Claude play it
 ```
 
-`new` and `replay` have the same two parts: Claude's briefing builds the level (`new` runs one, `replay` reuses the last), then the game keeps it live (monsters refresh from Connect AI every 15 seconds, each kill reads its record again, and the red door asks Connect AI again). `offline` skips Connect AI entirely, and `brief-only` skips the game. The old names still work: `--again`, `--demo` and `brief`.
+| Mode | Claude briefing | Game |
+|---|---|---|
+| `new` | runs one (about $0.30 of Claude usage) | yes |
+| `replay` | reuses the last | yes |
+| `offline` | none, made-up data | yes |
+| `brief-only` | runs one | no |
 
-The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, `NO_PANEL=1` skips it, and `GEOMETRY=1280x800` sets the game's size.
+The game opens on the left of your screen and the panel on the right, sized for a screen recording. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
 
-**Controls:** WASD to move, the mouse to turn, left click or Space to fire, E or right click to open doors, Shift to run, P to pause, Esc for the menu. Aim at a monster to see its record (app, name, detail) above the status bar. Clear all the rooms, then try the red door.
+**At a booth**, run `new` once before the doors open, then `replay` for each player. Every game starts with all the records back. If the Wi-Fi drops, use `offline`.
 
-**At a booth:** run one live briefing before the doors open, then `./raid.sh replay` for each player: every game starts with all the records back, and no new Claude run is needed. If the network drops, `./raid.sh offline` plays with made-up data.
+## How it works
 
-The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
-
-## How the MCP server drives the game
-
-Connect AI is involved at four points: Claude's briefing, the monster refresh during play, a live read on every kill, and the red door.
+Doom never talks to Connect AI directly. Two programs do: Claude Code, before the game, and a small bridge, during it. Both use the Connect AI MCP server with its read-only tools only, so nothing in your apps is ever changed.
 
 ```
-                  Connect AI MCP server (read-only tools)
-                 ▲              ▲                     ▲
-   1. briefing   │   2. every   │ 15 s     3. each    │ kill
-                 │              │                     │
-  brief.py ── claude -p    connect_doom.py poll    connect_doom.py lookup
-        │                       │                     │
-  state/mission.json       state/cache.json      state/lookups.jsonl
-        │                       │                     │
-  level builders ──> WAD   psdoom ── list/kill/hit ──>│
-                                │                     │
-                         side panel at localhost:8666 reads it all
+ Connect AI MCP server  (https://mcp.cloud.cdata.com/mcp, read-only tools)
+       ▲                                  ▲
+       │ 1. Claude explores and           │ 2. the bridge re-runs queries
+       │    writes the queries            │    while you play
+       │                                  │
+ brief.py → claude -p              connect_doom.py ◄──── psdoom (Doom)
+       │                                  │         list / kill / hit / red door
+       ▼                                  ▼
+ state/mission.json ──► level      state/*.json ──► side panel (localhost:8666)
 ```
 
-**1. The briefing builds the level.** `brief.py` runs Claude Code headless (`claude -p`) with one MCP server: Connect AI, limited to its read-only tools. Claude explores the catalogs and tables it needs, answers the question, and returns a level plan: up to three apps, each with one SELECT that returns the columns `Id`, `Label`, `Detail` and `Hot`. That column contract is what lets any connector become a room. Then `brief.py` turns what Connect AI reported into the level:
+**1. The briefing builds the level.** `brief.py` runs Claude Code headless (`claude -p`) with one MCP server, Connect AI, limited to its read-only tools: `get_catalogs`, `get_schemas`, `get_tables`, `get_columns`, `get_instructions` and `queryData`. Claude finds the three apps that answer the question and writes one SQL query for each, returning the same four columns: `Id`, `Label`, `Detail`, `Hot`. That contract is why any connector can become a room. The rest comes from Connect AI, not from Claude:
 
-- **Rooms and monsters.** Each query's rows are the room's monsters. `Label` is the name tag, and rows with `Hot = 1` are pink demons.
-- **Keycard doors.** Connect AI reports this user's permissions on each connection. An app with Insert or Update gets a yellow door, a read-only app a blue door. The colors reflect real permissions, but they are only a picture of them: picking up a key in the game changes no access anywhere.
-- **The PII vault.** Every call that Connect AI's Data Security refused becomes a vault behind a red door with no red key. Using the door shows the actual refusal, for example `CONNECT AI: PII DETECTED IN INBOUND QUERY`, and sends the request again (see 4).
+- **Rooms and monsters** come from the rows each query returns.
+- **Door colors** come from Connect AI's permissions for your account on each connection.
+- **The vault** comes from requests Connect AI's Data Security refused during the run.
 
-Claude's own words are used only for the room titles and the answer. Rooms come from the queries it ran, doors from Connect AI's permissions, and the vault from the tool results. `tools/make_arena.py`, `make_branding.py` and `make_deh.py` turn the plan into the map, the signs and the keycard messages.
+**2. The bridge keeps it live.** psdoom-ng is a Doom port that turns processes into monsters. Here it asks `connect_doom.py` instead of `ps`, so monsters are records. The bridge talks to the MCP server with a small JSON-RPC client (`connect_ai_mcp.py`) and calls `queryData` three ways:
 
-**2. Monsters stay live.** psdoom-ng is a Doom port that spawns a monster per process. Here it calls `connect_doom.py` instead of `ps`: `list` for the monsters, `kill` when one dies, `hit` when one is shot. These calls run inside the game loop, so they only read local files. `connect_doom.py poll` keeps those files fresh by re-running each room's query through the MCP server every 15 seconds. `connect_ai_mcp.py` is the small MCP client it uses.
+- **Every 15 seconds**, it re-runs each room's query, so the monsters always match your data.
+- **On a kill**, it reads that one record again and shows the result on the panel.
+- **At the red door**, it re-sends the blocked request, and Connect AI refuses it again, live.
 
-**3. Each kill reads the record again.** A kill writes nothing back to your apps. It logs the kill and starts a background `lookup` that reads that one record live through Connect AI, using the room's own query. The game doesn't wait for it. The panel shows what came back and how long the round trip took. In the game, the kill message counts down what's left in the room.
+Doom's game loop can't wait on the network, so these calls run in the background and the game only reads local files.
 
-**4. The red door asks again.** Trying the red door runs `connect_doom.py vault` in the background: it sends the exact request Connect AI blocked during the briefing (the SSN lookup) again, live. The panel shows Connect AI refusing it again, with the request and the round trip, so the governance isn't a recording.
+**3. Claude can play, too.** With `--claude-plays`, `play.py` gives Claude a second MCP server next to Connect AI: Doom itself, with the tools `look`, `go_to` and `attack`. Claude reads the records it's about to fight and narrates why each one matters.
 
-**The side panel** shows Claude's steps through the MCP server as they happen during the briefing, with blocked calls in red. While a game is running it switches to a game view: the latest kill, hit or red-door try; each room's progress and when Connect AI last refreshed it; and the event feed with each live read.
+More detail: [docs/internals.md](docs/internals.md).
 
-## Claude plays
+## Troubleshooting
 
-`--claude-plays` hands the marine to Claude (`./raid.sh replay --claude-plays`). It gets a second MCP server, `play.py mcp`, with the tools `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, clears the rooms room by room, narrates each kill, and tries the vault once. Its steps stream into the panel.
+- **"The game isn't built yet"**: run `./setup.sh`. Its log is in `vendor/build.log`.
+- **"No Connect AI token"**: run `./raid.sh login`.
+- **Empty rooms**: your connections returned no rows for that question. Try `./raid.sh new -q "..."` with a question about data you have.
+- **The panel is a browser tab, not a window**: the side-by-side layout needs Google Chrome. Everything else works without it.
 
-## Account
+## Contributing
 
-`./raid.sh login` saves an account's email (in `state/account`) and token (in the macOS Keychain, service `connect-doom`); `CONNECT_AI_USER` and `CONNECT_AI_PAT` in the environment override both. If you keep the token in 1Password, set `CONNECT_AI_OP_ITEM` to its `op://` path and the first run copies it into the Keychain.
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get set up; the tests run offline, with no account or game build needed.
 
-The demo was built on `te_us@cdata.com`, whose data is synthetic. Any account works; for the full show it needs a few connections, at least one read-only and one writable (blue and yellow doors), and a Data Security rule for US Social Security numbers (the red door).
+## License
 
-## More
-
-- [docs/internals.md](docs/internals.md): files, the psdoom patch, the agent channel, Doom limits
-- [docs/testing.md](docs/testing.md): the offline test suite
+MIT, see [LICENSE](LICENSE). The game itself is [psdoom-ng](https://github.com/keymon/psdoom-ng) (GPL-2.0), downloaded and built by `setup.sh`; `patches/psdoom-ng-connect-doom.patch` modifies it and is GPL-2.0 too. Game art is from [Freedoom](https://freedoom.github.io/) (BSD). Connect AI and CData logos are trademarks of CData Software, Inc.

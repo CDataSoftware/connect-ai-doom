@@ -1,0 +1,76 @@
+diff --git i/trunk/src/d_main.c w/trunk/src/d_main.c
+index 125d27b..f7e7a8d 100644
+--- i/trunk/src/d_main.c
++++ w/trunk/src/d_main.c
+@@ -1239,6 +1239,10 @@ void D_DoomMain (void)
+     p = M_CheckParm ("-nopslev");
+     if (p)
+     {
++// connect-doom: gamemode isn't identified yet at this point (always
++// indetermined with Freedoom), so -nopslev means "the -file map has the
++// three 1024x1024 spawn arenas" unconditionally.
++		ps_level_loaded = true;
+ // Add psdoom1.wad if this is registered (Doom 1) or retail (Ultimite Doom).
+ // If we loaded it, set the flag to true so we can place the monsters in the
+ // correct positions.
+diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
+index fa4fe83..db10741 100644
+--- i/trunk/src/pr_process.c
++++ w/trunk/src/pr_process.c
+@@ -6,6 +6,7 @@
+ // Copyright (C) 2000 by David Koppenhofer
+ 
+ #include <stdlib.h>
++#include <string.h>
+ #include <math.h>
+ #include <unistd.h>
+ 
+@@ -872,7 +873,21 @@ void pr_kill(int pid) {
+     cmd = "kill -9";
+   }
+   sprintf(buf, "%s %d", cmd, pid);
+-  system(buf);
++  // connect-doom: the kill command's first line of output becomes the
++  // on-screen message ("CHASED CONTINENTAL OIL & GAS $250,000").
++  {
++    static char message[80];
++    FILE *f = popen(buf, "r");
++    if (f) {
++      if (fgets(message, sizeof(message), f)) {
++        message[strcspn(message, "\n")] = '\0';
++        if (message[0]) {
++          players[consoleplayer].message = message;
++        }
++      }
++      pclose(f);
++    }
++  }
+ }
+ 
+ // pr_renice
+diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
+index e60ec34..fb441a9 100644
+--- i/trunk/src/r_things.c
++++ w/trunk/src/r_things.c
+@@ -520,16 +520,12 @@ R_DrawVisSprite
+        vis->x1>SCREENWIDTH/8 && vis->x2<SCREENWIDTH*7/8 &&
+        drawing_occurred ) {
+ 
+-       char buf[16];
+-       sprintf(buf, "%d", vis->m_pid);
+-
+-// Change y-placement of text to the top of the current sprite.
+-// Make sure the pid text doesn't extend onto the status bar.
+-       if ( lowest_dc_yl + 13 > viewheight ){
+-          lowest_dc_yl = viewheight - 13;
++// connect-doom: show only the record's short name, not the internal id.
++// Make sure the text doesn't extend onto the status bar.
++       if ( lowest_dc_yl + 7 > viewheight ){
++          lowest_dc_yl = viewheight - 7;
+        }
+-       M_WriteText(vis->x1, lowest_dc_yl, buf);
+-       M_WriteText(vis->x1, lowest_dc_yl + 6, vis->m_pname);
++       M_WriteText(vis->x1, lowest_dc_yl, vis->m_pname);
+     }
+ // *** PID END ***
+ }

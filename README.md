@@ -16,6 +16,19 @@ python3 connect_doom.py reset   # bring everyone back
 
 Monsters appear in the three arenas north of the lobby a few seconds after the level starts (psdoom polls every 256 tics).
 
+## What the enemies are
+
+Every monster is one open Salesforce deal from Connect AI (the 40 biggest by amount):
+
+| In game | In Salesforce |
+|---|---|
+| Pink demon | Deal past its close date (slipped) |
+| Shotgun soldier | Deal still on track |
+| Tag over its head, e.g. `COG250k` | Account initials + amount (Continental Oil & Gas, $250k) |
+| Killing it | Logs the deal as chased; the top of the screen shows `CHASED CONTINENTAL OIL & GAS $250,000` |
+
+Nothing in Salesforce changes. `python3 connect_doom.py score` lists what you've chased; `reset` brings them back.
+
 ## How it works
 
 ```
@@ -26,13 +39,13 @@ psdoom-ng ── list ──> connect_doom.py ── reads ──> state/cache.j
 - psdoom calls the hooks synchronously in the game loop, so `list`/`kill` only touch local files (~40 ms). The background `poll` does the network.
 - Source data is never modified. A killed record is hidden from `list`, otherwise psdoom resurrects it like an Arch-vile.
 - `SANDBOX=1` also inserts each kill into `SANDBOX_TABLE` through Connect AI. Untested: the dev edition account has no scratch table to write to yet, so leave it off.
-- Credentials: `CONNECT_AI_USER` + `CONNECT_AI_PAT`, or the 1Password item `op://Personal/Connect AI Dev Edition PAT` (override with `CONNECT_AI_OP_ITEM`). `raid.sh` reads it once and passes it to the poller.
+- Credentials: `CONNECT_AI_USER` + `CONNECT_AI_PAT`, else the macOS Keychain (service `connect-doom`), else the 1Password item `op://Personal/Connect AI Dev Edition PAT` once, which `raid.sh` then copies into the Keychain. The 1Password CLI re-prompts per terminal window and after 10 idle minutes; the Keychain doesn't.
 - Swap the data with `SOURCE_QUERY` (any SELECT returning `Id`, `Label`, `Amount` in dollars, `DueDate`), `MAX_MONSTERS`, `DEMON_DAYS`. The default reads `Salesforce1` Opportunity joined to Account.
 
 ## Pieces
 
 - `tools/make_arena.py`: writes the MAP01 arena (three 1024x1024 rooms at x = 0, 2048, 4096, the layout psdoom's `-nopslev` mode spawns into) plus a lobby with weapons; `zdbsp` builds the nodes.
-- `patches/psdoom-ng-nopslev-arena.patch`: makes `-nopslev` set arena mode unconditionally; upstream checks the game mode before Freedoom is identified, so monsters landed in the void.
-- `tools/make_branding.py`: light Connect AI branding from the CData brand kit, as `wads/brand.wad`: a sign (logo on a Depth plate) in a lit alcove on each arena's far wall, and the Connect AI logo in place of DOOM on the Esc menu. `setup.sh` builds it when `~/Documents/dev/cdata/BRANDKIT.zip` exists (override with `BRANDKIT_ZIP`); the logos stay out of git. Without the kit the walls are plain.
+- `patches/psdoom-ng-connect-doom.patch`: `-nopslev` always means arena mode (upstream checks the game mode before Freedoom is identified, so monsters landed in the void); name tags show only the short name, not the internal id; the kill command's first output line becomes the on-screen message.
+- `tools/make_branding.py`: Connect AI branding from the CData brand kit, as `wads/brand.wad`: walls recolored to the brand grays with an Agility yellow trim, a sign (logo on a Depth plate) in a lit alcove on each arena's far wall, and the Connect AI logo in place of DOOM on the Esc menu. `setup.sh` builds it when `~/Documents/dev/cdata/BRANDKIT.zip` exists (override with `BRANDKIT_ZIP`); the logos stay out of git. Without the kit the walls are plain.
 - Vanilla limits that shaped the sign: wall textures tile every 128px vertically (hence the 128-tall alcove), and multi-patch textures cap at 64 KB (hence one baked patch).
 - psdoom ignores SIGTERM; close the window or `pkill -9 -f trunk/src/psdoom`. On macOS a crash shows a system alert that outlives the game; click OK.

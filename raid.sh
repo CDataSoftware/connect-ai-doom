@@ -14,10 +14,19 @@ if [[ "${1:-}" == "--demo" ]]; then
   shift
   python3 "$BRIDGE" poll --demo
 else
-  # Read the 1Password item once (it may prompt) instead of once per poll process.
-  OP_ITEM="${CONNECT_AI_OP_ITEM:-op://Personal/Connect AI Dev Edition PAT}"
-  : "${CONNECT_AI_USER:=$(op --account my.1password.com read "$OP_ITEM/username")}"
-  : "${CONNECT_AI_PAT:=$(op --account my.1password.com read "$OP_ITEM/credential")}"
+  # Token lookup: env, then the macOS Keychain (no prompt), then 1Password once.
+  # The 1Password CLI re-asks per terminal window and after 10 idle minutes, so
+  # the first 1Password read is copied into the Keychain for every later launch.
+  : "${CONNECT_AI_USER:=te_dev_edition@clouddataos.com}"
+  if [[ -z "${CONNECT_AI_PAT:-}" ]]; then
+    CONNECT_AI_PAT=$(security find-generic-password -s connect-doom -a "$CONNECT_AI_USER" -w 2>/dev/null || true)
+  fi
+  if [[ -z "$CONNECT_AI_PAT" ]]; then
+    OP_ITEM="${CONNECT_AI_OP_ITEM:-op://Personal/Connect AI Dev Edition PAT}"
+    CONNECT_AI_PAT=$(op --account my.1password.com read "$OP_ITEM/credential")
+    security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
+      -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
+  fi
   export CONNECT_AI_USER CONNECT_AI_PAT
   python3 "$BRIDGE" poll --once
   python3 "$BRIDGE" poll 2>>state/poll.log &

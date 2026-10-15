@@ -199,6 +199,8 @@ def cmd_kill(args):
     append(KILLS, record)
     d = m["overdue_days"]
     when = f"slipped {d}d" if d > 0 else f"closes in {-d}d"
+    # stdout's first line is shown in-game (patched pr_kill); Doom's font is upper case.
+    print(f"CHASED {m['customer']} ${m['dollars']:,}"[:79].upper(), flush=True)
     print(f"\n  KILL  {m['customer']}  ${m['dollars']:,}  ({when})  "
           f"{m['id']}  [{record['mode']}]\n", file=sys.stderr)
     if record["mode"] == "sandbox":

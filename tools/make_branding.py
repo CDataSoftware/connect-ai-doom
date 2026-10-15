@@ -5,6 +5,9 @@
            Connect AI sign (logo on a Depth plate) baked in, for the 128-tall
            alcove in each arena's far wall (vanilla tiles walls every 128px).
            One patch, not a composite: vanilla caps composites at 64 KB.
+  CAIWALL  128x128: TEKWALL4 recolored into the brand grays (Depth up to
+           Gray 5) with a thin Agility yellow trim on the bottom rows. On the
+           256-tall arena walls it tiles twice: trim at the floor and mid-wall.
   M_DOOM   the menu logo becomes the Connect AI logo.
 
 Usage: make_branding.py <freedoom2.wad> <brand kit dir> <out.wad>
@@ -17,6 +20,9 @@ from pathlib import Path
 from PIL import Image
 
 DEPTH = (21, 21, 28)          # brand Depth #15151C
+AGILITY = (255, 229, 0)       # brand Agility #FFE500
+GRAY_LO, GRAY_HI = 24, 140    # brand Gray 11 (Depth) .. Gray 5, as plain gray levels
+TRIM_ROWS = 4  # thinner breaks into dashes at a distance
 LOGO = "02 Logos/Product Logos/Connect AI/PNG/connect-ai-agility-clarity.png"  # for dark backgrounds
 
 
@@ -107,12 +113,22 @@ def build(iwad, kit, out):
     pal = lumps["PLAYPAL"][:768]
     palette = [tuple(pal[3 * i:3 * i + 3]) for i in range(256)]
 
-    # The sign: TEKWALL4's patch tiled to 256x128, the plate centered on it.
+    # The wall: TEKWALL4's patch in brand grays, yellow trim at the bottom.
     tw, th, wall_px = patch_pixels(lumps["W94_1"])
+    lum = {k: sum(c * w for c, w in zip(palette[v], (0.299, 0.587, 0.114))) for k, v in wall_px.items()}
+    lo, hi = min(lum.values()), max(lum.values())
+    wall = Image.new("RGBA", (tw, th))
+    for (x, y), l in lum.items():
+        g = round(GRAY_LO + (l - lo) / (hi - lo) * (GRAY_HI - GRAY_LO))
+        wall.putpixel((x, y), (g, g, g, 255))
+    for y in range(th - TRIM_ROWS, th):
+        for x in range(tw):
+            wall.putpixel((x, y), AGILITY + (255,))
+
+    # The sign: the branded wall tiled to 256x128, the plate centered on it.
     sign = Image.new("RGBA", (256, 128))
-    for x in range(256):
-        for y in range(128):
-            sign.putpixel((x, y), palette[wall_px[(x % tw, y % th)]] + (255,))
+    for x in range(0, 256, tw):
+        sign.paste(wall, (x, 0))
     plate = sign_image(kit)
     sign.alpha_composite(plate, ((256 - plate.width) // 2, (128 - plate.height) // 2))
 
@@ -120,7 +136,7 @@ def build(iwad, kit, out):
     pn = lumps["PNAMES"]
     count = struct.unpack("<i", pn[:4])[0]
     names = [pn[4 + 8 * i:12 + 8 * i].rstrip(b"\0").decode().upper() for i in range(count)]
-    names.append("CAILOGO")
+    names += ["CAILOGO", "CAIWALLP"]
     pnames = struct.pack("<i", len(names)) + b"".join(name8(n) for n in names)
 
     # TEXTURE1: a PWAD's TEXTURE1 replaces the IWAD's, so copy every entry, then append ours.
@@ -128,9 +144,9 @@ def build(iwad, kit, out):
     tcount = struct.unpack("<i", tb[:4])[0]
     offs = list(struct.unpack(f"<{tcount}i", tb[4:4 + 4 * tcount]))
     entries = [tb[o:offs[i + 1]] if i + 1 < tcount else tb[o:] for i, o in enumerate(offs)]
-    caisign = (name8("CAISIGN") + struct.pack("<ihhih", 0, 256, 128, 0, 1)
-               + struct.pack("<hhhhh", 0, 0, len(names) - 1, 0, 0))
-    entries.append(caisign)
+    for tex, (w, h), patch in (("CAISIGN", sign.size, "CAILOGO"), ("CAIWALL", wall.size, "CAIWALLP")):
+        entries.append(name8(tex) + struct.pack("<ihhih", 0, w, h, 0, 1)
+                       + struct.pack("<hhhhh", 0, 0, names.index(patch), 0, 0))
     head = 4 + 4 * len(entries)
     table, pos = [], head
     for e in entries:
@@ -143,6 +159,7 @@ def build(iwad, kit, out):
         ("PNAMES", pnames),
         ("TEXTURE1", texture1),
         ("CAILOGO", to_patch(sign, palette)),
+        ("CAIWALLP", to_patch(wall, palette)),
         # menu draws M_DOOM at (94, 2) minus offsets; these center it.
         ("M_DOOM", to_patch(menu, palette, left=94 - (320 - menu.width) // 2, top=-4)),
     ]

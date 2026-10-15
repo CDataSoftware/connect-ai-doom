@@ -188,11 +188,29 @@
   .legend .note .badge { display: inline-block; vertical-align: middle; margin: 0 2px; }
   .keycard .keyimg { float: right; height: 34px; image-rendering: pixelated; margin-left: 8px; }
   .keycard .roomno { font: 7px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
+  /* logos and footer */
+  .brandline .logo img { height: 24px; display: block; }
+  .brandline:has(.logo img) { font-size: 13px; gap: 10px; }
+  .brandline { align-items: center; }
+  footer { margin-top: 10px; background: linear-gradient(180deg, var(--depth), #0B0B10); }
+  footer .hazard { height: 8px; background: repeating-linear-gradient(-45deg, var(--agility) 0 10px, var(--depth) 10px 20px); }
+  footer .foot { padding: 18px 16px 26px; display: grid; gap: 12px; max-width: 760px; }
+  footer .logo img { height: 26px; display: block; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  footer nav a { color: var(--clarity); text-decoration: none; font-size: 14px; border-bottom: 1px solid transparent; }
+  footer nav a:hover { color: var(--agility); border-bottom-color: var(--agility); }
+  footer nav a.cta { font: 8px/1 var(--pixel); color: var(--depth); background: var(--agility); padding: 9px 10px; border-radius: 2px;
+                     box-shadow: 0 3px 0 #9E8E00; border: 0; letter-spacing: .5px; }
+  footer nav a.cta:hover { color: var(--depth); filter: brightness(1.08); }
+  footer .fine { font-size: 12px; color: var(--balance); }
 </style>
 </head>
 <body>
 <header>
-  <div class="brandline"><span class="cai">CDATA CONNECT AI</span><span class="x">X</span><span>DOOM</span></div>
+  <div class="brandline">
+    <a class="logo" href="https://www.cdata.com/ai/" target="_blank" rel="noopener"><img src="brand/connect-ai.svg" alt="CData Connect AI"
+       onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CDATA CONNECT AI'}))"></a>
+    <span class="x">X</span><span>DOOM</span></div>
   <h1>ACCESS <span>GRANTED</span></h1>
   <div class="sub">Claude, working through the Connect AI MCP server. Every step below is a live call. Click one to see what happened.</div>
 </header>
@@ -235,6 +253,22 @@
   <section id="play" hidden><h2>CLAUDE PLAYS</h2><div class="feed" id="playfeed"></div></section>
   <section><h2>IN THE GAME</h2><div class="meta" id="standing"></div><div id="kills"></div></section>
 </main>
+<footer>
+  <div class="hazard"></div>
+  <div class="foot">
+    <a class="logo" href="https://www.cdata.com/" target="_blank" rel="noopener"><img src="brand/cdata.svg" alt="CData"
+       onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CDATA'}))"></a>
+    <nav>
+      <a href="https://www.cdata.com/ai/" target="_blank" rel="noopener">Connect AI</a>
+      <a href="https://www.cdata.com/ai/mcp/" target="_blank" rel="noopener">MCP server</a>
+      <a href="https://www.cdata.com/ai/connectors/" target="_blank" rel="noopener">Connectors</a>
+      <a href="https://docs.cloud.cdata.com/" target="_blank" rel="noopener">Docs</a>
+      <a href="https://www.cdata.com/" target="_blank" rel="noopener">CData</a>
+      <a class="cta" href="https://www.cdata.com/ai/signup/" target="_blank" rel="noopener">TRY CONNECT AI FREE</a>
+    </nav>
+    <div class="fine">Every monster is a live record read through the Connect AI MCP server. Game: psdoom-ng with Freedoom assets.</div>
+  </div>
+</footer>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));

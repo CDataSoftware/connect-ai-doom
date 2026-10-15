@@ -4,3 +4,4 @@ state/
 __pycache__/
 brand/
 panel/sprites/
+panel/brand/

@@ -1,4 +1,4 @@
-# connect-doom: Access Granted
+# Connect AI × DOOM
 
 A Connect AI MCP server demo in Doom. You ask Claude a business question. Claude answers it by working through the Connect AI MCP server, and the Doom level is built from what Connect AI let it reach:
 

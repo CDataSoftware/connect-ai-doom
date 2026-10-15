@@ -1,5 +1,5 @@
 #!/bin/bash
-# Access Granted: Claude scouts your data through the Connect AI MCP server, and
+# Connect AI × DOOM: Claude scouts your data through the Connect AI MCP server, and
 # the Doom level is built from what Connect AI let it reach.
 #   ./raid.sh                     brief Claude with the default question, then play
 #   ./raid.sh -q "<question>"     brief Claude with your own question

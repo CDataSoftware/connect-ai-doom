@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Access Granted</title>
+<title>Connect AI × DOOM</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="favicon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -37,15 +40,14 @@
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
     background: repeating-linear-gradient(-45deg, var(--agility) 0 12px, var(--depth) 12px 24px);
   }
-  .brandline { font: 8px/1 var(--pixel); letter-spacing: 1px; color: var(--balance); display: flex; gap: 8px; align-items: center; }
-  .brandline .x { color: var(--doom-red); }
-  .brandline .cai { color: var(--agility); }
-  h1 {
-    margin: 10px 0 6px; font: 26px/1.05 var(--pixel); letter-spacing: 1px;
-    color: var(--doom-red);
-    text-shadow: 0 3px 0 var(--doom-red-dim), 0 6px 0 #000, 0 0 18px rgba(232,41,11,.35);
-  }
-  h1 span { color: var(--agility); text-shadow: 0 3px 0 #8A7C00, 0 6px 0 #000, 0 0 18px rgba(255,229,0,.25); }
+  /* the title: the Connect AI logo x DOOM in Doom's red block letters */
+  h1 { margin: 4px 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font: 30px/1 var(--pixel); }
+  h1 .logo img { height: 46px; display: block; }
+  h1 .cai { color: var(--agility); text-shadow: 0 3px 0 #8A7C00, 0 6px 0 #000; }
+  h1 .x { color: var(--balance); font: 30px/1 var(--mono); }
+  h1 .doom { color: var(--doom-red); letter-spacing: 2px;
+             text-shadow: 0 3px 0 var(--doom-red-dim), 0 6px 0 #000, 0 0 18px rgba(232,41,11,.35); }
+  @media (max-width: 420px) { h1 { font-size: 22px; } h1 .logo img { height: 34px; } }
   .sub { color: var(--balance); font-size: 13px; padding-bottom: 8px; }
 
   /* ---------- Doom status bar ---------- */
@@ -187,9 +189,6 @@
   .keycard .keyimg { float: right; height: 34px; image-rendering: pixelated; margin-left: 8px; }
   .keycard .roomno { font: 7px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
   /* logos and footer */
-  .brandline .logo img { height: 24px; display: block; }
-  .brandline:has(.logo img) { font-size: 13px; gap: 10px; }
-  .brandline { align-items: center; }
   footer { margin-top: 10px; background: linear-gradient(180deg, var(--depth), #0B0B10); }
   footer .hazard { height: 8px; background: repeating-linear-gradient(-45deg, var(--agility) 0 10px, var(--depth) 10px 20px); }
   footer .foot { padding: 18px 16px 26px; display: grid; gap: 12px; max-width: 760px; }
@@ -212,11 +211,11 @@
 </head>
 <body>
 <header>
-  <div class="brandline">
-    <a class="logo" href="https://www.cdata.com/ai/" target="_blank" rel="noopener"><img src="brand/connect-ai.svg" alt="CData Connect AI"
-       onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CDATA CONNECT AI'}))"></a>
-    <span class="x">X</span><span>DOOM</span></div>
-  <h1>ACCESS <span>GRANTED</span></h1>
+  <h1>
+    <a class="logo" href="https://www.cdata.com/ai/" target="_blank" rel="noopener"><img src="brand/connect-ai.svg" alt="Connect AI"
+       onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CONNECT AI'}))"></a>
+    <span class="x">×</span><span class="doom">DOOM</span>
+  </h1>
   <div class="sub">Claude answers a business question through the Connect AI MCP server, and Doom turns the answer into a level you can play.</div>
   <ol class="how">
     <li><b>Ask</b>Someone asks Claude a question about the business.</li>

@@ -51,12 +51,46 @@ PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
 trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json' EXIT
 PANEL_PORT=${PANEL_PORT:-8666}
+PANEL_URL="http://localhost:$PANEL_PORT"
+
+# Side by side for screen recording: Doom on the left, the panel in its own Chrome
+# window on the right. LAYOUT=off keeps psdoom's 1280x800 and opens a browser tab;
+# GEOMETRY=WxH sets the game's size. The game window can be resized either way.
+GEOMETRY=${GEOMETRY:-1280x800}
+SIDE=""
+if [[ "${LAYOUT:-side}" == side ]] && [[ -z "${NO_PANEL:-}" ]] && [[ -d "${CHROME_APP:-/Applications/Google Chrome.app}" ]]; then
+  # The main screen's usable area: left, top (below the menu bar), width, height.
+  SIDE=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var s = $.NSScreen.mainScreen;
+    var f = s.frame, v = s.visibleFrame;
+    [v.origin.x, f.size.height - v.origin.y - v.size.height, v.size.width, v.size.height].map(Math.round).join(" ")' \
+    2>/dev/null || true)
+fi
+if [[ -n "$SIDE" ]]; then
+  read -r SX SY SW SH <<<"$SIDE"
+  PANEL_W=480
+  GW=$((SW - PANEL_W)) GH=$(((SW - PANEL_W) * 10 / 16))
+  if ((GH > SH - 28)); then GH=$((SH - 28)) GW=$(((SH - 28) * 16 / 10)); fi   # 28: the title bar
+  [[ "$GEOMETRY" == 1280x800 ]] && GEOMETRY="${GW}x${GH}"
+  export SDL_VIDEO_WINDOW_POS="$SX,$SY"
+fi
+
+open_panel() {
+  if [[ -n "$SIDE" ]] && osascript -e "tell application \"Google Chrome\"
+      set w to make new window
+      set bounds of w to {$((SX + SW - PANEL_W)), $SY, $((SX + SW)), $((SY + SH))}
+      set URL of active tab of w to \"$PANEL_URL\"
+    end tell" >/dev/null 2>&1; then
+    return
+  fi
+  open "$PANEL_URL"
+}
+
 if [[ "${NO_PANEL:-}" != 1 ]]; then
   [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites brand/BRANDKIT
   python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
   PIDS+=($!)
   /bin/sleep 0.5
-  open "http://localhost:$PANEL_PORT"
+  open_panel
 fi
 
 case "$MODE" in
@@ -79,6 +113,7 @@ if [[ "$MODE" != demo ]]; then
 fi
 
 export PSDOOMPSCMD="python3 $BRIDGE list"
+export PSDOOM_LABELS="$PWD/state/labels.tsv"  # the record under the crosshair, written by the bridge
 export PSDOOMKILLCMD="python3 $BRIDGE kill"
 export PSDOOMRENICECMD="python3 $BRIDGE hit"
 
@@ -97,7 +132,7 @@ printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user
 "$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
-  -nopslev -psallusers -warp 1 -skill 3 -window -geometry 1280x800 "$@" \
+  -nopslev -psallusers -warp 1 -skill 3 -window -geometry "$GEOMETRY" "$@" \
   >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
 
 python3 "$BRIDGE" score

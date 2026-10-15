@@ -36,8 +36,44 @@ index e630741..646e07f 100644
      // low-res turning
  
      if (lowres_turn)
+diff --git i/trunk/src/hu_stuff.c w/trunk/src/hu_stuff.c
+index afe3974..d987c9a 100644
+--- i/trunk/src/hu_stuff.c
++++ w/trunk/src/hu_stuff.c
+@@ -441,9 +441,12 @@ void HU_Start(void)
+ 
+ }
+ 
++void PR_DrawAimInfo(void);  // connect-doom: the record under the crosshair (pr_process.c)
++
+ void HU_Drawer(void)
+ {
+ 
++    PR_DrawAimInfo();
+     HUlib_drawSText(&w_message);
+     HUlib_drawIText(&w_chat);
+     if (automapactive)
+diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
+index 15e4a6b..1fb7e65 100644
+--- i/trunk/src/i_video.c
++++ w/trunk/src/i_video.c
+@@ -1677,12 +1677,10 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+     else
+     {
+         // In windowed mode, the window can be resized while the game is
+-        // running.  This feature is disabled on OS X, as it adds an ugly
+-        // scroll handle to the corner of the screen.
++        // running.  connect-doom: on OS X too (upstream disabled it there
++        // over a scroll handle in the corner; screen recordings need it).
+ 
+-#ifndef __MACOSX__
+         flags |= SDL_RESIZABLE;
+-#endif
+     }
+ 
+     screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..d0f43ea 100644
+index fa4fe83..4acbcfa 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -71,7 +107,7 @@ index fa4fe83..d0f43ea 100644
  }
  
  // pr_renice
-@@ -890,3 +905,235 @@ void pr_renice(int pid) {
+@@ -890,3 +905,320 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -307,6 +343,91 @@ index fa4fe83..d0f43ea 100644
 +    }
 +}
 +// *** AGENT END ***
++
++// *** AIM BEGIN ***
++// connect-doom: the record under the crosshair, shown full width above the
++// status bar ("ZENDESK: ESCALATION: STILL NO WORKING PIPELINE"). The bridge
++// writes PSDOOM_LABELS, one "pid<TAB>line1<TAB>line2" per monster.
++
++#include "doomstat.h"
++#include "r_state.h"
++#include "v_video.h"
++
++extern mobj_t *linetarget;
++fixed_t P_AimLineAttack(mobj_t *t1, angle_t angle, fixed_t distance);
++void M_WriteText(int x, int y, char *string);
++int M_StringWidth(char *string);
++extern lighttable_t *colormaps;
++
++static int aim_pid = 0, aim_checked = 0;
++static char aim_lines[2][64];
++
++static void aim_load(int pid)
++{
++    const char *path = getenv("PSDOOM_LABELS");
++    char line[256];
++    FILE *f;
++    aim_pid = pid;
++    aim_checked = gametic;
++    aim_lines[0][0] = aim_lines[1][0] = '\0';
++    if (path == NULL || (f = fopen(path, "r")) == NULL)
++        return;
++    while (fgets(line, sizeof(line), f))
++    {
++        char *a, *b;
++        if (atoi(line) != pid || (a = strchr(line, '\t')) == NULL)
++            continue;
++        a++;
++        line[strcspn(line, "\n")] = '\0';
++        b = strchr(a, '\t');
++        if (b)
++            *b++ = '\0';
++        snprintf(aim_lines[0], sizeof(aim_lines[0]), "%s", a);
++        snprintf(aim_lines[1], sizeof(aim_lines[1]), "%s", b ? b : "");
++        break;
++    }
++    fclose(f);
++}
++
++// Cut a line until it fits the screen, marking the cut with "..".
++static void aim_fit(char *s)
++{
++    size_t n = strlen(s);
++    while (n > 3 && M_StringWidth(s) > SCREENWIDTH - 12)
++    {
++        s[--n] = '\0';
++        s[n - 2] = s[n - 1] = '.';
++    }
++}
++
++void PR_DrawAimInfo(void)
++{
++    mobj_t *mo = players[consoleplayer].mo;
++    int i, y, x, rows;
++    if (gamestate != GS_LEVEL || automapactive || menuactive || mo == NULL)
++        return;
++    P_AimLineAttack(mo, mo->angle, 2048 * FRACUNIT);
++    if (linetarget == NULL || !linetarget->m_pid || linetarget->health <= 0)
++        return;
++    if (linetarget->m_pid != aim_pid || (!aim_lines[0][0] && gametic - aim_checked > 35))
++        aim_load(linetarget->m_pid);
++    if (!aim_lines[0][0])
++        return;
++    rows = aim_lines[1][0] ? 2 : 1;
++    y = viewwindowy + viewheight - 4 - 9 * rows;
++    // Darken a band behind the text so it reads over any wall.
++    for (i = (y - 3) * SCREENWIDTH; i < (y + 9 * rows + 1) * SCREENWIDTH; i++)
++        screens[0][i] = colormaps[24 * 256 + screens[0][i]];
++    for (i = 0; i < rows; i++)
++    {
++        char buf[64];
++        snprintf(buf, sizeof(buf), "%s", aim_lines[i]);
++        aim_fit(buf);
++        x = (SCREENWIDTH - M_StringWidth(buf)) / 2;
++        M_WriteText(x < 0 ? 0 : x, y + 9 * i, buf);
++    }
++}
++// *** AIM END ***
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
 index e60ec34..fb441a9 100644
 --- i/trunk/src/r_things.c

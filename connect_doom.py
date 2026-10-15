@@ -35,6 +35,7 @@ CACHE = STATE / "cache.json"
 KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
 LOOKUPS = STATE / "lookups.jsonl"
+LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the crosshair
 MISSION = STATE / "mission.json"
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
@@ -95,6 +96,15 @@ def write_cache(monsters, source):
     tmp = CACHE.with_suffix(".tmp")
     tmp.write_text(json.dumps({"source": source, "fetched_at": time.time(), "monsters": monsters}, indent=1))
     tmp.replace(CACHE)  # atomic, so `list` never reads a half-written file
+    tmp = LABELS.with_suffix(".tmp")
+    tmp.write_text("".join(f"{m['pid']}\t{line}\n" for m in monsters for line in [aim_label(m)]))
+    tmp.replace(LABELS)
+
+
+def aim_label(m):
+    """The two lines psdoom shows while the crosshair is on this monster."""
+    clean = lambda s: " ".join(str(s).split())  # no tabs or newlines in the file's fields
+    return clean(f"{m['app']}: {m['label']}") + "\t" + clean(("URGENT: " if m["demon"] else "") + m["detail"])
 
 
 def read_json(path):

@@ -28,6 +28,10 @@ echo "game over"
 '''
 FAKE_ZDBSP = '#!/bin/bash\n[[ $1 == -o ]] && cp "$3" "$2"\n'
 FAKE_OPEN = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/open.txt"\n'
+# The screen query answers like a 1453x949 usable area under a 33 px menu bar; Chrome calls are logged.
+FAKE_OSASCRIPT = r'''#!/bin/bash
+if [[ "$*" == *NSScreen* ]]; then echo "0 33 1453 949"; else printf '%s\n' "$*" >> "$FAKE_LOG_DIR/osascript.txt"; fi
+'''
 FAKE_SECURITY = r'''#!/bin/bash
 # a one-item Keychain in $FAKE_LOG_DIR/keychain
 echo "$@" >> "$FAKE_LOG_DIR/security.txt"
@@ -69,10 +73,12 @@ class RaidTest(unittest.TestCase):
         path.chmod(0o755)
 
     def raid(self, *args, env, panel=False):
-        for name, script in (("open", FAKE_OPEN), ("security", FAKE_SECURITY), ("op", FAKE_OP)):
+        for name, script in (("open", FAKE_OPEN), ("security", FAKE_SECURITY), ("op", FAKE_OP),
+                             ("osascript", FAKE_OSASCRIPT)):
             self.install(f"bin/{name}", script, root=self.base)
         env = {**env, "PATH": f"{self.base / 'bin'}{os.pathsep}{env['PATH']}", "FAKE_LOG_DIR": str(self.logs),
-               "FAKE_OP_SECRET": PAT, "POLL_SECONDS": "1"}
+               "FAKE_OP_SECRET": PAT, "POLL_SECONDS": "1", "LAYOUT": "off", **env.get("_layout", {})}
+        env.pop("_layout", None)
         env.pop("CONNECT_DOOM_STATE", None)              # raid.sh uses the repo's state/
         if panel:
             env["PANEL_PORT"] = str(free_port())
@@ -125,6 +131,19 @@ class RaidTest(unittest.TestCase):
         self.assertFalse((self.logs / "security.txt").exists(), "a PAT in the environment wins")
         cache = json.loads((self.state / "cache.json").read_text())
         self.assertEqual(cache["source"], "connect-ai-mcp")
+
+    def test_side_by_side_layout(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            chrome = self.base / "Chrome.app"
+            chrome.mkdir()
+            r = self.raid(env={**env, "_layout": {"LAYOUT": "side", "CHROME_APP": str(chrome)}}, panel=True)
+        self.assert_played(r)
+        args = (self.state / "psdoom-args.txt").read_text().split("\n")
+        self.assertEqual(args[args.index("-geometry") + 1], "973x608")     # 1453 - 480 wide, 16:10
+        chrome_call = (self.logs / "osascript.txt").read_text()
+        self.assertIn("set bounds of w to {973, 33, 1453, 982}", chrome_call)  # the panel's column
+        self.assertIn("http://localhost:", chrome_call)
+        self.assertFalse((self.logs / "open.txt").exists(), "the panel opens in its own window, not a tab")
 
     def test_again_replays_without_claude(self):
         self.raid("--demo", env=dict(os.environ))

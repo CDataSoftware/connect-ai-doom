@@ -84,8 +84,8 @@ class ArenaTest(unittest.TestCase):
         self.assertEqual(len(self.things(m, 6)), 1)                          # yellow key: the writable room
         self.assertEqual(self.things(m, 13), [])                             # never a red key
         sp = self.specials(m)
-        self.assertEqual(set(sp), {26, 27, 28})
-        self.assertEqual(sp[27] * 2, sp[26])                                 # one yellow door, two blue
+        self.assertEqual(set(sp), {32, 33, 34})
+        self.assertEqual(sp[34] * 2, sp[32])                                 # one yellow door, two blue
 
     def test_spawn_boxes_are_open_floor(self):
         """psdoom drops monsters into 1024x1024 boxes at x = 0, 2048, 4096; each must be one sector."""
@@ -98,12 +98,12 @@ class ArenaTest(unittest.TestCase):
     def test_no_denials_no_vault(self):
         m = self.level({"rooms": ROOMS[:2], "denied": []})
         self.assert_valid(m)
-        self.assertNotIn(28, self.specials(m))
+        self.assertNotIn(33, self.specials(m))
 
     def test_read_only_rooms_have_only_blue_keys(self):
         m = self.level({"rooms": ROOMS[1:], "denied": DENIED})
         self.assertEqual((len(self.things(m, 5)), len(self.things(m, 6))), (1, 0))
-        self.assertEqual(set(self.specials(m)), {26, 28})
+        self.assertEqual(set(self.specials(m)), {32, 33})
 
     def test_empty_mission_still_builds(self):
         m = self.level({})
@@ -112,8 +112,8 @@ class ArenaTest(unittest.TestCase):
         self.assertEqual(len(self.things(m, 1)), 1)
 
     def test_more_than_three_rooms_are_dropped(self):
-        self.assertEqual(self.specials(self.level({"rooms": ROOMS * 2}))[26],
-                         self.specials(self.level({"rooms": ROOMS}))[26])
+        self.assertEqual(self.specials(self.level({"rooms": ROOMS * 2}))[32],
+                         self.specials(self.level({"rooms": ROOMS}))[32])
 
     def test_brand_textures(self):
         m = self.level(MISSION, brand=True)
@@ -139,7 +139,7 @@ class ArenaTest(unittest.TestCase):
             # without a mission: three plain read-only rooms
             r = subprocess.run([sys.executable, str(ROOT / "tools/make_arena.py"), str(out)], timeout=60)
             self.assertEqual(r.returncode, 0)
-            self.assertEqual(self.specials(parse_map(wad_lumps(out.read_bytes())))[26], 6)
+            self.assertEqual(self.specials(parse_map(wad_lumps(out.read_bytes())))[32], 6)
 
 
 class DehTest(unittest.TestCase):

@@ -14,7 +14,7 @@ It covers:
 - every bridge command, the live lookup and the panel server
 - the level, sign and DeHackEd builders
 - the panel's script, run in Node with a minimal DOM (`tests/panel_harness.js`)
-- `raid.sh` end to end in demo, live, `--again` and `brief` modes
+- `raid.sh` end to end in its `new`, `replay`, `offline` and `brief-only` modes (and their old names)
 
 It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
 

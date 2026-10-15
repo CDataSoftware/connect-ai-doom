@@ -9,19 +9,21 @@ You need a Mac with [Homebrew](https://brew.sh), Claude Code signed in (the `cla
 ```bash
 ./setup.sh                        # one time: SDL 1.2 libs, psdoom-ng, zdbsp, Freedoom
 ./raid.sh login                   # one time: your Connect AI email and token, kept in the Keychain
-./raid.sh                         # Claude runs the default question (about a minute), then you play
-./raid.sh -q "Which vendors are we late paying?"
-./raid.sh --again                 # replay the last briefing without a new Claude run
-./raid.sh --demo                  # made-up data, no network
-./raid.sh brief                   # only the briefing, for rehearsing
-./raid.sh --again --claude-plays  # Claude drives the marine
+./raid.sh new                     # Claude asks Connect AI the default question (about a minute), then you play
+./raid.sh new -q "Which vendors are we late paying?"
+./raid.sh replay                  # play the last level again, without a new Claude run
+./raid.sh offline                 # made-up data, no network
+./raid.sh brief-only              # only Claude's run, no game (for rehearsing)
+./raid.sh replay --claude-plays   # Claude plays instead of you; works with any mode
 ```
+
+Every mode has the same two parts: Claude's briefing builds the level (`new` runs one, `replay` reuses the last), then the game keeps it live (monsters refresh from Connect AI every 15 seconds, and each kill reads its record again). The old names still work: `--again`, `--demo` and `brief`.
 
 The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, and `GEOMETRY=1280x800` sets the game's size.
 
 **Controls:** WASD to move, the mouse to turn, left click or Space to fire, E or right click to open doors, Shift to run, P to pause, Esc for the menu. Aim at a monster to see its record (app, name, detail) above the status bar. Clear all the rooms, then try the red door.
 
-**At a booth:** run one live briefing before the doors open, then `./raid.sh --again` for each player: every game starts with all the records back, and no new Claude run is needed. If the network drops, `./raid.sh --demo` plays offline with made-up data.
+**At a booth:** run one live briefing before the doors open, then `./raid.sh replay` for each player: every game starts with all the records back, and no new Claude run is needed. If the network drops, `./raid.sh offline` plays with made-up data.
 
 The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
 
@@ -59,7 +61,7 @@ Claude's own words are used only for the room titles and the answer. Rooms come 
 
 ## Claude plays
 
-`--claude-plays` hands the marine to Claude. It gets a second MCP server, `play.py mcp`, with the tools `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, clears the rooms room by room, narrates each kill, and tries the vault once. Its steps stream into the panel.
+`--claude-plays` hands the marine to Claude (`./raid.sh replay --claude-plays`). It gets a second MCP server, `play.py mcp`, with the tools `look`, `go_to` and `attack`, next to the same read-only Connect AI server. Claude picks up the keycards, clears the rooms room by room, narrates each kill, and tries the vault once. Its steps stream into the panel.
 
 ## Account
 

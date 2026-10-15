@@ -1,14 +1,16 @@
 #!/bin/bash
 # Connect AI × DOOM: Claude scouts your data through the Connect AI MCP server, and
 # the Doom level is built from what Connect AI let it reach.
-#   ./raid.sh                     brief Claude with the default question, then play
-#   ./raid.sh -q "<question>"     brief Claude with your own question
-#   ./raid.sh --again             replay the last briefing (no Claude run)
-#   ./raid.sh --demo              made-up data, no network
-#   ./raid.sh brief [question]    only run the briefing
+#   ./raid.sh new                 ask Claude the default question (about a minute), then play
+#   ./raid.sh new -q "<question>" ask Claude your own question, then play
+#   ./raid.sh replay              play the last level again (no new Claude run)
+#   ./raid.sh offline             made-up data, no network
+#   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
-#   --claude-plays                Claude drives the marine (optional, off by default); combine
-#                                 with any mode above, e.g. ./raid.sh --again --claude-plays
+#   --claude-plays                Claude plays instead of you; add it to any mode above,
+#                                 e.g. ./raid.sh replay --claude-plays
+# With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
+# --demo (offline), brief (brief-only).
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
 # Kills write nothing back: each is logged and its record read again live through Connect AI.
 set -euo pipefail
@@ -28,13 +30,14 @@ while [[ $# -gt 0 ]]; do
       security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
         -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
       echo "$CONNECT_AI_USER" > state/account
-      echo "Saved. Now run ./raid.sh"
+      echo "Saved. Now run ./raid.sh new"
       exit ;;
-    --demo) MODE=demo; shift ;;
-    --again) MODE=again; shift ;;
+    new) MODE=live; shift ;;
+    offline|--demo) MODE=demo; shift ;;
+    replay|--again) MODE=again; shift ;;
     --claude-plays) PLAYS=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
-    brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
+    brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     *) break ;;
   esac
 done
@@ -44,7 +47,7 @@ if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]]; then
   exit 1
 fi
 if [[ "$MODE" == live || "$MODE" == brief ]] && ! command -v claude >/dev/null; then
-  echo "The briefing needs Claude Code's CLI (claude), signed in. Or replay one: ./raid.sh --again, or play offline: ./raid.sh --demo" >&2
+  echo "The briefing needs Claude Code's CLI (claude), signed in. Or play the last level: ./raid.sh replay, or play offline: ./raid.sh offline" >&2
   exit 1
 fi
 
@@ -65,7 +68,7 @@ if [[ "$MODE" != demo ]]; then
   fi
   if [[ -z "${CONNECT_AI_PAT:-}" ]]; then
     echo "No Connect AI token: run ./raid.sh login (or set CONNECT_AI_USER and CONNECT_AI_PAT)." >&2
-    echo "To play offline with made-up data: ./raid.sh --demo" >&2
+    echo "To play offline with made-up data: ./raid.sh offline" >&2
     exit 1
   fi
   export CONNECT_AI_USER CONNECT_AI_PAT
@@ -130,7 +133,7 @@ case "$MODE" in
   live) python3 brief.py ${QUESTION:+"$QUESTION"} >/dev/null ;;
   demo) python3 "$BRIDGE" poll --demo ;;
 esac
-[[ -f state/mission.json ]] || { echo "No briefing yet: run ./raid.sh first." >&2; exit 1; }
+[[ -f state/mission.json ]] || { echo "No level yet: run ./raid.sh new first." >&2; exit 1; }
 
 # The level for this mission: map, signs, keycard messages.
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json

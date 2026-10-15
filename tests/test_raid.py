@@ -113,14 +113,14 @@ class RaidTest(unittest.TestCase):
         return len(listed)
 
     def test_demo(self):
-        r = self.raid("--demo", env=dict(os.environ))
+        r = self.raid("offline", env=dict(os.environ))
         self.assertEqual(self.assert_played(r), 36)
         self.assertFalse((self.logs / "security.txt").exists(), "demo never looks up a token")
         self.assertIn("CONNECT AI: PII DETECTED IN INBOUND QUERY", (self.state / "level.deh").read_text())
 
     def test_live_run_with_panel(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
-            r = self.raid("-q", "Who is late?", "-extra", env=env, panel=True)
+            r = self.raid("new", "-q", "Who is late?", "-extra", env=env, panel=True)
             self.assertEqual(self.assert_played(r), 3)          # Salesforce 2 + Zendesk 1, re-queried live
         self.assertEqual(json.loads((self.base / "claude-call.json").read_text())["argv"][1], "Who is late?")
         self.assertEqual((self.state / "psdoom-args.txt").read_text().split("\n")[-2], "-extra")   # passed through
@@ -154,7 +154,7 @@ class RaidTest(unittest.TestCase):
         self.raid("--demo", env=dict(os.environ))
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             (self.base / "claude-call.json").unlink(missing_ok=True)
-            r = self.raid("--again", env=env)
+            r = self.raid("replay", env=env)
             self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse((self.base / "claude-call.json").exists())
 
@@ -162,14 +162,14 @@ class RaidTest(unittest.TestCase):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             r = self.raid("--again", env=env)
         self.assertEqual(r.returncode, 1)
-        self.assertIn("No briefing yet", r.stderr)
+        self.assertIn("No level yet: run ./raid.sh new first.", r.stderr)
 
     def test_brief_only_and_token_from_1password_then_keychain(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             del env["CONNECT_AI_PAT"]
             env["CONNECT_AI_USER"] = USER
             env["CONNECT_AI_OP_ITEM"] = "op://Personal/Connect AI Dev Edition PAT"
-            r = self.raid("brief", "Which", "vendors?", env=env)
+            r = self.raid("brief-only", "Which", "vendors?", env=env)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(json.loads(r.stdout)["answer"], json.loads(
                 (self.state / "mission.json").read_text())["answer"])
@@ -192,7 +192,7 @@ class RaidTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual((self.state / "account").read_text().strip(), USER)
             self.assertEqual((self.logs / "keychain").read_text(), PAT)
-            r = self.raid("--again", env=env)
+            r = self.raid("replay", env=env)
         self.assertNotIn("No Connect AI token", r.stderr)
         self.assertIn(f"find-generic-password -s connect-doom -a {USER} -w", (self.logs / "security.txt").read_text())
 

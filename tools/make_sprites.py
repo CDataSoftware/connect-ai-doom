@@ -35,6 +35,8 @@ def main(iwad, out, kit=None):
     palette = [tuple(pal[3 * i:3 * i + 3]) for i in range(256)]
     Path(out).mkdir(parents=True, exist_ok=True)
     for name, lump in SPRITES.items():
+        if lump not in lumps:  # a WAD without it: the panel shows the legend's text alone
+            continue
         w, h, px = patch_pixels(lumps[lump])
         img = Image.new("RGBA", (w, h))
         for (x, y), v in px.items():

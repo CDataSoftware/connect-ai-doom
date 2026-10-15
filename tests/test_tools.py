@@ -142,6 +142,17 @@ class ArenaTest(unittest.TestCase):
             self.assertEqual(self.specials(parse_map(wad_lumps(out.read_bytes())))[32], 6)
 
 
+class SpritesTest(unittest.TestCase):
+    def test_missing_sprites_are_skipped_and_logos_copied(self):
+        """A WAD without the legend's sprites (like the tests' tiny one) mustn't stop raid.sh."""
+        import make_sprites
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            tiny_iwad(tmp / "tiny.wad")
+            make_sprites.main(tmp / "tiny.wad", tmp / "panel/sprites", ROOT / "assets/brand")
+            self.assertEqual(sorted(p.name for p in (tmp / "panel/brand").iterdir()), ["cdata.svg", "connect-ai.svg"])
+
+
 class DehTest(unittest.TestCase):
     def test_patch(self):
         text = make_deh.patch(MISSION)

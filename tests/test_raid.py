@@ -139,9 +139,9 @@ class RaidTest(unittest.TestCase):
             r = self.raid(env={**env, "_layout": {"LAYOUT": "side", "CHROME_APP": str(chrome)}}, panel=True)
         self.assert_played(r)
         args = (self.state / "psdoom-args.txt").read_text().split("\n")
-        self.assertEqual(args[args.index("-geometry") + 1], "973x608")     # 1453 - 480 wide, 16:10
+        self.assertEqual(args[args.index("-geometry") + 1], "960x720")     # psdoom's biggest mode that fits
         chrome_call = (self.logs / "osascript.txt").read_text()
-        self.assertIn("set bounds of w to {973, 33, 1453, 982}", chrome_call)  # the panel's column
+        self.assertIn("set bounds of w to {960, 33, 1453, 982}", chrome_call)  # the rest of the width
         self.assertIn("http://localhost:", chrome_call)
         self.assertFalse((self.logs / "open.txt").exists(), "the panel opens in its own window, not a tab")
 

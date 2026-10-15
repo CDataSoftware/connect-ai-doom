@@ -67,9 +67,14 @@ if [[ "${LAYOUT:-side}" == side ]] && [[ -z "${NO_PANEL:-}" ]] && [[ -d "${CHROM
 fi
 if [[ -n "$SIDE" ]]; then
   read -r SX SY SW SH <<<"$SIDE"
-  PANEL_W=480
-  GW=$((SW - PANEL_W)) GH=$(((SW - PANEL_W) * 10 / 16))
-  if ((GH > SH - 28)); then GH=$((SH - 28)) GW=$(((SH - 28) * 16 / 10)); fi   # 28: the title bar
+  # psdoom snaps to its aspect-corrected modes (n x 320x240 or n x 256x200), so pick the
+  # biggest that leaves the panel at least 440 px and fits under the title bar (28 px).
+  GW=640 GH=480
+  for mode in 320x240 640x480 960x720 1280x960 1600x1200 256x200 512x400 768x600 1024x800 1280x1000; do
+    w=${mode%x*} h=${mode#*x}
+    if ((w <= SW - 440 && h <= SH - 28 && w * h > GW * GH)); then GW=$w GH=$h; fi
+  done
+  PANEL_W=$((SW - GW))
   [[ "$GEOMETRY" == 1280x800 ]] && GEOMETRY="${GW}x${GH}"
   export SDL_VIDEO_WINDOW_POS="$SX,$SY"
 fi

@@ -2,6 +2,6 @@ vendor/
 wads/
 state/
 __pycache__/
-brand/
+/brand/
 panel/sprites/
 panel/brand/

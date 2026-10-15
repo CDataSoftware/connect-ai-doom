@@ -118,7 +118,7 @@ open_panel() {
 }
 
 if [[ "${NO_PANEL:-}" != 1 ]]; then
-  [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites brand/BRANDKIT
+  [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
   python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
   PIDS+=($!)
   /bin/sleep 0.5
@@ -133,7 +133,7 @@ esac
 [[ -f state/mission.json ]] || { echo "No briefing yet: run ./raid.sh first." >&2; exit 1; }
 
 # The level for this mission: map, signs, keycard messages.
-python3 tools/make_branding.py wads/freedoom2.wad brand/BRANDKIT state/brand.wad --mission state/mission.json
+python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
 python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --brand
 "$ZDBSP" -o state/level.wad state/level-raw.wad >/dev/null
 python3 tools/make_deh.py state/mission.json state/level.deh
@@ -158,9 +158,9 @@ if [[ -n "$PLAYS" ]]; then
   PIDS+=($!)
 fi
 
-# Controls for people who grew up after 1993: WASD to move, mouse to turn and fire (left
-# button), Space opens doors, Shift runs, P pauses. Arrows still turn. Written fresh each
-# launch (values are keyboard scancodes), so a booth machine always plays the same.
+# Modern FPS controls, as in GZDoom: WASD to move, the mouse to turn, left click or Space to
+# fire, E or right click to open doors, Shift to run, P to pause; the arrows turn too. Written
+# fresh each launch (values are keyboard scancodes), so a booth machine always plays the same.
 cat > state/controls.cfg <<'CFG'
 key_up 17
 key_down 31
@@ -168,17 +168,18 @@ key_strafeleft 30
 key_straferight 32
 key_left 75
 key_right 77
-key_fire 29
-key_use 57
+key_fire 57
+key_use 18
 key_speed 42
 key_strafe 56
 use_mouse 1
 mouseb_fire 0
-mouseb_strafe 1
+mouseb_strafe -1
 mouseb_forward -1
 mouse_sensitivity 6
 CFG
-printf 'novert 1\ngrabmouse 1\n' > state/controls-extra.cfg   # the mouse turns; it doesn't walk
+# The mouse turns but doesn't walk; its right button opens doors.
+printf 'novert 1\ngrabmouse 1\nmouseb_use 1\n' > state/controls-extra.cfg
 
 GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
 printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json

@@ -70,4 +70,5 @@ fi
 # Homebrew's Python refuses plain pip installs (PEP 668); a --user install leaves Homebrew's files alone.
 python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --user pillow >>"$LOG" 2>&1 \
   || python3 -m pip install --user --break-system-packages pillow >>"$LOG"
+python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites   # the panel legend's sprites
 echo "Done. Try: ./raid.sh --demo"

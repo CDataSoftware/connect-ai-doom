@@ -35,24 +35,44 @@ HITS = STATE / "hits.jsonl"
 
 API_URL = os.environ.get("CONNECT_AI_URL", "https://cloud.cdata.com/api/query")
 MAX_MONSTERS = int(os.environ.get("MAX_MONSTERS", "40"))
-DEMON_DAYS = int(os.environ.get("DEMON_DAYS", "90"))  # this overdue = pink demon
+DEMON_DAYS = int(os.environ.get("DEMON_DAYS", "1"))  # this many days past DueDate = pink demon
+# Any SELECT works if it returns: Id, Label (who), Amount (dollars), DueDate.
 SOURCE_QUERY = os.environ.get(
     "SOURCE_QUERY",
-    "SELECT [Id], [CustomerName], [AmountDue], [DueDate] "
-    "FROM [Stripe1].[Stripe].[Invoices] WHERE [Status] = 'open' "
-    f"ORDER BY [DueDate] ASC LIMIT {MAX_MONSTERS}",
+    "SELECT o.[Id] AS Id, a.[Name] AS Label, o.[Amount] AS Amount, o.[CloseDate] AS DueDate "
+    "FROM [Salesforce1].[Salesforce].[Opportunity] o "
+    "LEFT JOIN [Salesforce1].[Salesforce].[Account] a ON o.[AccountId] = a.[Id] "
+    f"WHERE o.[IsClosed] = 0 ORDER BY o.[Amount] DESC LIMIT {MAX_MONSTERS}",
 )
 SANDBOX_TABLE = os.environ.get("SANDBOX_TABLE", "[Snowflake_WH].[PUBLIC].[DOOM_FOLLOW_UPS]")
 
 
 # ---------------------------------------------------------------- Connect AI
 
+OP_ITEM = os.environ.get("CONNECT_AI_OP_ITEM", "op://Private/Connect AI PAT")
+
+
+def op_read(field):
+    try:
+        return subprocess.run(["op", "--account", "my.1password.com", "read", f"{OP_ITEM}/{field}"],
+                              capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+_AUTH = None
+
+
 def credentials():
-    user = os.environ.get("CONNECT_AI_USER")
-    pat = os.environ.get("CONNECT_AI_PAT")
-    if not (user and pat):
-        sys.exit("Set CONNECT_AI_USER (account email) and CONNECT_AI_PAT (Settings > Access Tokens).")
-    return base64.b64encode(f"{user}:{pat}".encode()).decode()
+    """CONNECT_AI_USER / CONNECT_AI_PAT, else the 1Password item in CONNECT_AI_OP_ITEM."""
+    global _AUTH
+    if _AUTH is None:
+        user = os.environ.get("CONNECT_AI_USER") or op_read("username")
+        pat = os.environ.get("CONNECT_AI_PAT") or op_read("credential")
+        if not (user and pat):
+            sys.exit("Set CONNECT_AI_USER and CONNECT_AI_PAT, or store them in 1Password (CONNECT_AI_OP_ITEM).")
+        _AUTH = base64.b64encode(f"{user}:{pat}".encode()).decode()
+    return _AUTH
 
 
 def run_sql(sql, params=None):
@@ -71,10 +91,10 @@ def run_sql(sql, params=None):
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Connect AI HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
     if payload.get("error"):
-        raise RuntimeError(f"Connect AI error: {payload['error']}")
+        raise RuntimeError(f"Connect AI error: {payload['error'].get('message', payload['error'])}")
     rows = []
     for result in payload.get("results", []):
-        cols = [c["columnName"] for c in result.get("schema", [])]
+        cols = [c.get("columnLabel") or c["columnName"] for c in result.get("schema", [])]
         rows += [dict(zip(cols, r)) for r in result.get("rows", [])]
     return rows
 
@@ -86,9 +106,9 @@ def monster_id(record_id):
     return 1000 + int(hashlib.sha1(record_id.encode()).hexdigest(), 16) % 899000
 
 
-def short_name(customer, dollars):
-    """psdoom shows at most 7 characters and no spaces: initials + amount, e.g. CSI1499."""
-    initials = "".join(w[0] for w in customer.split() if w[:1].isalnum()).upper()[:3] or "X"
+def short_name(label, dollars):
+    """psdoom shows at most 7 characters and no spaces: initials + amount, e.g. SES76k."""
+    initials = "".join(w[0] for w in (label or "?").split() if w[:1].isalnum()).upper()[:3] or "X"
     amount = f"{dollars // 1000}k" if dollars >= 10000 else str(dollars)
     return (initials + amount)[:7]
 
@@ -96,20 +116,20 @@ def short_name(customer, dollars):
 def to_monster(row, now):
     due = dt.datetime.fromisoformat(str(row["DueDate"]).replace(" ", "T").split(".")[0])
     overdue = (now - due).days
-    dollars = int(row["AmountDue"]) // 100
+    dollars = int(row["Amount"] or 0)
     return {
         "pid": monster_id(row["Id"]),
         "id": row["Id"],
-        "customer": row["CustomerName"],
+        "customer": row["Label"] or "(no account)",
         "dollars": dollars,
         "overdue_days": overdue,
-        "name": short_name(row["CustomerName"], dollars),
+        "name": short_name(row["Label"], dollars),
         "demon": 1 if overdue >= DEMON_DAYS else 0,
     }
 
 
 def demo_rows(n=MAX_MONSTERS):
-    """Made-up invoices for offline play (no Connect AI, no real customer data)."""
+    """Made-up deals for offline play (no Connect AI, no real customer data)."""
     rng = random.Random(42)
     words = ["Acme", "Globex", "Initech", "Umbrella", "Hooli", "Vandelay", "Wonka", "Stark",
              "Tyrell", "Cyberdyne", "Soylent", "Wayne", "Oscorp", "Gringotts", "Monarch"]
@@ -117,11 +137,11 @@ def demo_rows(n=MAX_MONSTERS):
     today = dt.datetime.now()
     rows = []
     for i in range(n):
-        due = today - dt.timedelta(days=rng.choice([20, 45, 75, 110, 140]))
+        due = today + dt.timedelta(days=rng.choice([-60, -20, -5, 10, 30, 90]))
         rows.append({
-            "Id": f"in_demo_{i:03d}",
-            "CustomerName": f"{rng.choice(words)} {rng.choice(kinds)}",
-            "AmountDue": rng.choice([29900, 89900, 149900, 499900]),
+            "Id": f"demo_{i:03d}",
+            "Label": f"{rng.choice(words)} {rng.choice(kinds)}",
+            "Amount": rng.choice([5969, 15127, 33077, 76718, 149900]),
             "DueDate": due.strftime("%Y-%m-%d %H:%M:%S"),
         })
     return rows
@@ -177,7 +197,9 @@ def cmd_kill(args):
     record = {**m, "killed_at": dt.datetime.now().isoformat(timespec="seconds"),
               "mode": "sandbox" if os.environ.get("SANDBOX") == "1" else "dry-run"}
     append(KILLS, record)
-    print(f"\n  KILL  {m['customer']}  ${m['dollars']:,}  ({m['overdue_days']}d overdue)  "
+    d = m["overdue_days"]
+    when = f"slipped {d}d" if d > 0 else f"closes in {-d}d"
+    print(f"\n  KILL  {m['customer']}  ${m['dollars']:,}  ({when})  "
           f"{m['id']}  [{record['mode']}]\n", file=sys.stderr)
     if record["mode"] == "sandbox":
         # Never block the game loop on the network: hand off to a detached process.
@@ -224,9 +246,9 @@ def cmd_score(_):
     kills = read_jsonl(KILLS)
     total = sum(k["dollars"] for k in kills)
     left = len([m for m in cached_monsters() if m["id"] not in killed_ids()])
-    print(f"{len(kills)} invoices fragged, ${total:,} chased, {left} still standing")
+    print(f"{len(kills)} deals fragged, ${total:,} chased, {left} still standing")
     for k in kills[-10:]:
-        print(f"  {k['killed_at']}  {k['customer']:<34} ${k['dollars']:>7,}  {k['overdue_days']:>3}d  [{k['mode']}]")
+        print(f"  {k['killed_at']}  {k['customer']:<34} ${k['dollars']:>8,}  {k['overdue_days']:>4}d late  [{k['mode']}]")
 
 
 def cmd_reset(_):

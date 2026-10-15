@@ -1,7 +1,7 @@
 #!/bin/bash
-# Revenue Raid: open Stripe invoices from Connect AI as Doom monsters.
-#   ./raid.sh          live data (needs CONNECT_AI_USER + CONNECT_AI_PAT)
-#   ./raid.sh --demo   made-up invoices, no network
+# Revenue Raid: open Salesforce deals from Connect AI as Doom monsters.
+#   ./raid.sh          live data (CONNECT_AI_USER + CONNECT_AI_PAT, or the 1Password item)
+#   ./raid.sh --demo   made-up deals, no network
 # Kills are dry run (logged to state/kills.jsonl) unless SANDBOX=1.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,7 +14,11 @@ if [[ "${1:-}" == "--demo" ]]; then
   shift
   python3 "$BRIDGE" poll --demo
 else
-  : "${CONNECT_AI_USER:?set CONNECT_AI_USER}" "${CONNECT_AI_PAT:?set CONNECT_AI_PAT}"
+  # Read the 1Password item once (it may prompt) instead of once per poll process.
+  OP_ITEM="${CONNECT_AI_OP_ITEM:-op://Private/Connect AI PAT}"
+  : "${CONNECT_AI_USER:=$(op --account my.1password.com read "$OP_ITEM/username")}"
+  : "${CONNECT_AI_PAT:=$(op --account my.1password.com read "$OP_ITEM/credential")}"
+  export CONNECT_AI_USER CONNECT_AI_PAT
   python3 "$BRIDGE" poll --once
   python3 "$BRIDGE" poll 2>>state/poll.log &
   POLLER=$!

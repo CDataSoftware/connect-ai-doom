@@ -45,7 +45,7 @@ if [[ "$MODE" != demo ]]; then
 fi
 
 PIDS=()
-trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null' EXIT
+trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true' EXIT  # with set -e a failed kill would be the exit code
 PANEL_PORT=${PANEL_PORT:-8666}
 if [[ "${NO_PANEL:-}" != 1 ]]; then
   python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &

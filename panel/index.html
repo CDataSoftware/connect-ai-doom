@@ -65,7 +65,7 @@
     text-shadow: 2px 2px 0 #3A0A02, 0 0 10px rgba(232,41,11,.45);
   }
   .stat.blocked .num { color: var(--key-red); }
-  .stat .lbl { font: 7px/1 var(--pixel); color: #E9E6DF; text-shadow: 1px 1px 0 #000; margin-top: 3px; letter-spacing: .5px; }
+  .stat .lbl { font: 8px/1 var(--pixel); color: #E9E6DF; text-shadow: 1px 1px 0 #000; margin-top: 3px; letter-spacing: .5px; }
   .stat.model .num { font: 22px/1.9 var(--digits); color: var(--agility); text-shadow: 2px 2px 0 #3B3500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   main { padding: 14px 16px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; max-width: 760px; }
@@ -92,7 +92,7 @@
   .item > .row:hover { background: var(--depth-3); }
   .item.open { border-color: var(--line); }
   .badge {
-    font: 6px/1 var(--pixel); padding: 6px 3px; text-align: center; border-radius: 2px; letter-spacing: 0; white-space: nowrap;
+    font: 7px/1 var(--pixel); padding: 6px 3px; text-align: center; border-radius: 2px; letter-spacing: 0; white-space: nowrap;
     background: var(--agility); color: var(--depth);
   }
   .badge.doom { background: var(--doom-red); color: #fff; }
@@ -112,7 +112,7 @@
   .detail { display: none; padding: 4px 10px 12px; border-top: 1px dashed var(--line); }
   .item.open .detail { display: block; }
   .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; font-size: 13px; margin: 6px 0; }
-  .kv dt { font: 7px/2 var(--pixel); color: var(--balance); }
+  .kv dt { font: 8px/2 var(--pixel); color: var(--balance); }
   .kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; word-break: break-word; }
   pre.code {
     margin: 6px 0; padding: 10px; background: #08080C; border: 1px solid var(--line); border-left: 3px solid var(--agility);
@@ -132,7 +132,7 @@
     padding: 8px 10px; border-radius: 3px; background: #10131F; border: 1px solid #22305A;
     font-size: 14px; color: #E5E2DA; white-space: pre-wrap;
   }
-  .live .who { font: 7px/1 var(--pixel); color: #8FA8FF; margin-bottom: 6px; display: block; }
+  .live .who { font: 8px/1 var(--pixel); color: #8FA8FF; margin-bottom: 6px; display: block; }
   .live .caret { display: inline-block; width: 8px; height: 15px; background: var(--agility); vertical-align: -2px; animation: blink .7s steps(1) infinite; }
 
   /* ---------- keycards ---------- */
@@ -149,7 +149,7 @@
   .keycard.read { --kc: var(--key-blue); } .keycard.write { --kc: var(--key-yellow); } .keycard.vault { --kc: var(--key-red); }
   .keycard .app { font-weight: 800; font-size: 17px; }
   .keycard .title { color: #D9D6CF; font-size: 14px; }
-  .keycard .access { font: 7px/1.6 var(--pixel); color: var(--kc); margin-top: 6px; }
+  .keycard .access { font: 8px/1.6 var(--pixel); color: var(--kc); margin-top: 6px; }
 
   .answer { background: var(--depth-2); border: 1px solid var(--line); border-left: 4px solid var(--resolve); padding: 12px 14px; border-radius: 4px; }
   .meta { font: 12px var(--mono); color: var(--balance); margin-top: 8px; }
@@ -167,11 +167,10 @@
   .now .verb.hit { color: var(--agility); }
   .now .who { font-size: 22px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
   .now .d { color: var(--balance); font-size: 14px; }
-  .now .act { font: 8px/1.8 var(--pixel); color: var(--ok); }
   .now .hint { font-size: 16px; color: #D9D6CF; }
   .now.flash { animation: flash 1s ease-out; }
   .now .keys { margin-top: 10px; font-size: 12.5px; color: var(--balance); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
-  .now .keys b { font: 7px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; margin-left: 6px; }
+  .now .keys b { font: 8px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; margin-left: 6px; }
   .now .keys b:first-child { margin-left: 0; }
   .now .verb.clear { color: var(--ok); }
   @keyframes flash { 0% { background: #5A1206; } 100% { background: var(--depth); } }
@@ -181,7 +180,7 @@
   .rl.write { --kc: var(--key-yellow); } .rl.vault { --kc: var(--key-red); background: #2E0F0B; }
   .rl .top { display: flex; align-items: center; gap: 8px; }
   .rl .top img { width: 18px; image-rendering: pixelated; }
-  .rl .no { font: 7px/1.4 var(--pixel); color: var(--balance); }
+  .rl .no { font: 8px/1.4 var(--pixel); color: var(--balance); }
   .rl .app { font-weight: 800; font-size: 17px; }
   .rl .num { font: 30px/1 var(--digits); color: var(--clarity); }
   .rl .num small { font-size: 18px; color: var(--balance); }
@@ -189,24 +188,30 @@
   .rl .bar span { display: block; height: 100%; background: var(--doom-red); transition: width .4s; }
   .rl .sub { font-size: 12.5px; color: var(--balance); }
   .rl.done { opacity: .6; }
+  .rl .live { font: 12px/1.4 var(--mono); color: var(--ok); display: flex; align-items: center; gap: 6px; }
+  .rl .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+  .rl .live.fresh::before { animation: pulse .8s 3; }
+  .rl .live.err { color: #FFB4AC; } .rl .live.err::before { background: var(--key-red); }
+  .ev.vault { border-left: 4px solid var(--key-red); background: #2E0F0B; }
+  .ev.vault .k { color: var(--key-red); }
+  .now .sql { font: 12px/1.45 var(--mono); color: #FFB4AC; margin-top: 6px; overflow-wrap: anywhere; }
 
   #events { display: grid; gap: 4px; }
   .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); }
   .ev.new { animation: in .25s ease-out; }
   .read { font: 12.5px/1.45 var(--mono); color: #8FD3FF; margin-top: 4px; }
-  .read .tag { font: 7px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
+  .read .tag { font: 8px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
   .read.wait { color: var(--balance); }
   .read.wait .tag::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
   .read.err { color: #FFB4AC; }
   .now .read { font-size: 14px; margin-top: 6px; }
   .ev .t { font: 12px var(--mono); color: var(--balance); }
-  .ev .k { font: 7px/1.8 var(--pixel); color: var(--doom-red); }
+  .ev .k { font: 8px/1.8 var(--pixel); color: var(--doom-red); }
   .ev.hit { background: transparent; padding-top: 3px; padding-bottom: 3px; }
   .ev.hit .k { color: var(--agility); }
   .ev.kill { border-left: 4px solid var(--doom-red); }
   .ev .w { min-width: 0; }
   .ev .w .d { color: var(--balance); font-size: 13px; }
-  .ev .w .act { font: 7px/1.8 var(--pixel); color: var(--ok); margin-left: 6px; white-space: nowrap; }
   #play[hidden] { display: none; }
   @keyframes in { from { opacity: 0; transform: translateY(4px); } }
   @keyframes pulse { 50% { opacity: .25; } }
@@ -229,13 +234,13 @@
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; margin-top: 10px; }
   .tile { display: flex; gap: 10px; align-items: center; background: var(--depth-3); border-radius: 3px; padding: 6px 8px; font-size: 13px; color: #D6D3CC; min-height: 44px; }
   .tile img { height: 32px; width: 32px; object-fit: contain; object-position: bottom; image-rendering: pixelated; flex: none; }
-  .tile b { color: var(--clarity); display: block; font: 7px/1.6 var(--pixel); letter-spacing: .5px; }
+  .tile b { color: var(--clarity); display: block; font: 8px/1.6 var(--pixel); letter-spacing: .5px; }
   .tile .sign { width: 32px; height: 20px; flex: none; border: 2px solid var(--agility); background: var(--depth); color: var(--agility);
-                font: 5px/1 var(--pixel); display: flex; align-items: center; justify-content: center; }
+                font: 7px/1 var(--pixel); display: flex; align-items: center; justify-content: center; }
   .legend .note { font-size: 13px; color: var(--balance); margin-top: 8px; line-height: 1.45; }
   .legend .note:empty { display: none; }
   .keycard .keyimg { float: right; height: 34px; image-rendering: pixelated; margin-left: 8px; }
-  .keycard .roomno { font: 7px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
+  .keycard .roomno { font: 8px/1 var(--pixel); color: var(--balance); margin-bottom: 4px; }
   /* logos and footer */
   footer { margin-top: 10px; background: linear-gradient(180deg, var(--depth), #0B0B10); }
   footer .hazard { height: 8px; background: repeating-linear-gradient(-45deg, var(--agility) 0 10px, var(--depth) 10px 20px); }
@@ -244,7 +249,7 @@
   footer nav { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
   footer nav a { color: var(--clarity); text-decoration: none; font-size: 14px; border-bottom: 1px solid transparent; }
   footer nav a:hover { color: var(--agility); border-bottom-color: var(--agility); }
-  footer nav a.cta { font: 8px/1 var(--pixel); color: var(--depth); background: var(--agility); padding: 9px 10px; border-radius: 2px;
+  footer nav a.cta { font: 9px/1 var(--pixel); color: var(--depth); background: var(--agility); padding: 9px 10px; border-radius: 2px;
                      box-shadow: 0 3px 0 #9E8E00; border: 0; letter-spacing: .5px; }
   footer nav a.cta:hover { color: var(--depth); filter: brightness(1.08); }
   footer .fine { font-size: 12px; color: var(--balance); }
@@ -252,7 +257,7 @@
   .how { list-style: none; counter-reset: step; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .how li { counter-increment: step; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-top: 3px solid var(--agility);
             border-radius: 3px; padding: 8px 9px; font-size: 12.5px; line-height: 1.35; color: #D6D3CC; }
-  .how li b { display: block; font: 8px/1.6 var(--pixel); color: var(--agility); margin-bottom: 3px; }
+  .how li b { display: block; font: 9px/1.6 var(--pixel); color: var(--agility); margin-bottom: 3px; }
   .how li b::before { content: counter(step) ". "; color: var(--doom-red); }
   @media (max-width: 520px) { .how { grid-template-columns: 1fr; } }
 </style>
@@ -328,6 +333,8 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 const params = new URLSearchParams(location.search);
 const EXPAND = params.has("expand") ? Number(params.get("expand")) : null;  // open step N (testing, demos)
+// A tool result Connect AI refused: Data Security blocks and permission errors.
+const BLOCKED = /blocked|denied|permission|cannot obtain|not authorized/i;
 
 // ---------- plain words for each step (the collapsed view never shows SQL) ----------
 function describe(c) {
@@ -342,12 +349,11 @@ function describe(c) {
         const n = (out.visible_monsters || []).length;
         return `Looked around${out.you_are_in ? ` the <b>${esc(out.you_are_in)}</b>` : " the level"}${c.result ? `: ${n} record${n === 1 ? "" : "s"} in sight` : ""}`;
       }
-      case "go_to": return `Headed to <b>${esc(a.place || a.target || "")}</b>`;
+      case "go_to": return `Headed to <b>${esc(a.place || "")}</b>`;
       case "attack": {
         const who = out.record ? `<b>${esc(out.record)}</b>${out.app ? ` in ${esc(out.app)}` : ""}` : `monster ${esc(a.pid ?? "")}`;
         return `Opened fire on ${who}${out.detail ? ` <span class="more">${esc(out.detail)}</span>` : ""}`;
       }
-      case "use": return "Pressed use";
       default: return `${esc(c.tool)} <span class="more">${esc(JSON.stringify(a)).slice(0, 80)}</span>`;
     }
   }
@@ -366,7 +372,7 @@ function status(c) {
   const r = c.result;
   if (!r) return ["wait", "working"];
   const text = r.text || "";
-  if (r.error && /blocked|denied|permission|cannot obtain|not authorized/i.test(text))
+  if (r.error && BLOCKED.test(text))
     return ["blocked", "BLOCKED BY CONNECT AI"];
   if (r.error) return ["", "error"];
   const ms = r.ms != null ? `${(r.ms / 1000).toFixed(1)}s` : "";
@@ -540,7 +546,7 @@ function renderMission(m, events) {
   if (q) $("ask").textContent = q.text;
   const calls = events.filter(e => e.kind === "result" && e.tool === "queryData" && !e.error);
   $("s-records").textContent = calls.reduce((n, e) => n + (e.rows || 0), 0);
-  $("s-blocked").textContent = events.filter(e => e.kind === "result" && e.error && /blocked|denied|permission|cannot obtain/i.test(e.text || "")).length;
+  $("s-blocked").textContent = events.filter(e => e.kind === "result" && e.error && BLOCKED.test(e.text || "")).length;
   const touched = new Set(events.filter(e => e.kind === "call" && e.connection).map(e => e.connection));
   $("s-apps").textContent = done && m ? m.rooms.length : touched.size;
   if (feed.model) $("s-model").textContent = feed.model.replace(/^claude-/, "").toUpperCase();
@@ -561,7 +567,7 @@ function renderMission(m, events) {
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
 function liveRead(k, demo) {
-  if (demo) return `<div class="read"><span class="tag">DEMO DATA</span>No live read in demo mode</div>`;
+  if (demo) return `<div class="read"><span class="tag">OFFLINE DATA</span>Made-up record: nothing to read live</div>`;
   const l = k.lookup;
   if (!l && Date.now() / 1000 - k.at > 60) return `<div class="read err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
   if (!l) return `<div class="read wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;
@@ -577,9 +583,10 @@ const evKey = e => `${e.kind}:${e.id}:${e.at}`;
 function setHTML(el, html) { if (el._html !== html) { el.innerHTML = html; el._html = html; } }
 
 function gameEvents(s) {
-  // kills and hits, newest first; a run of hits on the same record is one line
+  // kills, hits and red-door tries, newest first; a run of hits on the same record is one line
   const evs = [...(s.kills || []).map(k => ({...k, kind: "kill", at: Date.parse(k.killed_at) / 1000})),
-               ...(s.hits || []).map(h => ({...h, kind: "hit"}))].sort((a, b) => b.at - a.at);
+               ...(s.hits || []).map(h => ({...h, kind: "hit"})),
+               ...(s.vault || []).map(v => ({...v, kind: "vault", id: "vault"}))].sort((a, b) => b.at - a.at);
   const out = [];
   for (const e of evs) {
     const prev = out[out.length - 1];
@@ -587,6 +594,21 @@ function gameEvents(s) {
     out.push({...e, n: 1});
   }
   return out;
+}
+
+// A room's last refresh through Connect AI (the poller re-runs its query every 15 s).
+function refreshed(r) {
+  if (!r) return "";
+  if (r.error) return `<div class="live err">Refresh failed: ${esc(r.error)}</div>`;
+  const ago = Math.max(0, Math.round(Date.now() / 1000 - r.at));
+  return `<div class="live${ago < 3 ? " fresh" : ""}">Live: ${r.rows} rows ${ago}s ago, in ${(r.ms / 1000).toFixed(1)} s</div>`;
+}
+
+// The request Connect AI blocked during the briefing, as sent again from the red door.
+function vaultRequest(v) {
+  const q = (v.request || {}).query || "";
+  const params = Object.entries((v.request || {}).parameters || {}).map(([k, x]) => `${k} = '${x}'`).join(", ");
+  return esc(q) + (params ? ` <span style="opacity:.8">(${esc(params)})</span>` : "");
 }
 
 function renderGame(s) {
@@ -605,17 +627,23 @@ function renderGame(s) {
       <div class="app">${esc(r.app)}</div>
       <div class="num">${r.killed}<small> / ${total} cleared</small></div>
       <div class="bar"><span style="width:${total ? Math.round(100 * r.killed / total) : 0}%"></span></div>
-      <div class="sub">${r.left ? `${r.left} left${r.urgent_left ? `, ${r.urgent_left} urgent` : ""}` : "Room clear"} · ${esc(r.title)}</div></div>`;
+      <div class="sub">${r.left ? `${r.left} left${r.urgent_left ? `, ${r.urgent_left} urgent` : ""}` : "Room clear"} · ${esc(r.title)}</div>
+      ${refreshed(r.refresh)}</div>`;
   });
+  const tries = s.vault || [];
   for (const d of m.denied || [])
     cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
-      <div class="app">PII vault</div><div class="sub">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div></div>`);
+      <div class="app">PII vault</div><div class="sub">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
+      <div class="sub">${tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
   setHTML($("rooms-live"), cards.join(""));
 
   const evs = gameEvents(s);
   const demo = (m.rooms || []).length > 0 && m.rooms.every(r => r.rows);
   const isNew = e => seenEvents && !seenEvents.has(evKey(e)) ? " new" : "";
-  setHTML($("events"), evs.length ? evs.map(e => e.kind === "kill"
+  setHTML($("events"), evs.length ? evs.map(e => e.kind === "vault"
+    ? `<div class="ev vault${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">RED DOOR</span>
+        <span class="w"><b>Connect AI</b> ${e.blocked ? "blocked it again, live" : "answered"} in ${(e.ms / 1000).toFixed(1)} s: ${esc(e.text)}</span></div>`
+    : e.kind === "kill"
     ? `<div class="ev kill${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo)}</span></div>`
     : `<div class="ev hit${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
@@ -635,6 +663,11 @@ function renderGame(s) {
     ? `<div class="verb clear">ALL ${rooms.length} ROOMS CLEAR</div>
        <div class="who">${s.kill_total} records cleared</div>
        <div class="d">Each one was read again, live, through Connect AI.${(m.denied || []).length ? " Now try the red door." : ""}</div>`
+    : last.kind === "vault"
+    ? `<div class="verb">RED DOOR: CONNECT AI SAID NO, LIVE</div>
+       <div class="who">${esc(last.text)}</div>
+       <div class="d">Claude's PII lookup from the briefing, sent again just now to ${esc(last.connection)}. ${last.blocked ? "Data Security blocked it" : "Connect AI answered"} in ${(last.ms / 1000).toFixed(1)} s.</div>
+       <div class="sql">${vaultRequest(last)}</div>`
     : last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo)}`

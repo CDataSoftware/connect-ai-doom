@@ -26,10 +26,7 @@ SPRITES = {
 }
 
 
-LOGOS = {  # from the CData brand kit: connect-ai-agility-clarity.svg, cdata-logotype-clarity.svg
-    "connect-ai.svg": "connect-ai.svg",
-    "cdata.svg": "cdata.svg",
-}
+LOGOS = ["connect-ai.svg", "cdata.svg"]  # the brand kit's connect-ai-agility-clarity and cdata-logotype-clarity
 
 
 def main(iwad, out, kit=None):
@@ -47,9 +44,9 @@ def main(iwad, out, kit=None):
     if kit:
         brand = Path(out).parent / "brand"
         brand.mkdir(exist_ok=True)
-        for name, src in LOGOS.items():
-            if (Path(kit) / src).exists():
-                shutil.copy(Path(kit) / src, brand / name)
+        for name in LOGOS:
+            if (Path(kit) / name).exists():
+                shutil.copy(Path(kit) / name, brand / name)
 
 
 if __name__ == "__main__":

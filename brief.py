@@ -26,8 +26,8 @@ STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 RUN = STATE / "run.jsonl"
 MISSION = STATE / "mission.json"
 MAX_ROOMS = 3  # psdoom spawns monsters into exactly three arenas
-# The agent gets Connect AI's read-only tools only. Writes happen in the game,
-# through the bridge, and only where the connection allows them.
+# The agent gets Connect AI's read-only tools only. Nothing is ever written: in the
+# game, a kill only reads its record again.
 READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData"
 MODEL = os.environ.get("BRIEF_MODEL", "sonnet")
 

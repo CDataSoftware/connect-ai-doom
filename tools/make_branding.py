@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build wads/brand.wad: light Connect AI branding from the CData brand kit.
+"""Build state/brand.wad: light Connect AI branding, from the logos in assets/brand.
 
   CAISIGN  256x128 wall texture: the stock TEKWALL4 tech wall with a
            Connect AI sign (logo on a Depth plate) baked in, for the 128-tall

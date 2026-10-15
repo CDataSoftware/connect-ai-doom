@@ -120,6 +120,22 @@ class PanelTest(unittest.TestCase):
         self.assertIn("in 0.9 s: no longer returned by the room's query", events)
         self.assertIn("Live read failed after 30.0 s: timed &lt;out&gt;", events)
 
+    def test_red_door_and_live_refresh(self):
+        now = datetime.datetime.now().timestamp()
+        vault = [{"connection": "PostgreSQLPII", "blocked": True, "ms": 1611, "at": now,
+                  "text": "Request blocked: PII detected in inbound query",
+                  "request": {"query": "SELECT x WHERE [ssn] = @ssn", "parameters": {"@ssn": "123-45-6789"}}}]
+        rooms = [{"app": "Zendesk", "writable": True, "title": "T", "left": 3, "urgent_left": 0, "killed": 0,
+                  "refresh": {"connection": "Zendesk", "rows": 15, "ms": 7249, "at": now - 4}}]
+        ids = self.render(vault=vault, rooms_live=rooms, game={"mode": "player", "started": 0})
+        now_card = ids["now-big"]["html"]
+        self.assertIn("RED DOOR: CONNECT AI SAID NO, LIVE", now_card)
+        self.assertIn("Data Security blocked it in 1.6 s", now_card)
+        self.assertIn("@ssn = &#39;123-45-6789&#39;", now_card.replace("'", "&#39;"))
+        self.assertIn("blocked it again, live in 1.6 s", ids["events"]["html"])
+        self.assertIn("Tried 1× this game", ids["rooms-live"]["html"])
+        self.assertRegex(ids["rooms-live"]["html"], r"Live: 15 rows [45]s ago, in 7\.2 s")
+
     def test_all_rooms_clear(self):
         kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "", "writable": True,
                 "demon": 0, "killed_at": "2026-10-15T13:54:10"}
@@ -147,7 +163,7 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(ids["s-model"]["text"], "SONNET-5-5")
 
     def test_play_feed(self):
-        play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "go_to", "args": {"target": "Acme"}},
+        play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "go_to", "args": {"place": "Acme"}},
                 {"kind": "result", "id": "p1", "tool": "go_to", "text": "ok", "ms": 20}]
         ids = self.render(play_events=play, game={"mode": "claude", "started": 0})
         self.assertFalse(ids["play"]["hidden"])

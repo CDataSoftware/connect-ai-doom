@@ -82,8 +82,37 @@ index 15e4a6b..1fb7e65 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
+diff --git i/trunk/src/p_doors.c w/trunk/src/p_doors.c
+index 89b6532..337b8e4 100644
+--- i/trunk/src/p_doors.c
++++ w/trunk/src/p_doors.c
+@@ -41,6 +41,8 @@
+ #include "dstrings.h"
+ #include "sounds.h"
+ 
++void PR_VaultTouched(void);  // connect-doom (pr_process.c)
++
+ #if 0
+ //
+ // Sliding door frame information
+@@ -234,6 +236,7 @@ EV_DoLockedDoor
+ 	{
+ 	    p->message = DEH_String(PD_REDO);
+ 	    S_StartSound(NULL,sfx_oof);
++	    PR_VaultTouched();  // connect-doom: ask Connect AI again, live
+ 	    return 0;
+ 	}
+ 	break;
+@@ -395,6 +398,7 @@ EV_VerticalDoor
+ 	{
+ 	    player->message = DEH_String(PD_REDK);
+ 	    S_StartSound(NULL,sfx_oof);
++	    PR_VaultTouched();  // connect-doom: ask Connect AI again, live
+ 	    return;
+ 	}
+ 	break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..b958fc3 100644
+index fa4fe83..fb6b1ea 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -117,7 +146,7 @@ index fa4fe83..b958fc3 100644
  }
  
  // pr_renice
-@@ -890,3 +905,351 @@ void pr_renice(int pid) {
+@@ -890,3 +905,368 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -469,6 +498,23 @@ index fa4fe83..b958fc3 100644
 +    }
 +}
 +// *** AIM END ***
++
++// *** VAULT BEGIN ***
++// connect-doom: the red door. Each time a player without the red key uses it, run
++// PSDOOMVAULTCMD in the background: the bridge sends the request Connect AI blocked
++// during the briefing again, live, for the side panel. At most once every 2 seconds.
++void PR_VaultTouched(void)
++{
++    static int last = -1000;
++    const char *cmd = getenv("PSDOOMVAULTCMD");
++    char buf[1024];
++    if (cmd == NULL || gametic - last < 70)
++        return;
++    last = gametic;
++    snprintf(buf, sizeof(buf), "%s >/dev/null 2>&1 &", cmd);
++    system(buf);
++}
++// *** VAULT END ***
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
 index e60ec34..fb441a9 100644
 --- i/trunk/src/r_things.c

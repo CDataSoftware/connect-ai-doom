@@ -14,7 +14,11 @@ You ask Claude a business question. Claude answers it through the Connect AI MCP
 ./raid.sh --again --claude-plays  # Claude drives the marine
 ```
 
-The side panel opens at http://localhost:8666. The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
+The game opens on the left of the screen and the side panel (http://localhost:8666) in its own Chrome window on the right, ready for a screen recording. Drag either window to resize it. `LAYOUT=off` opens the panel in a browser tab instead, and `GEOMETRY=1280x800` sets the game's size.
+
+Aim at a monster to see its record (app, name, detail) above the status bar.
+
+The default question asks for at-risk customers across the CRM, support and billing apps, plus a lookup of the customer with SSN `123-45-6789` in PostgreSQL PII. Connect AI blocks that lookup.
 
 ## How the MCP server drives the game
 

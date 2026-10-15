@@ -131,6 +131,11 @@ class CommandsTest(unittest.TestCase):
         self.assertNotIn(str(acme["pid"]), self.run_cmd("list"))
         self.assertEqual(len(self.run_cmd("list").splitlines()), 1)
 
+    def test_cache_writes_the_crosshair_labels(self):
+        m = cd.to_monster({"Id": "1", "Label": "Acme\tCorp", "Detail": "$5,\nlate", "Hot": "1"}, 0, ROOM)
+        cd.write_cache([m], "test")
+        self.assertEqual(cd.LABELS.read_text(), f"{m['pid']}\tSalesforce: Acme Corp\tURGENT: $5, late\n")
+
     def test_kill_message_is_capped_for_the_hud(self):
         m = cd.to_monster({"Id": "z", "Label": "A" * 80}, 0, ROOM)
         cd.write_cache([m], "test")

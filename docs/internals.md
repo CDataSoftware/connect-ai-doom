@@ -33,6 +33,8 @@ raid.sh
 - `-nopslev` always means arena mode (upstream checks the game mode before Freedoom is identified, so monsters landed in the void).
 - Name tags show only the short name.
 - The kill command's first output line becomes the on-screen message.
+- The record under the crosshair: with `PSDOOM_LABELS` set, the game shows that monster's two lines from the file (`pid<TAB>line1<TAB>line2`, written by `connect_doom.py` with each cache refresh) on a dark band above the status bar.
+- The window is resizable on macOS too (upstream turned that off there).
 - The agent channel for Claude plays (below).
 
 ## Claude plays: the agent channel

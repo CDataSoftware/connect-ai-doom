@@ -72,7 +72,7 @@ class RaidTest(unittest.TestCase):
         path.write_text(script)
         path.chmod(0o755)
 
-    def raid(self, *args, env, panel=False):
+    def raid(self, *args, env, panel=False, stdin=None):
         for name, script in (("open", FAKE_OPEN), ("security", FAKE_SECURITY), ("op", FAKE_OP),
                              ("osascript", FAKE_OSASCRIPT)):
             self.install(f"bin/{name}", script, root=self.base)
@@ -86,7 +86,7 @@ class RaidTest(unittest.TestCase):
         else:
             env["NO_PANEL"] = "1"
         return subprocess.run(["bash", str(self.repo / "raid.sh"), *args], capture_output=True, text=True,
-                              env=env, timeout=120)
+                              env=env, timeout=120, input=stdin)
 
     def assert_played(self, r):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -95,6 +95,8 @@ class RaidTest(unittest.TestCase):
                                     "-deh"])
         for flag in ("-nopslev", "-psallusers", "-window"):
             self.assertIn(flag, args)
+        self.assertEqual(args[args.index("-config") + 1], "state/controls.cfg")
+        self.assertIn("key_up 17", (self.state / "controls.cfg").read_text())        # W
         listed = (self.state / "psdoom-list.txt").read_text().splitlines()
         self.assertTrue(listed and all(line.startswith("connectai ") for line in listed))
         self.assertRegex((self.state / "psdoom-kill.txt").read_text().splitlines()[0], r", KILLED$")
@@ -163,6 +165,7 @@ class RaidTest(unittest.TestCase):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             del env["CONNECT_AI_PAT"]
             env["CONNECT_AI_USER"] = USER
+            env["CONNECT_AI_OP_ITEM"] = "op://Private/Connect AI PAT"
             r = self.raid("brief", "Which", "vendors?", env=env)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(json.loads(r.stdout)["answer"], json.loads(
@@ -178,6 +181,31 @@ class RaidTest(unittest.TestCase):
             self.assertFalse((self.logs / "op.txt").exists(), "second run reads the Keychain only")
             self.assertIn(f"find-generic-password -s connect-doom -a {USER} -w",
                           (self.logs / "security.txt").read_text())
+
+    def test_login_then_play_with_the_saved_account(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            del env["CONNECT_AI_PAT"], env["CONNECT_AI_USER"]
+            r = self.raid("login", env=env, stdin=f"{USER}\n{PAT}\n")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((self.state / "account").read_text().strip(), USER)
+            self.assertEqual((self.logs / "keychain").read_text(), PAT)
+            r = self.raid("--again", env=env)
+        self.assertNotIn("No Connect AI token", r.stderr)
+        self.assertIn(f"find-generic-password -s connect-doom -a {USER} -w", (self.logs / "security.txt").read_text())
+
+    def test_no_token_says_how_to_log_in(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            del env["CONNECT_AI_PAT"]
+            r = self.raid("--again", env=env)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("run ./raid.sh login", r.stderr)
+        self.assertFalse((self.logs / "op.txt").exists(), "1Password only when CONNECT_AI_OP_ITEM names an item")
+
+    def test_unbuilt_game_says_run_setup(self):
+        (self.repo / "vendor/src/psdoom-ng/trunk/src/psdoom").unlink()
+        r = self.raid("--demo", env=dict(os.environ))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("run ./setup.sh first", r.stderr)
 
     def test_failed_briefing_stops_the_raid(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url, fail=True) as env:

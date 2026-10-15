@@ -120,10 +120,20 @@ class PanelTest(unittest.TestCase):
         self.assertIn("in 0.9 s: no longer returned by the room's query", events)
         self.assertIn("Live read failed after 30.0 s: timed &lt;out&gt;", events)
 
+    def test_all_rooms_clear(self):
+        kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "", "writable": True,
+                "demon": 0, "killed_at": "2026-10-15T13:54:10"}
+        rooms = [{"app": "Zendesk", "writable": True, "title": "T", "left": 0, "urgent_left": 0, "killed": 1}]
+        ids = self.render(kills=[kill], kill_total=1, rooms_live=rooms, game={"mode": "player", "started": 0})
+        self.assertIn("ALL 1 ROOMS CLEAR", ids["now-big"]["html"])
+        self.assertIn("Now try the red door.", ids["now-big"]["html"])          # the mission has a vault
+        self.assertFalse(ids["now-keys"]["hidden"])
+
     def test_claude_plays_mode(self):
         play = [{"kind": "call", "id": "p1", "server": "doom", "tool": "look", "args": {}}]
         ids = self.render(play_events=play, game={"mode": "claude", "started": 0})
         self.assertEqual(ids["now-mode"]["text"], "CLAUDE IS PLAYING · LIVE")
+        self.assertTrue(ids["now-keys"]["hidden"], "no controls hint while Claude has them")
         self.assertFalse(ids["play"]["hidden"])
 
     def test_live_text_while_running(self):

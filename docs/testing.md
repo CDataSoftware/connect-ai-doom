@@ -17,3 +17,13 @@ It covers:
 - `raid.sh` end to end in demo, live, `--again` and `brief` modes
 
 It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
+
+## Screens
+
+`make test` can't see the game. Before shipping a HUD, menu or branding change, look at it:
+
+```bash
+python3 tools/screenshots.py /tmp/shots      # play.png, aim.png, menu.png, pause.png
+```
+
+It runs psdoom headless on the current `state/` level, walks to a room through the agent channel, presses Esc and P, and saves each screen. Kills and hits go to no-op commands, so the kill log is untouched.

@@ -170,6 +170,10 @@
   .now .act { font: 8px/1.8 var(--pixel); color: var(--ok); }
   .now .hint { font-size: 16px; color: #D9D6CF; }
   .now.flash { animation: flash 1s ease-out; }
+  .now .keys { margin-top: 10px; font-size: 12.5px; color: var(--balance); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+  .now .keys b { font: 7px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; margin-left: 6px; }
+  .now .keys b:first-child { margin-left: 0; }
+  .now .verb.clear { color: var(--ok); }
   @keyframes flash { 0% { background: #5A1206; } 100% { background: var(--depth); } }
 
   #rooms-live { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
@@ -278,6 +282,7 @@
   <div class="now ingame" id="now">
     <div class="mode" id="now-mode">YOU'RE PLAYING · LIVE</div>
     <div class="big" id="now-big"><div class="hint">Grab the keycards in the lobby, then clear the rooms. Every kill shows up here.</div></div>
+    <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn + fire <b>Space</b> open doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
   <section class="ingame"><h2>WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
@@ -590,6 +595,7 @@ function renderGame(s) {
   $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
   if (!game) return;
   $("now-mode").textContent = game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE";
+  $("now-keys").hidden = game.mode === "claude";
 
   const m = s.mission || {};
   const cards = (s.rooms_live || []).map((r, i) => {
@@ -618,12 +624,18 @@ function renderGame(s) {
   seenEvents = new Set([...(seenEvents || []), ...evs.map(evKey)]);
 
   const last = evs[0];
-  const key = last ? `${evKey(last)}:${last.lookup ? last.lookup.at : ""}` : null;  // redraw when the read lands
+  const rooms = s.rooms_live || [];
+  const clear = rooms.length > 0 && rooms.every(r => r.left === 0) && (s.kill_total || 0) > 0;
+  const key = clear ? `clear:${s.kill_total}` : last ? `${evKey(last)}:${last.lookup ? last.lookup.at : ""}` : null;  // redraw when the read lands
   if (key === lastEventKey) return;
   const fresh = lastEventKey !== null;  // not the state the page loaded with
   lastEventKey = key;
   if (!last) return;
-  $("now-big").innerHTML = last.kind === "kill"
+  $("now-big").innerHTML = clear
+    ? `<div class="verb clear">ALL ${rooms.length} ROOMS CLEAR</div>
+       <div class="who">${s.kill_total} records cleared</div>
+       <div class="d">Each one was read again, live, through Connect AI.${(m.denied || []).length ? " Now try the red door." : ""}</div>`
+    : last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo)}`
     : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>

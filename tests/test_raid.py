@@ -55,7 +55,9 @@ class RaidTest(unittest.TestCase):
         for name in SOURCES:
             src = ROOT / name
             if src.is_dir():
-                shutil.copytree(src, self.repo / name, ignore=shutil.ignore_patterns("__pycache__"))
+                # only what git tracks: panel/sprites and panel/brand are generated (like in CI)
+                shutil.copytree(src, self.repo / name,
+                                ignore=shutil.ignore_patterns("__pycache__", "sprites", "brand"))
             else:
                 shutil.copy2(src, self.repo / name)
         (self.repo / "wads").mkdir()

@@ -16,7 +16,7 @@ It covers:
 - the panel's script, run in Node with a minimal DOM (`tests/panel_harness.js`)
 - `raid.sh` end to end in its `new`, `replay`, `offline` and `brief-only` modes (and their old names)
 
-It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push.
+It also shellchecks both scripts and confirms the psdoom patch matches `vendor/` when that checkout exists. GitHub Actions runs it on every push and pull request, on Python 3.9 (a stock Mac's) and 3.13.
 
 ## Screens
 

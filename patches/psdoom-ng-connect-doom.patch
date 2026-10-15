@@ -73,7 +73,7 @@ index 15e4a6b..1fb7e65 100644
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..4acbcfa 100644
+index fa4fe83..e39c4d9 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -107,7 +107,7 @@ index fa4fe83..4acbcfa 100644
  }
  
  // pr_renice
-@@ -890,3 +905,320 @@ void pr_renice(int pid) {
+@@ -890,3 +905,339 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -352,6 +352,9 @@ index fa4fe83..4acbcfa 100644
 +#include "doomstat.h"
 +#include "r_state.h"
 +#include "v_video.h"
++#include "w_wad.h"
++#include "z_zone.h"
++#include "i_swap.h"
 +
 +extern mobj_t *linetarget;
 +fixed_t P_AimLineAttack(mobj_t *t1, angle_t angle, fixed_t distance);
@@ -400,11 +403,27 @@ index fa4fe83..4acbcfa 100644
 +    }
 +}
 +
++// The Connect AI logo in the view's top-right corner (CAICORNR, from brand.wad).
++static void corner_logo(void)
++{
++    static int lump = -2;
++    patch_t *logo;
++    if (lump == -2)
++        lump = W_CheckNumForName("CAICORNR");
++    if (lump < 0)
++        return;
++    logo = W_CacheLumpNum(lump, PU_CACHE);
++    V_DrawPatchDirect(viewwindowx + scaledviewwidth - SHORT(logo->width) - 3, viewwindowy + 3, 0, logo);
++}
++
 +void PR_DrawAimInfo(void)
 +{
 +    mobj_t *mo = players[consoleplayer].mo;
 +    int i, y, x, rows;
-+    if (gamestate != GS_LEVEL || automapactive || menuactive || mo == NULL)
++    if (gamestate != GS_LEVEL || automapactive)
++        return;
++    corner_logo();
++    if (menuactive || mo == NULL)
 +        return;
 +    P_AimLineAttack(mo, mo->angle, 2048 * FRACUNIT);
 +    if (linetarget == NULL || !linetarget->m_pid || linetarget->health <= 0)

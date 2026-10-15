@@ -35,6 +35,7 @@ raid.sh
 - The kill command's first output line becomes the on-screen message.
 - The record under the crosshair: with `PSDOOM_LABELS` set, the game shows that monster's two lines from the file (`pid<TAB>line1<TAB>line2`, written by `connect_doom.py` with each cache refresh) on a dark band above the status bar.
 - The window is resizable on macOS too (upstream turned that off there).
+- A small Connect AI logo (`CAICORNR` from `state/brand.wad`) in the view's top-right corner.
 - The agent channel for Claude plays (below).
 
 ## Claude plays: the agent channel

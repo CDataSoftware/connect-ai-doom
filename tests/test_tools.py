@@ -269,6 +269,11 @@ class BrandingTest(unittest.TestCase):
         w, h, left, top = struct.unpack("<hhhh", lumps["M_DOOM"][:8])
         self.assertEqual(w, 204)
         self.assertEqual(94 - left + w // 2, 160, "menu logo centered on the 320 px screen")
+        w, h, left, top = struct.unpack("<hhhh", lumps["M_PAUSE"][:8])
+        self.assertEqual(126 - left + w // 2, 160, "pause graphic centered where Doom puts the stock 68 px one")
+        self.assertLessEqual(4 - top + h, 168, "fits in the view above the status bar")
+        w, h = struct.unpack("<hh", lumps["CAICORNR"][:4])
+        self.assertLessEqual((w, h), (72, 20), "small enough for a corner")
 
     def test_cli(self):
         with tempfile.TemporaryDirectory() as tmp:

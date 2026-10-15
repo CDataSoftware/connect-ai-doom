@@ -9,6 +9,8 @@
            Gray 5) with a thin Agility yellow trim on the bottom rows. On the
            256-tall arena walls it tiles twice: trim at the floor and mid-wall.
   M_DOOM   the menu logo becomes the Connect AI logo.
+  M_PAUSE  the pause screen: the Connect AI logo, a ×, then DOOM.
+  CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
 
 With --mission (state/mission.json from brief.py) it also draws the run's signs:
   CAIRM0-2 one per app room: the app, what Claude found there, and the access
@@ -32,6 +34,7 @@ GRAY_LO, GRAY_HI = 24, 140    # brand Gray 11 (Depth) .. Gray 5, as plain gray l
 TRIM_ROWS = 4  # thinner breaks into dashes at a distance
 CLARITY = (241, 238, 233)     # brand Clarity #F1EEE9
 KEY_BLUE, KEY_YELLOW, KEY_RED = (64, 96, 255), AGILITY, (255, 48, 32)
+DOOM_RED = (232, 41, 11)
 FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
 LOGO = "02 Logos/Product Logos/Connect AI/PNG/connect-ai-agility-clarity.png"  # for dark backgrounds
 
@@ -117,6 +120,25 @@ def menu_image(kit):
     logo = logo_image(kit, 196)
     img = Image.new("RGBA", (logo.width + 8, logo.height + 8), DEPTH + (255,))
     img.alpha_composite(logo, (4, 4))
+    return img
+
+
+def pause_image(kit):
+    """Connect AI / × / DOOM, stacked on a Depth plate."""
+    logo = logo_image(kit, 180)
+    img = Image.new("RGBA", (200, logo.height + 92), DEPTH + (255,))
+    img.alpha_composite(logo, (10, 8))
+    d = ImageDraw.Draw(img)
+    d.text((100, logo.height + 26), "×", font=font(26), fill=CLARITY, anchor="mm")
+    d.text((100, logo.height + 66), "DOOM", font=font(52), fill=DOOM_RED, anchor="mm")
+    return img
+
+
+def corner_image(kit):
+    """The logo, small enough for a corner of the 320x200 view."""
+    logo = logo_image(kit, 64)
+    img = Image.new("RGBA", (logo.width + 4, logo.height + 4), DEPTH + (255,))
+    img.alpha_composite(logo, (2, 2))
     return img
 
 
@@ -237,6 +259,10 @@ def build(iwad, kit, out, mission=None):
         menu = menu_image(kit)
         # menu draws M_DOOM at (94, 2) minus offsets; these center it.
         out_lumps.append(("M_DOOM", to_patch(menu, palette, left=94 - (320 - menu.width) // 2, top=-4)))
+        # D_Display centers M_PAUSE as if it were the stock 68 px wide; the offset recenters it.
+        pause = pause_image(kit)
+        out_lumps.append(("M_PAUSE", to_patch(pause, palette, left=(pause.width - 68) // 2)))
+        out_lumps.append(("CAICORNR", to_patch(corner_image(kit), palette)))
     out_lumps += [(f"P{n[3:]}"[:8], to_patch(img, palette)) for n, img in extra]
     data, directory, pos = b"", b"", 12
     for name, blob in out_lumps:

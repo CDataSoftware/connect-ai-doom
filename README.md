@@ -25,7 +25,7 @@ psdoom-ng ── list ──> connect_doom.py ── reads ──> state/cache.j
 
 - psdoom calls the hooks synchronously in the game loop, so `list`/`kill` only touch local files (~40 ms). The background `poll` does the network.
 - Source data is never modified. A killed record is hidden from `list`, otherwise psdoom resurrects it like an Arch-vile.
-- `SANDBOX=1` also inserts each kill into `SANDBOX_TABLE` (default `[Snowflake_WH].[PUBLIC].[DOOM_FOLLOW_UPS]`, which has to be created first). Untested until a PAT exists.
+- `SANDBOX=1` also inserts each kill into `SANDBOX_TABLE` through Connect AI. Untested: the dev edition account has no scratch table to write to yet, so leave it off.
 - Credentials: `CONNECT_AI_USER` + `CONNECT_AI_PAT`, or the 1Password item `op://Personal/Connect AI Dev Edition PAT` (override with `CONNECT_AI_OP_ITEM`). `raid.sh` reads it once and passes it to the poller.
 - Swap the data with `SOURCE_QUERY` (any SELECT returning `Id`, `Label`, `Amount` in dollars, `DueDate`), `MAX_MONSTERS`, `DEMON_DAYS`. The default reads `Salesforce1` Opportunity joined to Account.
 

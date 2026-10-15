@@ -10,13 +10,19 @@ import struct
 import sys
 
 WALL = "TEKWALL4"
+SIGN = "CAISIGN"  # from wads/brand.wad (tools/make_branding.py)
+# The middle 256 units of each arena's far (north) wall, facing the player.
+SIGN_SPANS = {(384, 1024), (2432, 1024), (4480, 1024)}
+ALCOVE_DEPTH = 16
+ALCOVE_FLOOR = 24
 FLOOR = "FLOOR4_8"
 CEIL = "CEIL3_5"
 
 # One sector, outlined clockwise (y up) so the right side of every line faces in.
 OUTLINE = [
-    (0, 0), (0, 1024), (1024, 1024), (1024, 576), (2048, 576), (2048, 1024),
-    (3072, 1024), (3072, 576), (4096, 576), (4096, 1024), (5120, 1024),
+    (0, 0), (0, 1024), (384, 1024), (640, 1024), (1024, 1024), (1024, 576),
+    (2048, 576), (2048, 1024), (2432, 1024), (2688, 1024), (3072, 1024),
+    (3072, 576), (4096, 576), (4096, 1024), (4480, 1024), (4736, 1024), (5120, 1024),
     (5120, 0), (4096, 0), (4096, 448), (3072, 448), (3072, 0), (2624, 0),
     (2624, -256), (2816, -256), (2816, -768), (2304, -768), (2304, -256),
     (2496, -256), (2496, 0), (2048, 0), (2048, 448), (1024, 448), (1024, 0),
@@ -47,13 +53,44 @@ def name8(s):
     return s.encode().ljust(8, b"\0")
 
 
-def build():
-    verts = b"".join(struct.pack("<hh", x, y) for x, y in OUTLINE)
+def build(signs=False):
+    verts = list(OUTLINE)
+    sides = []    # (upper, lower, middle, sector)
+    lines = []    # (v1, v2, flags, front side, back side)
+    sectors = [(0, 256, 192)]  # (floor, ceiling, light); sector 0 is the whole arena
+
+    def side(sector, middle="-", upper="-", lower="-"):
+        sides.append((upper, lower, middle, sector))
+        return len(sides) - 1
+
+    def vert(xy):
+        verts.append(xy)
+        return len(verts) - 1
+
     n = len(OUTLINE)
-    # flags 1 = impassable; front sidedef i, no back side (-1 = 0xFFFF)
-    lines = b"".join(struct.pack("<hhhhhhh", i, (i + 1) % n, 1, 0, 0, i, -1) for i in range(n))
-    sides = b"".join(struct.pack("<hh8s8s8sh", 0, 0, name8("-"), name8("-"), name8(WALL), 0) for _ in range(n))
-    sectors = struct.pack("<hh8s8shhh", 0, 192, name8(FLOOR), name8(CEIL), 192, 0, 0)
+    for i in range(n):
+        x, y = OUTLINE[i]
+        if signs and (x, y) in SIGN_SPANS:
+            # Vanilla tiles wall textures every 128px vertically, so the sign
+            # sits in a 128-tall alcove (floor 16, ceiling 144) instead of on
+            # the 256-tall wall. flags 1|4 = impassable, two-sided.
+            # full brightness so the sign's yellow isn't dimmed toward brown
+            sectors.append((ALCOVE_FLOOR, ALCOVE_FLOOR + 128, 255))
+            alcove = len(sectors) - 1
+            lines.append((i, (i + 1) % n, 5, side(0, upper=WALL, lower=WALL), side(alcove)))
+            x2 = OUTLINE[(i + 1) % n][0]
+            a, b = vert((x, y + ALCOVE_DEPTH)), vert((x2, y + ALCOVE_DEPTH))
+            lines.append((i, a, 1, side(alcove, WALL), -1))
+            lines.append((a, b, 1, side(alcove, SIGN), -1))
+            lines.append((b, (i + 1) % n, 1, side(alcove, WALL), -1))
+        else:
+            # flags 1 = impassable; one-sided (back side -1)
+            lines.append((i, (i + 1) % n, 1, side(0, WALL), -1))
+
+    verts = b"".join(struct.pack("<hh", x, y) for x, y in verts)
+    lines = b"".join(struct.pack("<hhhhhhh", v1, v2, f, 0, 0, fr, bk) for v1, v2, f, fr, bk in lines)
+    sides = b"".join(struct.pack("<hh8s8s8sh", 0, 0, name8(u), name8(lo), name8(m), s) for u, lo, m, s in sides)
+    sectors = b"".join(struct.pack("<hh8s8shhh", f, c, name8(FLOOR), name8(CEIL), light, 0, 0) for f, c, light in sectors)
     # thing flags 7 = all skill levels
     things = b"".join(struct.pack("<hhhhh", x, y, a, t, 7) for t, x, y, a in THINGS)
     return [("MAP01", b""), ("THINGS", things), ("LINEDEFS", lines), ("SIDEDEFS", sides),
@@ -71,4 +108,5 @@ def write_wad(path, lumps):
 
 
 if __name__ == "__main__":
-    write_wad(sys.argv[1] if len(sys.argv) > 1 else "arena-raw.wad", build())
+    args = [a for a in sys.argv[1:] if a != "--sign"]
+    write_wad(args[0] if args else "arena-raw.wad", build(signs="--sign" in sys.argv))

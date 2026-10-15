@@ -31,7 +31,10 @@ export PSDOOMRENICECMD="python3 $BRIDGE hit"
 
 # -nopslev: spawn monsters into the three arenas of wads/arena.wad
 # -psallusers: don't filter monsters by Unix user
-"$PSDOOM" -iwad wads/freedoom2.wad -file wads/arena.wad -nopslev -psallusers \
+WADS=(wads/arena.wad)
+[[ -f wads/brand.wad ]] && WADS+=(wads/brand.wad)  # Connect AI signs + menu logo
+
+"$PSDOOM" -iwad wads/freedoom2.wad -file "${WADS[@]}" -nopslev -psallusers \
   -warp 1 -skill 3 -window -geometry 1280x800 "$@" \
   >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
 

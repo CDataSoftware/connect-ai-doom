@@ -58,7 +58,22 @@ if [[ ! -f wads/freedoom2.wad ]]; then
   curl -sSL -o vendor/freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
   unzip -o -q -j vendor/freedoom.zip '*/freedoom2.wad' -d wads
 fi
-python3 tools/make_arena.py vendor/arena-raw.wad
+# Optional light branding from the CData brand kit (not in git). Without it the
+# arena uses plain walls.
+BRANDKIT_ZIP=${BRANDKIT_ZIP:-$HOME/Documents/dev/cdata/BRANDKIT.zip}
+SIGN=""
+if [[ -f "$BRANDKIT_ZIP" ]] && python3 -c 'import PIL' 2>/dev/null; then
+  echo "Connect AI branding..."
+  mkdir -p brand
+  # SharePoint zips are streamed (no central directory); bsdtar reads them, unzip can't.
+  [[ -d brand/BRANDKIT ]] || /usr/bin/bsdtar -xf "$BRANDKIT_ZIP" -C brand \
+    'BRANDKIT/02 Logos/Product Logos/Connect AI/*'
+  python3 tools/make_branding.py wads/freedoom2.wad brand/BRANDKIT wads/brand.wad
+  SIGN=--sign
+else
+  rm -f wads/brand.wad
+fi
+python3 tools/make_arena.py vendor/arena-raw.wad $SIGN
 "$SRC/zdbsp/build/zdbsp" -o wads/arena.wad vendor/arena-raw.wad >>"$LOG"
 
 echo "Done. Try: ./raid.sh --demo"

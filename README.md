@@ -33,4 +33,6 @@ psdoom-ng ── list ──> connect_doom.py ── reads ──> state/cache.j
 
 - `tools/make_arena.py`: writes the MAP01 arena (three 1024x1024 rooms at x = 0, 2048, 4096, the layout psdoom's `-nopslev` mode spawns into) plus a lobby with weapons; `zdbsp` builds the nodes.
 - `patches/psdoom-ng-nopslev-arena.patch`: makes `-nopslev` set arena mode unconditionally; upstream checks the game mode before Freedoom is identified, so monsters landed in the void.
-- psdoom ignores SIGTERM; close the window or `pkill -9 -f trunk/src/psdoom`.
+- `tools/make_branding.py`: light Connect AI branding from the CData brand kit, as `wads/brand.wad`: a sign (logo on a Depth plate) in a lit alcove on each arena's far wall, and the Connect AI logo in place of DOOM on the Esc menu. `setup.sh` builds it when `~/Documents/dev/cdata/BRANDKIT.zip` exists (override with `BRANDKIT_ZIP`); the logos stay out of git. Without the kit the walls are plain.
+- Vanilla limits that shaped the sign: wall textures tile every 128px vertically (hence the 128-tall alcove), and multi-patch textures cap at 64 KB (hence one baked patch).
+- psdoom ignores SIGTERM; close the window or `pkill -9 -f trunk/src/psdoom`. On macOS a crash shows a system alert that outlives the game; click OK.

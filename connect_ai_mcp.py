@@ -27,8 +27,8 @@ class MCPError(RuntimeError):
 
 
 class Client:
-    def __init__(self, url=MCP_URL):
-        self.url, self.session, self.next_id = url, None, 1
+    def __init__(self, url=MCP_URL, timeout=120):
+        self.url, self.session, self.next_id, self.timeout = url, None, 1, timeout
         self._rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                  "clientInfo": {"name": "connect-doom", "version": "1"}})
         self._rpc("notifications/initialized", notify=True)
@@ -45,7 +45,7 @@ class Client:
             headers["Mcp-Session-Id"] = self.session
         req = urllib.request.Request(self.url, json.dumps(body).encode(), headers)
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 self.session = resp.headers.get("Mcp-Session-Id") or self.session
                 raw = resp.read().decode()
         except urllib.error.HTTPError as e:

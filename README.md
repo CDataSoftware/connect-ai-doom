@@ -39,6 +39,12 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
    ./raid.sh login
    ```
 
+6. **Check the Mac.** `doctor` checks the build, the token, that Connect AI answers over this network, Chrome, and the panel's port, and prints what to run for anything missing.
+
+   ```bash
+   ./raid.sh doctor
+   ```
+
 ## Play
 
 ```bash
@@ -57,7 +63,11 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 
 The game opens on the left of your screen and the panel on the right, sized for a screen recording. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
 
-**At a booth**, run `new` once before the doors open, then `replay` for each player. Every game starts with all the records back. If the Wi-Fi drops, use `offline`.
+**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `replay` for each player. Every game starts with all the records back, and the panel reuses its Chrome window instead of opening a new one each game. Esc → *Quit Game* → Y ends a game.
+
+- **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
+- **The first run asks** to let Terminal control Google Chrome (to place the panel). Click OK; if you decline, the panel opens as a plain tab.
+- **If the Wi-Fi is slow**, `replay` waits at most 20 seconds per Connect AI call (`CONNECT_AI_TIMEOUT`) and then plays the records it last fetched. If it's down, use `offline`.
 
 ## How it works
 

@@ -218,6 +218,21 @@ class RaidTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse((self.state / "psdoom-args.txt").exists())
 
+    def test_doctor_says_ready(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            r = self.raid("doctor", env={**env, "PANEL_PORT": str(free_port())})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("✓ game, map builder and Freedoom art built", r.stdout)
+        self.assertRegex(r.stdout, r"✓ Connect AI answers: \d+ connections")
+        self.assertIn("no level yet", r.stdout)
+        self.assertIn("Ready:", r.stdout)
+
+    def test_doctor_without_a_token_says_what_to_run(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("CONNECT_AI_USER", "CONNECT_AI_PAT")}
+        r = self.raid("doctor", env={**env, "PANEL_PORT": str(free_port())})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("✗ no Connect AI token: run ./raid.sh login", r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

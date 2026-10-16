@@ -40,6 +40,9 @@ LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the cr
 MISSION = STATE / "mission.json"
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
+# Seconds to wait on each Connect AI call during a game. On bad conference Wi-Fi a short wait
+# means the game starts on the last records fetched instead of hanging before it opens.
+TIMEOUT = float(os.environ.get("CONNECT_AI_TIMEOUT", "20"))
 
 
 # ---------------------------------------------------------------- monsters
@@ -212,7 +215,7 @@ def cmd_lookup(args):
     entry = {"id": record_id, "connection": connection, "sql": sql}
     start = time.time()
     try:
-        rows = connect_ai_mcp.Client().query(sql)
+        rows = connect_ai_mcp.Client(timeout=TIMEOUT).query(sql)
         entry["row"] = to_monster(rows[0], 0, room) if rows else None
     except Exception as e:  # report it on the panel; the game is unaffected
         entry["error"] = str(e).split("\n")[0][:200]
@@ -231,7 +234,7 @@ def cmd_vault(_):
     entry = {"connection": d["connection"], "tool": d["tool"], "request": d["request"]}
     start = time.time()
     try:
-        entry["text"] = connect_ai_mcp.Client().call(d["tool"], **d["request"])[:300]
+        entry["text"] = connect_ai_mcp.Client(timeout=TIMEOUT).call(d["tool"], **d["request"])[:300]
         entry["blocked"] = False
     except Exception as e:
         entry["text"] = str(e).split("\n")[0][:200]
@@ -252,7 +255,7 @@ def fetch(mission, stats=None):
     append each room's round trip to it."""
     if is_offline(mission):
         return [to_monster(row, i, r) for i, r in enumerate(mission["rooms"]) for row in r["rows"]]
-    mcp = connect_ai_mcp.Client()
+    mcp = connect_ai_mcp.Client(timeout=TIMEOUT)
     monsters = []
     for i, room in enumerate(mission["rooms"][:3]):
         start = time.time()

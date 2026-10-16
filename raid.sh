@@ -7,6 +7,7 @@
 #   ./raid.sh offline             made-up data, no network
 #   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
+#   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
 #   --claude-plays                Claude plays instead of you; add it to any mode above,
 #                                 e.g. ./raid.sh replay --claude-plays
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
       echo "$CONNECT_AI_USER" > state/account
       echo "Saved. Now run ./raid.sh new"
       exit ;;
+    doctor) MODE=doctor; shift ;;
     new) MODE=live; shift ;;
     offline|--demo) MODE=demo; shift ;;
     replay|--again) MODE=again; shift ;;
@@ -42,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]]; then
+if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]] && [[ "$MODE" != doctor ]]; then
   echo "The game isn't built yet: run ./setup.sh first." >&2
   exit 1
 fi
@@ -66,12 +68,53 @@ if [[ "$MODE" != demo ]]; then
     security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
       -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
   fi
-  if [[ -z "${CONNECT_AI_PAT:-}" ]]; then
+  if [[ -z "${CONNECT_AI_PAT:-}" && "$MODE" != doctor ]]; then
     echo "No Connect AI token: run ./raid.sh login (or set CONNECT_AI_USER and CONNECT_AI_PAT)." >&2
     echo "To play offline with made-up data: ./raid.sh offline" >&2
     exit 1
   fi
   export CONNECT_AI_USER CONNECT_AI_PAT
+fi
+
+if [[ "$MODE" == doctor ]]; then
+  # One line per check; an x line says what to run. Exits 1 if anything needed to play is missing.
+  BAD=0
+  ok() { echo "  ✓ $*"; }
+  no() { echo "  ✗ $*"; BAD=1; }
+  note() { echo "  - $*"; }
+  echo "connect-doom on macOS $(sw_vers -productVersion 2>/dev/null) ($(uname -m))"
+  if [[ -x "$PSDOOM" && -x "$ZDBSP" && -f wads/freedoom2.wad ]]; then ok "game, map builder and Freedoom art built"
+  else no "the game isn't fully built: run ./setup.sh (its log is vendor/build.log)"; fi
+  if python3 -c 'import sys; assert sys.version_info >= (3, 9)' 2>/dev/null; then ok "$(python3 --version)"
+  else no "python3 3.9 or newer is needed: xcode-select --install"; fi
+  if python3 -c 'import PIL' 2>/dev/null; then ok "Pillow"; else no "Pillow is missing: run ./setup.sh"; fi
+  if command -v claude >/dev/null; then ok "Claude Code CLI, for ./raid.sh new"
+  else note "no Claude Code CLI: replay and offline work, new needs it"; fi
+  if [[ -n "${CONNECT_AI_PAT:-}" ]]; then
+    ok "Connect AI token for ${CONNECT_AI_USER:-?}"
+    if n=$(python3 -c 'import connect_ai_mcp as c; print(len(c.Client(timeout=15).connections()))' 2>&1); then
+      ok "Connect AI answers: $n connections"
+    else
+      no "Connect AI didn't answer (${n##*$'\n'}). Check the Wi-Fi and the token, or play ./raid.sh offline"
+    fi
+  else
+    no "no Connect AI token: run ./raid.sh login (./raid.sh offline works without one)"
+  fi
+  if [[ -f state/mission.json ]]; then
+    ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"
+  else note "no level yet: run ./raid.sh new once, then replay plays it"; fi
+  if [[ -d "${CHROME_APP:-/Applications/Google Chrome.app}" ]]; then ok "Google Chrome, for the side-by-side panel"
+  else note "no Google Chrome: the panel opens as a browser tab instead of beside the game"; fi
+  port=${PANEL_PORT:-8666}
+  if ! lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then ok "port $port free for the panel"
+  elif pgrep -f "$BRIDGE panel" >/dev/null; then note "port $port: an old panel is running; raid.sh replaces it"
+  else no "port $port is taken by another app: run with PANEL_PORT=8667"; fi
+  screen=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var v = $.NSScreen.mainScreen.visibleFrame;
+    Math.round(v.size.width) + "x" + Math.round(v.size.height)' 2>/dev/null || true)
+  [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the screen the Terminal window is on"
+  if ((BAD)); then echo "Not ready: fix the ✗ lines."; exit 1; fi
+  echo "Ready: ./raid.sh replay plays the last level, ./raid.sh new makes a fresh one."
+  exit
 fi
 
 # A previous run's panel or poller (say, after a crash) would hold the port and serve stale state.
@@ -110,10 +153,19 @@ if [[ -n "$SIDE" ]]; then
 fi
 
 open_panel() {
+  # Reuses the last game's panel window, so a day of booth replays doesn't stack up windows.
   if [[ -n "$SIDE" ]] && osascript -e "tell application \"Google Chrome\"
-      set w to make new window
+      set w to missing value
+      repeat with x in windows
+        if URL of active tab of x starts with \"$PANEL_URL\" then set w to contents of x
+      end repeat
+      if w is missing value then
+        set w to make new window
+        set URL of active tab of w to \"$PANEL_URL\"
+      else
+        tell active tab of w to reload
+      end if
       set bounds of w to {$((SX + SW - PANEL_W)), $SY, $((SX + SW)), $((SY + SH))}
-      set URL of active tab of w to \"$PANEL_URL\"
     end tell" >/dev/null 2>&1; then
     return
   fi

@@ -20,7 +20,8 @@
 #                                 signed out).
 #   --god-mode                    players can't die
 #   --saved-data                  play the level's last saved records; nothing asks Connect AI
-# All five switches are also in the game's Options menu (Esc > Options), so they can be
+#   --no-music, --no-sound-effects  start with Freedoom's soundtrack, or the sound effects, off
+# All seven switches are also in the game's Options menu (Esc > Options), so they can be
 # flipped without restarting, and a booth keeps them from one game to the next; with auto
 # replay on, a minute without a key or the mouse hands the game to Claude (IDLE_SECONDS).
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
@@ -36,7 +37,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE=""
+MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE="" NOMUSIC="" NOSFX=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -56,6 +57,8 @@ while [[ $# -gt 0 ]]; do
     --offline-plays) PLAYS=1 OFFLINE=1; shift ;;
     --god-mode) GOD=1; shift ;;
     --saved-data) SAVED=1; shift ;;
+    --no-music) NOMUSIC=1; shift ;;
+    --no-sound-effects) NOSFX=1; shift ;;
     --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
@@ -126,6 +129,7 @@ if [[ -n "$BOOTH" ]]; then
   games=0
   while :; do
     "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} ${LOOP:+--loop} ${GOD:+--god-mode} ${SAVED:+--saved-data} \
+      ${NOMUSIC:+--no-music} ${NOSFX:+--no-sound-effects} \
       ${OFFLINE:+--offline-plays} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
     games=$((games + 1))
     if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
@@ -138,13 +142,18 @@ fi
 if [[ -z "${CONNECT_DOOM_BOOTH:-}" ]]; then
   rm -f state/options.json
 elif [[ -f state/options.json ]]; then
-  read -r PLAYS LOOP GOD SAVED OFFLINE < <(python3 -c 'import json
+  read -r PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX < <(python3 -c 'import json
 o = json.load(open("state/options.json"))
-print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mode", "saved_data", "offline_claude")])' \
+print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mode", "saved_data", "offline_claude")],
+      *["-" if o.get(k, 1) else 1 for k in ("music", "sound_effects")])' \
     2>/dev/null || true)
-  for v in PLAYS LOOP GOD SAVED OFFLINE; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
+  for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
 fi
 export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
+PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1
+[[ -n "$NOMUSIC" ]] && PSDOOM_OPT_MUSIC=0
+[[ -n "$NOSFX" ]] && PSDOOM_OPT_SFX=0
+export PSDOOM_OPT_MUSIC PSDOOM_OPT_SFX
 
 if [[ "$MODE" == doctor ]]; then
   # One line per check; an x line says what to run. Exits 1 if anything needed to play is missing.

@@ -37,15 +37,21 @@ fresh_config() {  # 2012-era config.sub doesn't know arm64 Macs
 
 build_sdl_lib() {  # name version configure-args...
   local dir="$1-$2"; shift 2
-  [[ -f "$L/lib/lib${dir%%-*}.dylib" ]] && return
+  # built with these same flags already? (a stamp per library, so a flag change rebuilds it)
+  local stamp="$L/lib/.${dir%%-*}.flags"
+  [[ -f "$L/lib/lib${dir%%-*}.dylib" && "$(cat "$stamp" 2>/dev/null || true)" == "$*" ]] && return
+  rm -rf "${SRC:?}/$dir"
   curl -fsSL "https://www.libsdl.org/projects/${dir%%-*}/release/$dir.tar.gz" | tar xz -C "$SRC"
   fresh_config "$SRC/$dir"
   (cd "$SRC/$dir" && ./configure --prefix="$L" "$@" && make -j"$JOBS" && make install) >>"$LOG" 2>&1
+  echo "$*" > "$stamp"
 }
 echo "SDL_net / SDL_mixer 1.2..."; STEP="SDL_net / SDL_mixer"
 build_sdl_lib SDL_net 1.2.8 --disable-gui
+# Music is Freedoom's MIDI, played by macOS's own synth (native MIDI, not Timidity): no sound
+# fonts to install, and the same instruments on every Mac.
 build_sdl_lib SDL_mixer 1.2.12 --disable-music-mod --disable-music-mp3 --disable-music-ogg \
-  --disable-music-flac --disable-music-native-midi --disable-music-native-midi-gpl \
+  --disable-music-flac --disable-music-timidity-midi --disable-music-native-midi-gpl \
   --disable-music-fluidsynth-midi --disable-smpegtest
 
 echo "psdoom-ng..."; STEP="psdoom-ng"

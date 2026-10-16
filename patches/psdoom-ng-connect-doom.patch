@@ -261,10 +261,10 @@ index 15e4a6b..ba0a40f 100644
      // Set up title and icon.  Windows cares about the ordering; this
      // has to be done before the call to SDL_SetVideoMode.
 diff --git i/trunk/src/m_menu.c w/trunk/src/m_menu.c
-index 7144f71..ce2c8bf 100644
+index 7144f71..4b99ee1 100644
 --- i/trunk/src/m_menu.c
 +++ w/trunk/src/m_menu.c
-@@ -220,6 +220,13 @@ void M_ReadThis2(int choice);
+@@ -220,6 +220,15 @@ void M_ReadThis2(int choice);
  void M_QuitDOOM(int choice);
  
  void M_ChangeMessages(int choice);
@@ -273,12 +273,14 @@ index 7144f71..ce2c8bf 100644
 +void M_ChangeGodMode(int choice);
 +void M_ChangeSavedData(int choice);
 +void M_ChangeOfflineClaude(int choice);
++void M_ChangeMusic(int choice);
++void M_ChangeSoundEffects(int choice);
 +int PR_AgentOption(int option);       // connect-doom (pr_process.c)
 +void PR_AgentToggle(int option);
  void M_ChangeSensitivity(int choice);
  void M_SfxVol(int choice);
  void M_MusicVol(int choice);
-@@ -366,24 +373,27 @@ menu_t  NewDef =
+@@ -366,24 +375,31 @@ menu_t  NewDef =
  //
  enum
  {
@@ -292,6 +294,8 @@ index 7144f71..ce2c8bf 100644
 +    godmode,
 +    saveddata,
 +    offlineclaude,
++    musicon,
++    sfxon,
 +    // connect-doom: no End Game row (a booth visitor would land on the title screen; F7
 +    // still ends the game), no Graphic Detail row (F5 still switches it), no Messages row
 +    // (F8 still switches them) and no Screen Size row (- and + still resize), so it fits
@@ -314,10 +318,21 @@ index 7144f71..ce2c8bf 100644
 +    {1,"M_GODMOD",	M_ChangeGodMode,'g'},
 +    {1,"M_SAVED",	M_ChangeSavedData,'d'},
 +    {1,"M_OFFAI",	M_ChangeOfflineClaude,'o'},
++    {1,"M_MUSON",	M_ChangeMusic,'u'},
++    {1,"M_SFXON",	M_ChangeSoundEffects,'e'},
      {2,"M_MSENS",	M_ChangeSensitivity,'m'},
      {-1,"",0,'\0'},
      {1,"M_SVOL",	M_Sound,'s'}
-@@ -1011,21 +1021,24 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
+@@ -395,7 +411,7 @@ menu_t  OptionsDef =
+     &MainDef,
+     OptionsMenu,
+     M_DrawOptions,
+-    60,37,
++    60,33,      // connect-doom: up from 37, so Sound Volume stays clear of the bottom edge
+     0
+ };
+ 
+@@ -1011,21 +1027,24 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
  
  void M_DrawOptions(void)
  {
@@ -333,7 +348,7 @@ index 7144f71..ce2c8bf 100644
 -		       W_CacheLumpName(DEH_String(msgNames[showMessages]),
 -				       PU_CACHE));
 +    // connect-doom: ON / OFF just right of each switch's label
-+    for (i = claudeplays; i <= offlineclaude; i++)
++    for (i = claudeplays; i <= sfxon; i++)
 +    {
 +        patch_t *label, *onoff;
 +        if (!OptionsMenu[i].name[0])
@@ -352,7 +367,7 @@ index 7144f71..ce2c8bf 100644
  }
  
  void M_Options(int choice)
-@@ -1053,6 +1066,33 @@ void M_ChangeMessages(int choice)
+@@ -1053,6 +1072,43 @@ void M_ChangeMessages(int choice)
  }
  
  
@@ -382,11 +397,21 @@ index 7144f71..ce2c8bf 100644
 +    PR_AgentToggle(4);
 +}
 +
++void M_ChangeMusic(int choice)
++{
++    PR_AgentToggle(5);
++}
++
++void M_ChangeSoundEffects(int choice)
++{
++    PR_AgentToggle(6);
++}
++
 +
  //
  // M_EndGame
  //
-@@ -2009,6 +2049,8 @@ void M_Ticker (void)
+@@ -2009,6 +2065,8 @@ void M_Ticker (void)
  //
  void M_Init (void)
  {
@@ -395,12 +420,12 @@ index 7144f71..ce2c8bf 100644
      currentMenu = &MainDef;
      menuactive = 0;
      itemOn = currentMenu->lastOn;
-@@ -2020,6 +2062,16 @@ void M_Init (void)
+@@ -2020,6 +2078,16 @@ void M_Init (void)
      messageLastMenuActive = menuactive;
      quickSaveSlot = -1;
  
 +    // connect-doom: the switches' labels come from state/brand.wad; without it, blank rows
-+    for (i = claudeplays; i <= offlineclaude; i++)
++    for (i = claudeplays; i <= sfxon; i++)
 +    {
 +        if (W_CheckNumForName(OptionsMenu[i].name) < 0)
 +        {
@@ -519,7 +544,7 @@ index fb45bdc..2d3ab84 100644
  	    }
  	    else if (mo->flags & MF_MISSILE)
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..095ebf8 100644
+index fa4fe83..09cc030 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -614,7 +639,7 @@ index fa4fe83..095ebf8 100644
  }
  
  // pr_renice
-@@ -890,3 +938,451 @@ void pr_renice(int pid) {
+@@ -890,3 +938,459 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -655,16 +680,21 @@ index fa4fe83..095ebf8 100644
 +// The Options menu's switches, -1 until read from the env: Claude plays, auto replay, god mode
 +// (for people; Claude always has it), saved data (the bridge stops asking Connect AI) and offline
 +// Claude (play.py's scripted player instead of Claude: no AI tokens).
-+#define AGENT_NOPTIONS 5
-+static int agent_options[AGENT_NOPTIONS] = {-1, -1, -1, -1, -1};
++#define AGENT_NOPTIONS 7
++static int agent_options[AGENT_NOPTIONS] = {-1, -1, -1, -1, -1, -1, -1};
 +static const char *agent_option_env[AGENT_NOPTIONS] = {
-+    "PSDOOM_AGENT_CLAUDE", "PSDOOM_AGENT_LOOP", "PSDOOM_OPT_GOD", "PSDOOM_OPT_SAVED", "PSDOOM_OPT_OFFLINE"};
++    "PSDOOM_AGENT_CLAUDE", "PSDOOM_AGENT_LOOP", "PSDOOM_OPT_GOD", "PSDOOM_OPT_SAVED", "PSDOOM_OPT_OFFLINE",
++    "PSDOOM_OPT_MUSIC", "PSDOOM_OPT_SFX"};
++static const int agent_option_default[AGENT_NOPTIONS] = {0, 0, 0, 0, 0, 1, 1};   // music and sound: on
 +static const char *agent_option_msg[AGENT_NOPTIONS][2] = {
 +    {"CLAUDE PLAYS OFF: YOUR TURN", "CLAUDE PLAYS: CLAUDE TAKES OVER"},
 +    {"AUTO REPLAY OFF", "AUTO REPLAY ON: THE LEVEL RESTARTS ONCE CLEARED"},
 +    {"GOD MODE OFF", "GOD MODE ON: PLAYERS CAN'T DIE"},
 +    {"SAVED DATA OFF: LIVE FROM CONNECT AI", "SAVED DATA ON: NO CONNECT AI CALLS, THE LAST SAVED RECORDS"},
-+    {"OFFLINE CLAUDE OFF: CLAUDE PLAYS LIVE", "OFFLINE CLAUDE ON: A SCRIPTED PLAYER, NO AI TOKENS"}};
++    {"OFFLINE CLAUDE OFF: CLAUDE PLAYS LIVE", "OFFLINE CLAUDE ON: A SCRIPTED PLAYER, NO AI TOKENS"},
++    {"MUSIC OFF", "MUSIC ON"},
++    {"SOUND EFFECTS OFF", "SOUND EFFECTS ON"}};
++void S_SoundSwitched(void);   // s_sound.c: the music and sound switches' volumes
 +static int agent_last_input = 0;          // gametic of a person's last key or mouse event
 +#define AGENT_KEY_MARK 0x4147             // data3 of the keys KEY presses: not a person
 +
@@ -687,7 +717,7 @@ index fa4fe83..095ebf8 100644
 +    if (agent_options[option] < 0)
 +    {
 +        const char *v = getenv(agent_option_env[option]);
-+        agent_options[option] = v != NULL && v[0] && strcmp(v, "0") != 0;
++        agent_options[option] = v != NULL && v[0] ? strcmp(v, "0") != 0 : agent_option_default[option];
 +    }
 +    return agent_options[option];
 +}
@@ -701,6 +731,8 @@ index fa4fe83..095ebf8 100644
 +        return;
 +    agent_options[option] = !PR_AgentOption(option);
 +    p->message = agent_option_msg[option][agent_options[option]];
++    if (option == 5 || option == 6)
++        S_SoundSwitched();
 +    if ((option == 0 || option == 2) && !PR_AgentOption(0) && !PR_AgentOption(2))
 +        p->cheats &= ~CF_GODMODE;      // nobody's god mode any more
 +    if (option == 0 && !agent_options[0] && agent_verb[0])
@@ -775,13 +807,14 @@ index fa4fe83..095ebf8 100644
 +    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
 +               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
 +               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d, \"god_mode\": %d, "
-+               "\"saved_data\": %d, \"offline_claude\": %d}, \"idle_seconds\": %d,\n",
++               "\"saved_data\": %d, \"offline_claude\": %d, \"music\": %d, \"sound_effects\": %d}, "
++               "\"idle_seconds\": %d,\n",
 +            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
 +            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
 +            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
 +            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount,
 +            PR_AgentOption(0), PR_AgentOption(1), PR_AgentOption(2), PR_AgentOption(3),
-+            PR_AgentOption(4), (gametic - agent_last_input) / TICRATE);
++            PR_AgentOption(4), PR_AgentOption(5), PR_AgentOption(6), (gametic - agent_last_input) / TICRATE);
 +    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
 +            agent_seq, agent_done_seq, agent_verb, agent_result);
 +    fprintf(f, " \"monsters\": [");
@@ -1152,3 +1185,51 @@ index 406a65f..60e0c2f 100644
  
  extern vissprite_t	vissprites[MAXVISSPRITES];
  extern vissprite_t*	vissprite_p;
+diff --git i/trunk/src/s_sound.c w/trunk/src/s_sound.c
+index 7ae7559..3670fd8 100644
+--- i/trunk/src/s_sound.c
++++ w/trunk/src/s_sound.c
+@@ -233,6 +233,20 @@ static void InitMusicModule(void)
+ //  allocates channel buffer, sets S_sfx lookup.
+ //
+ 
++// connect-doom: the Options menu's Music and Sound effects switches (PR_AgentOption 5 and 6).
++// Off is volume 0, so the Sound Volume sliders keep their levels.
++int PR_AgentOption(int option);
++static int snd_volume_asked[2];   // the sliders' volumes: music, sound effects
++
++void S_SoundSwitched(void)
++{
++    if (music_module != NULL)
++    {
++        music_module->SetMusicVolume(PR_AgentOption(5) ? snd_volume_asked[0] : 0);
++    }
++    snd_SfxVolume = PR_AgentOption(6) ? snd_volume_asked[1] : 0;
++}
++
+ void S_Init(int sfxVolume, int musicVolume)
+ {  
+     boolean nosound, nosfx, nomusic;
+@@ -765,10 +779,8 @@ void S_SetMusicVolume(int volume)
+                 volume);
+     }    
+ 
+-    if (music_module != NULL)
+-    {
+-        music_module->SetMusicVolume(volume);
+-    }
++    snd_volume_asked[0] = volume;
++    S_SoundSwitched();
+ }
+ 
+ void S_SetSfxVolume(int volume)
+@@ -778,7 +790,8 @@ void S_SetSfxVolume(int volume)
+         I_Error("Attempt to set sfx volume at %d", volume);
+     }
+ 
+-    snd_SfxVolume = volume;
++    snd_volume_asked[1] = volume;
++    S_SoundSwitched();
+ }
+ 
+ //

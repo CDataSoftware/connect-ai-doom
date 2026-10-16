@@ -335,7 +335,7 @@ class BrandingTest(unittest.TestCase):
         for name, _ in make_branding.MENU_SWITCHES:
             w, h, px = make_branding.patch_pixels(lumps[name])
             self.assertEqual(struct.unpack("<hh", lumps[name][4:8]), (0, 1), name)
-            self.assertTrue(12 <= h <= 15 and 100 < w < 200, (name, w, h))   # leaves room for ON / OFF in 320
+            self.assertTrue(12 <= h <= 15 and 40 < w < 200, (name, w, h))    # leaves room for ON / OFF in 320
             colors = {self.palette[i] for i in px.values()}
             self.assertIn((0, 0, 0), colors)
             self.assertTrue(all(c == (0, 0, 0) or c[0] > 2 * max(c[1:]) for c in colors), colors)   # reds

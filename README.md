@@ -77,8 +77,9 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 - *God mode*: players can't die, so nobody's turn ends early.
 - *Saved data* plays the level's last saved records and calls Connect AI for nothing: no refresh, no live read on a kill, no live check at the red door. For when the Wi-Fi is up but slow.
 - *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
+- *Music* plays Freedoom's soundtrack, and *Sound effects* the gunfire, doors and monsters. Turning either off keeps its level on the Sound Volume sliders for when it's back on.
 
-Each is off unless its flag turned it on: `--claude-plays`, `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`. In a booth, the switches carry over from one game to the next.
+Each is off unless its flag turned it on: `--claude-plays`, `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 

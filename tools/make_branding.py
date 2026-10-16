@@ -11,9 +11,9 @@
   M_DOOM   the menu logo becomes the Connect AI logo.
   M_PAUSE  the pause screen: the Connect AI logo, a ×, DOOM, then the CData logotype.
   CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
-  M_CLAUDE, M_AUTORP, M_GODMOD, M_SAVED, M_OFFAI  the Options menu's switches ("Claude
-           plays:", "Auto replay:", "God mode:", "Saved data:", "Offline Claude:"), in
-           the stock labels' red shading.
+  M_CLAUDE, M_AUTORP, M_GODMOD, M_SAVED, M_OFFAI, M_MUSON, M_SFXON  the Options menu's
+           switches ("Claude plays:", "Auto replay:", "God mode:", "Saved data:", "Offline
+           Claude:", "Music:", "Sound effects:"), in the stock labels' red shading.
 
 With --mission (state/mission.json from brief.py) it also draws the run's signs:
   CAIRM0-2 one per app room: the app, what Claude found there, and the access
@@ -44,7 +44,8 @@ MENU_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"  # closest to F
 MENU_REDS = [167, 255, 255, 239, 215, 199, 179, 167, 155, 139, 127, 115, 103, 79, 67]
 # The Options menu's switches (psdoom's PR_AgentOption order), each label drawn like the stock ones.
 MENU_SWITCHES = [("M_CLAUDE", "CLAUDE PLAYS:"), ("M_AUTORP", "AUTO REPLAY:"), ("M_GODMOD", "GOD MODE:"),
-                 ("M_SAVED", "SAVED DATA:"), ("M_OFFAI", "OFFLINE CLAUDE:")]
+                 ("M_SAVED", "SAVED DATA:"), ("M_OFFAI", "OFFLINE CLAUDE:"), ("M_MUSON", "MUSIC:"),
+                 ("M_SFXON", "SOUND EFFECTS:")]
 LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds
 CDATA = "cdata.png"      # the brand kit's cdata-logotype-clarity.png
 

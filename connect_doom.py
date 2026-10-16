@@ -421,6 +421,8 @@ def cmd_panel(args):
                 "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
                 "hits": hits[-40:],
                 "rooms_live": rooms,
+                # where the monsters came from: connect-ai-mcp (live), saved (Connect AI unreachable) or demo
+                "records": {k: (read_json(CACHE) or {}).get(k) for k in ("source", "fetched_at")},
                 "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
                 "standing": len([m for m in monsters if m["id"] not in dead]),
             }).encode()

@@ -401,7 +401,8 @@ class PanelServerTest(unittest.TestCase):
     def test_empty_state(self):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
                                              "game": None, "kills": [], "kill_total": 0, "hits": [],
-                                             "rooms_live": [], "vault": [], "standing": 0})
+                                             "rooms_live": [], "records": {"source": None, "fetched_at": None},
+                                             "vault": [], "standing": 0})
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}

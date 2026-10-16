@@ -324,6 +324,9 @@ Urgent records (urgent: true, the biggest monster in each room) matter most. Cle
 records first, then whatever is left.
 
 Use the doom tools: look, go_to, attack. Pick up the keycards first. Then go room by room.
+Opening a room's door brings its monsters rushing out. When go_to says monsters are in the way,
+attack the closest_pids it lists, in order (the ones in sight come first), then go_to again; don't
+call go_to again before you've fought.
 People watch your feed live next to the game. Before EVERY tool call, write ONE short line, as if
 narrating a stream, saying what you're doing and why. Before an attack, name the record and why it
 matters (for example: "Desert Power's renewal ticket is urgent, taking it down."); before a move,

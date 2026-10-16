@@ -653,6 +653,7 @@ class RunTest(StateDirTest):
         self.assertEqual(kinds, ["question", "session", "reasoning_delta", "text_delta", "reasoning", "thought",
                                  "call", "call", "result", "result", "done"])
         self.assertIn("Before EVERY tool call", prompt)                # the feed narrates each decision
+        self.assertIn("When go_to says monsters are in the way", prompt)  # fight through a crowded doorway
         self.assertEqual(events[0]["text"], "Claude plays: Who is at risk?")
         self.assertEqual(events[1]["tools"], ["mcp__doom__look", "mcp__connectai__queryData"])
         calls = [e for e in events if e["kind"] == "call"]

@@ -90,6 +90,18 @@ class RepoTest(unittest.TestCase):
         for script in ("raid.sh", "setup.sh"):
             self.assertNotIn("BRANDKIT", (ROOT / script).read_text(), script)
 
+    def test_panel_needs_no_network(self):
+        """A booth without Wi-Fi looks the same: the panel loads its fonts and scripts from panel/."""
+        html = (ROOT / "panel/index.html").read_text()
+        self.assertEqual(re.findall(r'<(?:link|script|img)[^>]+(?:href|src)="https?://[^"]+"', html), [])
+        css = (ROOT / "panel/fonts/fonts.css").read_text()
+        self.assertNotIn("http", css.split("*/", 1)[1])
+        for font in re.findall(r"url\(([^)]+)\)", css):
+            self.assertGreater((ROOT / "panel/fonts" / font).stat().st_size, 2000, font)
+        for family in ("DM Sans", "DM Mono", "Press Start 2P", "VT323"):
+            self.assertIn(f"font-family: '{family}'", css)
+        self.assertEqual(len(list((ROOT / "panel/fonts").glob("OFL-*.txt"))), 4)
+
     def test_secrets_and_build_output_stay_out_of_git(self):
         ignored = (ROOT / ".gitignore").read_text().split()
         for path in ("state/", "vendor/", "wads/", "/brand/", "__pycache__/"):

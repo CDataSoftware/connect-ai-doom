@@ -53,8 +53,8 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
 - `tools/make_sprites.py`: the panel's sprite PNGs from the WAD, and its logos from `assets/brand/`.
 - `tools/screenshots.py`: headless screenshots of the game's screens (see testing.md).
-- `panel/index.html`: the side panel; it polls `/state.json` twice a second. With `?stage=gx,gy,gw,gh,split,top` it's the full-screen page: the stage on the left (brand bars above and below the game's box) and the panel on the right.
-- `tools/stage.js`: the full-screen layout's backdrop, a JavaScript for Automation script: one borderless window over the main screen showing the stage page in a web view, with the menu bar and the Dock hidden. `raid.sh` sizes the game to the biggest psdoom mode that fits two thirds of the screen and puts its borderless window on the page's game box.
+- `panel/index.html`: the side panel; it polls `/state.json` twice a second. Its fonts are in `panel/fonts` (DM Sans and DM Mono from the CData brand, Press Start 2P and VT323 for Doom; SIL Open Font License), so it needs no network. With `?stage=gx,gy,gw,gh,split,top` it's the full-screen page: the stage on the left (brand bars above and below the game's box) and the panel on the right.
+- `tools/stage.js`: the full-screen layout's backdrop, a JavaScript for Automation script: one borderless window over the main screen showing the stage page in a web view, with the menu bar and the Dock hidden. It hides when another app comes to the front and returns with the game; Cmd-Q on it ends the raid. `raid.sh` sizes the game to the biggest psdoom mode that fits two thirds of the screen and puts its borderless window on the page's game box.
 
 ## The psdoom patch
 
@@ -65,7 +65,8 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - The kill command's first output line becomes the on-screen message.
 - The record under the crosshair: with `PSDOOM_LABELS` set, the game shows that monster's two lines from the file (`pid<TAB>line1<TAB>line2`, written by `connect_doom.py` with each cache refresh) on a dark band above the status bar.
 - The window is resizable on macOS too (upstream turned that off there).
-- With `PSDOOM_FRAMELESS` set, the window has no title bar, floats above other windows, and hides the menu bar and the Dock while it's in front (the full-screen layout).
+- With `PSDOOM_FRAMELESS` set, the window has no title bar and hides the menu bar and the Dock while it's in front (the full-screen layout). It floats above other windows while it or the stage (`PSDOOM_STAGE_PID`) is in front, and drops back to a normal window when another app is.
+- While *Claude plays* is on, the game doesn't grab the mouse, so people can click through Claude's feed.
 - The red door: using a red keycard door without the key also runs `PSDOOMVAULTCMD` in the background (at most every 2 seconds), which `raid.sh` points at `connect_doom.py vault`.
 - A small Connect AI logo (`CAICORNR` from `state/brand.wad`) in the view's top-right corner.
 - P pauses as well as Pause (Mac keyboards have no Pause key); the pause screen is `M_PAUSE` from `state/brand.wad`.

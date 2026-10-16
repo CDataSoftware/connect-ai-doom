@@ -7,9 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="favicon-180.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<!-- the fonts ship with the panel (panel/fonts), so a booth with no Wi-Fi looks the same -->
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
   :root {
     /* CData Connect AI */
@@ -346,6 +345,9 @@
   body.stage .rl .num { font-size: 24px; }
   body.stage .rl .sub { font-size: 11.5px; }
   body.stage .rl .live { font-size: 11px; }
+  /* a third of the screen fits "ROOM 1 · R+W" on one line, not "ROOM 1 · READ + WRITE" */
+  .rl .acc-s, body.stage .rl .acc { display: none; }
+  body.stage .rl .acc-s { display: inline; }
   /* the vault: one short row under the rooms, so Claude's feed keeps the height */
   body.stage .rl.vault { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
   body.stage .rl.vault .app { font-size: 14px; flex: none; }
@@ -688,7 +690,7 @@ class Feed {
 const feed = new Feed($("feed"), "No calls yet");
 const playFeed = new Feed($("playfeed"), "Claude hasn't started playing");
 
-function renderMission(m, events) {
+function renderMission(m, events, rooms) {
   const done = events.some(e => e.kind === "mission");
   const q = events.find(e => e.kind === "question");
   if (q) $("ask").textContent = q.text;
@@ -697,6 +699,11 @@ function renderMission(m, events) {
   $("s-blocked").textContent = events.filter(e => e.kind === "result" && e.error && BLOCKED.test(e.text || "")).length;
   const touched = new Set(events.filter(e => e.kind === "call" && e.connection).map(e => e.connection));
   $("s-apps").textContent = done && m ? m.rooms.length : touched.size;
+  if (!events.length && m) {     // offline: no briefing to count, so count the level itself
+    $("s-apps").textContent = (m.rooms || []).length;
+    $("s-records").textContent = (rooms || []).reduce((n, r) => n + r.left + r.killed, 0);
+    $("s-blocked").textContent = (m.denied || []).length;
+  }
   const model = feed.model || playFeed.model;    // offline there's no briefing, only Claude playing
   if (model) $("s-model").textContent = model.replace(/^claude-/, "").toUpperCase();
   if (!done || !m) return;
@@ -775,7 +782,7 @@ function renderGame(s) {
   const cards = (s.rooms_live || []).map((r, i) => {
     const total = r.left + r.killed;
     return `<div class="rl ${r.writable ? "write" : "read"}${r.left ? "" : " done"}">
-      <div class="top"><img src="sprites/${r.writable ? "yellow" : "blue"}key.png" alt=""><span class="no">ROOM ${i + 1} · ${r.writable ? "READ + WRITE" : "READ ONLY"}</span></div>
+      <div class="top"><img src="sprites/${r.writable ? "yellow" : "blue"}key.png" alt=""><span class="no">ROOM ${i + 1}<span class="acc"> · ${r.writable ? "READ + WRITE" : "READ ONLY"}</span><span class="acc-s"> · ${r.writable ? "R+W" : "READ"}</span></span></div>
       <div class="app">${esc(r.app)}</div>
       <div class="num">${r.killed}<small> / ${total} cleared</small></div>
       <div class="bar"><span style="width:${total ? Math.round(100 * r.killed / total) : 0}%"></span></div>
@@ -873,7 +880,7 @@ async function tick() {
     const s = await (await fetch("/state.json", {cache: "no-store"})).json();
     const events = s.events || [];
     feed.apply(events);
-    renderMission(s.mission, events);
+    renderMission(s.mission, events, s.rooms_live);
     const play = s.play_events || [];
     $("play").hidden = !play.length || s.game?.mode !== "claude";
     if (play.length) playFeed.apply(play);

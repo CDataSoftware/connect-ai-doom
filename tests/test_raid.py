@@ -20,6 +20,7 @@ set -euo pipefail
 printf '%s\n' "$@" > state/psdoom-args.txt
 echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-}" > state/psdoom-agent.txt
 echo "${PSDOOM_FRAMELESS:-} ${SDL_VIDEO_WINDOW_POS:-}" > state/psdoom-env.txt
+echo "${PSDOOM_STAGE_PID:-}" > state/psdoom-stage.txt
 for f in state/level.wad state/brand.wad state/level.deh wads/freedoom2.wad; do [[ -s $f ]] || exit 9; done
 $PSDOOMPSCMD > state/psdoom-list.txt
 pid=$(head -1 state/psdoom-list.txt | cut -d' ' -f2)
@@ -172,6 +173,8 @@ class RaidTest(unittest.TestCase):
         self.assertIn("tools/stage.js", stage)
         self.assertRegex(stage, r"http://localhost:\d+/\?stage=24,147,960,720,1008,32")
         self.assertFalse((self.logs / "open.txt").exists(), "the panel is on the stage, not in a tab")
+        self.assertRegex((self.state / "psdoom-stage.txt").read_text(), r"^\d+\n$")   # floats while the stage is in front
+        self.assertIn("grabmouse 1", (self.state / "controls-extra.cfg").read_text())
 
     def test_full_screen_layout_on_a_second_display(self):
         self.built_from_this_patch()

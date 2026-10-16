@@ -214,6 +214,17 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(ids["stage-mode"]["text"], "CLAUDE IS PLAYING · LIVE")
         self.assertIn("Initech is &lt;urgent&gt;, taking it down.", ids["stage-say"]["html"])  # Claude's latest line
 
+    def test_offline_counts_the_level(self):
+        rooms = [{"app": "Demo CRM", "writable": True, "title": "T", "left": 10, "urgent_left": 1, "killed": 2},
+                 {"app": "Demo Billing", "writable": False, "title": "T", "left": 12, "urgent_left": 0, "killed": 0}]
+        ids = self.render(events=[], rooms_live=rooms, game={"mode": "claude", "started": 0})
+        self.assertEqual(ids["s-apps"]["text"], 2)                       # the mission's rooms
+        self.assertEqual(ids["s-records"]["text"], 24)                   # every monster in the level
+        self.assertEqual(ids["s-blocked"]["text"], 1)                    # the PII vault
+        rl = ids["rooms-live"]["html"]
+        self.assertIn('<span class="acc"> · READ + WRITE</span><span class="acc-s"> · R+W</span>', rl)
+        self.assertIn('<span class="acc-s"> · READ</span>', rl)
+
     def test_no_stage_without_the_layout(self):
         ids = self.render()
         self.assertNotIn("stage", ids["body"]["className"])

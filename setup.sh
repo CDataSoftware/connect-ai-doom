@@ -79,8 +79,11 @@ if [[ ! -x "$SRC/zdbsp/build/zdbsp" ]]; then
     git clone -q https://github.com/rheit/zdbsp.git "$SRC/zdbsp"
     git -C "$SRC/zdbsp" checkout -q f324e34c8bdbf9800d53b18ebd578a51fd7f9998
   fi
+  # Current Xcode's libc++ no longer pulls in <utility> through other headers, and nodebuild.cpp
+  # calls std::swap without including it.
   (cd "$SRC/zdbsp" && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
      -DCMAKE_C_FLAGS="-Wno-implicit-function-declaration -Wno-int-conversion -include stdlib.h" \
+     -DCMAKE_CXX_FLAGS="-include utility" \
    && cmake --build build -j"$JOBS") >>"$LOG" 2>&1
 fi
 

@@ -185,6 +185,31 @@ class DehTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual((Path(tmp) / "l.deh").read_text(), make_deh.patch(MISSION))
 
+    def test_no_gore(self):
+        text = make_deh.patch(MISSION, gore=False)
+        self.assertTrue(text.startswith(make_deh.patch(MISSION)))   # the keycard messages are unchanged
+        frames = {}
+        for block in text.split("\n\n"):
+            lines = block.strip().split("\n")
+            if lines[0].startswith("Frame "):
+                frames[int(lines[0].split()[1])] = dict(line.split(" = ") for line in lines[1:])
+        for n in make_deh.BLOOD_FRAMES:   # every blood frame, not just the first: P_SpawnBlood skips it
+            self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_PUFF))
+        for death in (make_deh.SHOTGUY_DEATH, make_deh.DEMON_DEATH):
+            for n in death:
+                self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_TFOG))
+            self.assertEqual(frames[death[-1]]["Duration"], "-1")   # the death still ends, so the kill counts
+        self.assertIn("Thing 3 (Shotgun guy)\nExploding frame = 222", text)
+        self.assertNotIn("Frame ", make_deh.patch(MISSION))
+
+    def test_cli_no_gore(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "m.json").write_text(json.dumps(MISSION))
+            r = subprocess.run([sys.executable, str(ROOT / "tools/make_deh.py"), f"{tmp}/m.json", f"{tmp}/l.deh",
+                                "--no-gore"], capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual((Path(tmp) / "l.deh").read_text(), make_deh.patch(MISSION, gore=False))
+
 
 class BrandingTest(unittest.TestCase):
     @classmethod

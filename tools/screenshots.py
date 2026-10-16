@@ -7,6 +7,7 @@ brand WAD, drives it through the agent channel (see docs/internals.md) and saves
   play.png   the lobby, as the game starts
   aim.png    the first room with a monster in sight, crosshair on it (the record readout)
   menu.png   Esc: the main menu
+  options.png  Esc, O: the Options menu, with the Claude plays and Auto replay switches
   pause.png  P: the pause screen
 
 Kills and hits go to no-op commands, so the kill log is untouched.
@@ -27,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 import play  # noqa: E402  (the agent channel client)
 
 PSDOOM = ROOT / "vendor/src/psdoom-ng/trunk/src/psdoom"
-KEY_ESCAPE = 27
+KEY_ESCAPE, KEY_ENTER, KEY_DOWN = 27, 13, 0xaf   # doomkeys.h
 
 
 def main(out, brand):
@@ -36,7 +37,7 @@ def main(out, brand):
         agent = Path(tmp)
         play.AGENT = agent
         env = {**os.environ, "SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy",
-               "PSDOOM_AGENT_DIR": str(agent), "PSDOOM_AGENT_GOD": "1",
+               "PSDOOM_AGENT_DIR": str(agent), "PSDOOM_AGENT_CLAUDE": "1",
                "PSDOOM_LABELS": str(ROOT / "state/labels.tsv"),
                "PSDOOMPSCMD": f"{sys.executable} {ROOT / 'connect_doom.py'} list",
                "PSDOOMKILLCMD": "true", "PSDOOMRENICECMD": "true"}
@@ -73,7 +74,11 @@ def main(out, brand):
             g.do("KEY", KEY_ESCAPE)
             time.sleep(0.5)
             shot("menu.png")
-            g.do("KEY", KEY_ESCAPE)
+            g.do("KEY", KEY_DOWN)       # Options
+            g.do("KEY", KEY_ENTER)
+            time.sleep(0.5)
+            shot("options.png")
+            g.do("KEY", KEY_ESCAPE)     # closes every menu level at once
             g.do("KEY", ord("p"))
             time.sleep(0.5)
             shot("pause.png")

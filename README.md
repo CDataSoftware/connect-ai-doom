@@ -52,6 +52,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh new -q "Which vendors are we late paying?"
 ./raid.sh replay                    # play the last level again, no new Claude run
 ./raid.sh replay --claude-plays     # watch Claude play it
+./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
 ```
 
 | Mode | Claude briefing | Game |
@@ -63,11 +64,14 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 
 The game opens on the left of your screen and the panel on the right, sized for a screen recording. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
 
+**Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on.
+
 **At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `replay` for each player. Every game starts with all the records back, and the panel reuses its Chrome window instead of opening a new one each game. Esc → *Quit Game* → Y ends a game.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
 - **The first run asks** to let Terminal control Google Chrome (to place the panel). Click OK; if you decline, the panel opens as a plain tab.
 - **If the Wi-Fi is slow**, `replay` waits at most 20 seconds per Connect AI call (`CONNECT_AI_TIMEOUT`) and then plays the records it last fetched. If it's down, use `offline`.
+- **Between visitors**, `replay --claude-plays --loop` keeps Claude playing on its own, all day. A visitor can turn Claude plays off in the Options menu, play, and turn it back on. Each Claude run is up to 60 turns, at about $0.13 per 20.
 
 ## How it works
 

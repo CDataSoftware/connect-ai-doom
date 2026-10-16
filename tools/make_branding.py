@@ -11,6 +11,8 @@
   M_DOOM   the menu logo becomes the Connect AI logo.
   M_PAUSE  the pause screen: the Connect AI logo, a ×, then DOOM.
   CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
+  M_CLAUDE, M_AUTORP  the Options menu's "Claude plays:" and "Auto replay:" rows, in
+           the stock labels' red shading.
 
 With --mission (state/mission.json from brief.py) it also draws the run's signs:
   CAIRM0-2 one per app room: the app, what Claude found there, and the access
@@ -36,6 +38,9 @@ CLARITY = (241, 238, 233)     # brand Clarity #F1EEE9
 KEY_BLUE, KEY_YELLOW, KEY_RED = (64, 96, 255), AGILITY, (255, 48, 32)
 DOOM_RED = (232, 41, 11)
 FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
+MENU_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"  # closest to Freedoom's menu font
+# The stock menu labels' reds, row by row from the top (sampled from M_MESSG).
+MENU_REDS = [167, 255, 255, 239, 215, 199, 179, 167, 155, 139, 127, 115, 103, 79, 67]
 LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds
 
 
@@ -142,9 +147,36 @@ def corner_image(kit):
     return img
 
 
-def font(size):
+def menu_label(text, cap=11):
+    """An Options menu label like the stock ones: hard-edged letters `cap` px tall, shaded
+    red from the top down, with a black edge on the right and bottom."""
+    big = 4  # draw large, then shrink with a threshold: crisp pixels, no anti-aliasing
+    size = 8
+    while True:
+        f = font(size * big, MENU_FONT)
+        top, bottom = f.getbbox("H")[1::2]
+        if bottom - top >= cap * big or size > 40:
+            break
+        size += 1
+    left, _, right, _ = f.getbbox(text)
+    mask = Image.new("L", (right - left + 2 * big, (cap + 2) * big))
+    ImageDraw.Draw(mask).text((big - left, big - top), text, font=f, fill=255)
+    mask = mask.resize((mask.width // big, mask.height // big), Image.BOX).point(lambda v: 255 if v > 110 else 0)
+    w, h = mask.size
+    on = mask.load()
+    img = Image.new("RGBA", (w + 1, h + 1))
+    for y in range(h + 1):
+        for x in range(w + 1):
+            if x < w and y < h and on[x, y]:
+                img.putpixel((x, y), (MENU_REDS[min(y, len(MENU_REDS) - 1)], 0, 0, 255))
+            elif (x > 0 and y < h and on[x - 1, y]) or (y > 0 and x < w and on[x, y - 1]):
+                img.putpixel((x, y), (0, 0, 0, 255))
+    return img
+
+
+def font(size, path=FONT):
     try:
-        return ImageFont.truetype(FONT, size)
+        return ImageFont.truetype(path, size)
     except OSError:
         return ImageFont.load_default(size)
 
@@ -263,6 +295,9 @@ def build(iwad, kit, out, mission=None):
         pause = pause_image(kit)
         out_lumps.append(("M_PAUSE", to_patch(pause, palette, left=(pause.width - 68) // 2)))
         out_lumps.append(("CAICORNR", to_patch(corner_image(kit), palette)))
+    # The menu draws labels at the item's position minus the patch offsets; top=1 as stock.
+    out_lumps += [("M_CLAUDE", to_patch(menu_label("CLAUDE PLAYS:"), palette, top=1)),
+                  ("M_AUTORP", to_patch(menu_label("AUTO REPLAY:"), palette, top=1))]
     out_lumps += [(f"P{n[3:]}"[:8], to_patch(img, palette)) for n, img in extra]
     data, directory, pos = b"", b"", 12
     for name, blob in out_lumps:

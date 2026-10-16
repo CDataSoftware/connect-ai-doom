@@ -82,6 +82,123 @@ index 15e4a6b..1fb7e65 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
+diff --git i/trunk/src/m_menu.c w/trunk/src/m_menu.c
+index 7144f71..638828f 100644
+--- i/trunk/src/m_menu.c
++++ w/trunk/src/m_menu.c
+@@ -220,6 +220,10 @@ void M_ReadThis2(int choice);
+ void M_QuitDOOM(int choice);
+ 
+ void M_ChangeMessages(int choice);
++void M_ChangeClaudePlays(int choice);
++void M_ChangeAutoReplay(int choice);
++int PR_AgentOption(int option);       // connect-doom (pr_process.c)
++void PR_AgentToggle(int option);
+ void M_ChangeSensitivity(int choice);
+ void M_SfxVol(int choice);
+ void M_MusicVol(int choice);
+@@ -366,9 +370,11 @@ menu_t  NewDef =
+ //
+ enum
+ {
+-    endgame,
++    claudeplays,  // connect-doom: Claude plays, and auto replay, switched in game
++    autoreplay,
++    // connect-doom: no End Game row (a booth visitor would land on the title screen; F7
++    // still ends the game) and no Graphic Detail row (F5 still switches it), so it fits
+     messages,
+-    detail,
+     scrnsize,
+     option_empty1,
+     mousesens,
+@@ -379,9 +385,9 @@ enum
+ 
+ menuitem_t OptionsMenu[]=
+ {
+-    {1,"M_ENDGAM",	M_EndGame,'e'},
++    {1,"M_CLAUDE",	M_ChangeClaudePlays,'c'},
++    {1,"M_AUTORP",	M_ChangeAutoReplay,'a'},
+     {1,"M_MESSG",	M_ChangeMessages,'m'},
+-    {1,"M_DETAIL",	M_ChangeDetail,'g'},
+     {2,"M_SCRNSZ",	M_SizeDisplay,'s'},
+     {-1,"",0,'\0'},
+     {2,"M_MSENS",	M_ChangeSensitivity,'m'},
+@@ -1011,16 +1017,26 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
+ 
+ void M_DrawOptions(void)
+ {
++    int i;
++
+     V_DrawPatchDirect (108,15,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));
+ 	
+-    V_DrawPatchDirect (OptionsDef.x + 175,OptionsDef.y+LINEHEIGHT*detail,0,
+-		       W_CacheLumpName(DEH_String(detailNames[detailLevel]),
+-			               PU_CACHE));
+-
+     V_DrawPatchDirect (OptionsDef.x + 120,OptionsDef.y+LINEHEIGHT*messages,0,
+ 		       W_CacheLumpName(DEH_String(msgNames[showMessages]),
+ 				       PU_CACHE));
+ 
++    // connect-doom: ON / OFF just right of the "Claude plays:" and "Auto replay:" labels
++    for (i = claudeplays; i <= autoreplay; i++)
++    {
++        patch_t *label, *onoff;
++        if (!OptionsMenu[i].name[0])
++            continue;
++        label = W_CacheLumpName(OptionsMenu[i].name, PU_CACHE);
++        onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(i - claudeplays)]), PU_CACHE);
++        V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
++                           OptionsDef.y+LINEHEIGHT*i,0,onoff);
++    }
++
+     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(mousesens+1),
+ 		 10,mouseSensitivity);
+ 	
+@@ -1053,6 +1069,18 @@ void M_ChangeMessages(int choice)
+ }
+ 
+ 
++// connect-doom: switch Claude plays and auto replay without restarting the game
++void M_ChangeClaudePlays(int choice)
++{
++    PR_AgentToggle(0);
++}
++
++void M_ChangeAutoReplay(int choice)
++{
++    PR_AgentToggle(1);
++}
++
++
+ //
+ // M_EndGame
+ //
+@@ -2009,6 +2037,8 @@ void M_Ticker (void)
+ //
+ void M_Init (void)
+ {
++    int i;
++
+     currentMenu = &MainDef;
+     menuactive = 0;
+     itemOn = currentMenu->lastOn;
+@@ -2020,6 +2050,16 @@ void M_Init (void)
+     messageLastMenuActive = menuactive;
+     quickSaveSlot = -1;
+ 
++    // connect-doom: the Claude rows' labels come from state/brand.wad; without it, blank rows
++    for (i = claudeplays; i <= autoreplay; i++)
++    {
++        if (W_CheckNumForName(OptionsMenu[i].name) < 0)
++        {
++            OptionsMenu[i].status = -1;
++            OptionsMenu[i].name[0] = '\0';
++        }
++    }
++
+     // Here we could catch other version dependencies,
+     //  like HELP1/2, and four episodes.
+ 
 diff --git i/trunk/src/p_doors.c w/trunk/src/p_doors.c
 index 89b6532..337b8e4 100644
 --- i/trunk/src/p_doors.c
@@ -112,7 +229,7 @@ index 89b6532..337b8e4 100644
  	}
  	break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..fb6b1ea 100644
+index fa4fe83..61e348f 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -146,7 +263,7 @@ index fa4fe83..fb6b1ea 100644
  }
  
  // pr_renice
-@@ -890,3 +905,368 @@ void pr_renice(int pid) {
+@@ -890,3 +905,419 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -155,14 +272,19 @@ index fa4fe83..fb6b1ea 100644
 +// connect-doom "Claude plays": an external agent steers the player.
 +// Enabled when PSDOOM_AGENT_DIR is set. The agent writes one command line to
 +// <dir>/cmd ("<seq> MOVE x y" | "<seq> USE" | "<seq> ATTACK pid" | "<seq> TURN deg"
-+// | "<seq> KEY code" | "<seq> STOP"); KEY presses a key, e.g. to screenshot the menus; the game writes <dir>/state.json every few tics with the
-+// player, the process monsters, and the last finished command.
++// | "<seq> KEY code" | "<seq> RESTART" | "<seq> STOP"); KEY presses a key, e.g. to screenshot the menus;
++// RESTART starts the level over. The game writes <dir>/state.json every few tics with the
++// player, the process monsters, the last finished command and the Options menu's two
++// switches: Claude plays (PSDOOM_AGENT_CLAUDE sets it at launch) and auto replay
++// (PSDOOM_AGENT_LOOP). While Claude plays is off, the commands that steer are refused.
 +
 +#include "d_event.h"
 +#include "d_player.h"
 +#include "d_ticcmd.h"
 +#include "tables.h"
 +#include "r_main.h"
++#include "doomstat.h"
++#include "g_game.h"
 +
 +void D_PostEvent(event_t *ev);
 +
@@ -178,6 +300,41 @@ index fa4fe83..fb6b1ea 100644
 +static char agent_verb[16] = "", agent_result[64] = "idle";
 +static int agent_x, agent_y, agent_pid, agent_deg;
 +static int agent_last_dist, agent_stuck;
++static int agent_options[2] = {-1, -1};   // Claude plays, auto replay; -1 until read from the env
++
++static void agent_finish(const char *result);
++
++int PR_AgentOption(int option)
++{
++    if (agent_options[option] < 0)
++    {
++        const char *v = getenv(option == 0 ? "PSDOOM_AGENT_CLAUDE" : "PSDOOM_AGENT_LOOP");
++        agent_options[option] = v != NULL && v[0] && strcmp(v, "0") != 0;
++    }
++    return agent_options[option];
++}
++
++// From the Options menu. play.py's supervisor watches state.json and starts or stops Claude.
++void PR_AgentToggle(int option)
++{
++    player_t *p = &players[consoleplayer];
++    agent_options[option] = !PR_AgentOption(option);
++    if (option == 0)
++    {
++        p->message = agent_options[0] ? "CLAUDE PLAYS: CLAUDE TAKES OVER" : "CLAUDE PLAYS OFF: YOUR TURN";
++        if (!agent_options[0])
++        {
++            p->cheats &= ~CF_GODMODE;
++            if (agent_verb[0])
++                agent_finish("stopped");
++        }
++    }
++    else
++    {
++        p->message = agent_options[1] ? "AUTO REPLAY ON: THE LEVEL RESTARTS ONCE CLEARED"
++                                      : "AUTO REPLAY OFF";
++    }
++}
 +
 +static void agent_finish(const char *result)
 +{
@@ -246,11 +403,12 @@ index fa4fe83..fb6b1ea 100644
 +        return;
 +    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
 +               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
-+               "\"kills\": %d},\n",
++               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d},\n",
 +            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
 +            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
 +            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
-+            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount);
++            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount,
++            PR_AgentOption(0), PR_AgentOption(1));
 +    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
 +            agent_seq, agent_done_seq, agent_verb, agent_result);
 +    fprintf(f, " \"monsters\": [");
@@ -292,7 +450,7 @@ index fa4fe83..fb6b1ea 100644
 +    if (gamestate != GS_LEVEL || mo == NULL)
 +        return;
 +
-+    if (getenv("PSDOOM_AGENT_GOD"))
++    if (PR_AgentOption(0))
 +    {
 +        // Claude thinks slowly: don't let it die mid-thought, and keep it on a
 +        // full chaingun (hitscan, so aiming is reliable; rockets splash and run dry).
@@ -318,6 +476,16 @@ index fa4fe83..fb6b1ea 100644
 +    if (!strcmp(agent_verb, "STOP"))
 +    {
 +        agent_finish("stopped");
++    }
++    else if (!PR_AgentOption(0) && strcmp(agent_verb, "KEY") && strcmp(agent_verb, "SHOT"))
++    {
++        agent_finish("claude plays is off");
++    }
++    else if (!strcmp(agent_verb, "RESTART"))
++    {
++        // Back to the start: keycards gone, doors shut, every record spawned from the list again.
++        agent_finish("restarted");
++        G_DeferedInitNew(gameskill, gameepisode, gamemap);
 +    }
 +    else if (!strcmp(agent_verb, "KEY"))
 +    {

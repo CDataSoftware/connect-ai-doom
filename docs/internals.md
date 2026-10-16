@@ -42,7 +42,7 @@ raid.sh
 
 The old mode names still work: `--again` (replay), `--demo` (offline) and `brief` (brief-only).
 
-**For the full show, an account needs** a few connections, at least one read-only and one writable (blue and yellow doors), and a Data Security rule for US Social Security numbers (the red door). The demo was built on `demo@example.com`, whose data is synthetic.
+**For the full show, an account needs** a few connections, at least one read-only and one writable (blue and yellow doors), and a Data Security rule for US Social Security numbers (the red door). The demo GIF was recorded on a CData test account whose data is synthetic.
 
 ## Files
 

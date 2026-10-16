@@ -5,3 +5,4 @@ __pycache__/
 /brand/
 panel/sprites/
 panel/brand/
+.claude/

@@ -127,3 +127,5 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to 
 ## License
 
 MIT, see [LICENSE](LICENSE). The game itself is [psdoom-ng](https://github.com/keymon/psdoom-ng) (GPL-2.0), downloaded and built by `setup.sh`; `patches/psdoom-ng-connect-doom.patch` modifies it and is GPL-2.0 too. Game art is from [Freedoom](https://freedoom.github.io/) (BSD). Connect AI and CData logos are trademarks of CData Software, Inc.
+
+This is a fan project. It is not affiliated with, endorsed by, or sponsored by id Software, ZeniMax Media or Microsoft. DOOM is a trademark of id Software LLC.

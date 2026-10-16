@@ -519,6 +519,19 @@ class AutopilotTest(StateDirTest):
         folder.mkdir(parents=True)
         (folder / "1.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
 
+    def test_blocked_it_fights_only_what_it_can_see(self):
+        """A doorway crowd: shoot the ones in sight; one behind the door or a window can't be hit."""
+        self.game.s["monsters"] = [monster(1002, visible=False, distance=80), monster(1003, distance=150)]
+        tries = iter([{"result": "Blocked: monsters in the way", "closest_pids": [1003, 1002]},
+                      {"result": "arrived"}])
+        with mock.patch.dict(play.TOOLS, {"go_to": (lambda game, args: next(tries),) + play.TOOLS["go_to"][1:]}):
+            pilot = play.Autopilot(self.game, log=lambda kind, **d: self.feed.append({"kind": kind, **d}),
+                                   sleep=lambda _s: None)
+            pilot.recs, pilot.lines, pilot.killed, pilot.named, pilot.turn = {}, {}, [], {}, 0
+            self.assertEqual(pilot.go("room 1")["result"], "arrived")
+        self.assertEqual([e["args"] for e in self.feed if e["kind"] == "call" and e["tool"] == "attack"],
+                         [{"pid": 1003}])
+
     def test_plays_the_level_and_writes_a_claude_feed(self):
         said = self.play()
         kinds = [e["kind"] for e in self.feed]

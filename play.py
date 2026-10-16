@@ -487,7 +487,10 @@ class Autopilot:
             out = self.use("go_to", place=place)
             if out["result"] == "arrived" or "red door" in out["result"]:
                 return out
-            for pid in out.get("closest_pids", [])[:3]:
+            # only the ones in sight: one behind the door or a window can't be shot, and chasing
+            # it wastes a dozen seconds; with none in sight, just try go_to again
+            seen = {mm["pid"] for mm in self.game.state()["monsters"] if mm["health"] > 0 and mm["visible"]}
+            for pid in [pid for pid in out.get("closest_pids", []) if pid in seen][:3]:
                 self.attack(pid)
         return out
 

@@ -148,17 +148,23 @@ def close_monsters(s, within=200):
             if mm["health"] > 0 and mm["distance"] < within]
 
 
-ENGAGED = 160     # a live monster in sight this close, for half a second: stop walking and fight
+ENGAGED = 160     # a live monster in sight this close while the walk has stalled: stop and fight
+STALL = 6         # polls (0.1 s each) without getting 16 units closer to where it's going
 
 
-def engaged():
-    """An until() for MOVE: monsters crowding the marine (say, a room's monsters rushing the door it
-    just opened). Walking on would only push into them for up to 20 seconds while they hit it."""
-    polls = []
+def engaged(x, y):
+    """An until() for MOVE to (x, y): the walk has stalled with monsters in sight close by (say, a
+    room's monsters crowding the door it just opened). Pushing on would only shove into them for up
+    to 20 seconds while they hit it. While the marine still gets closer, it keeps walking, monsters
+    or not: a doorway with room to get through is no reason to stop."""
+    dists = []
 
     def check(s):
-        polls.append(any(mm["health"] > 0 and mm["visible"] and mm["distance"] < ENGAGED for mm in s["monsters"]))
-        return len(polls) >= 5 and all(polls[-5:])
+        p = s["player"]
+        dists.append(((p["x"] - x) ** 2 + (p["y"] - y) ** 2) ** 0.5)
+        near = any(mm["health"] > 0 and mm["visible"] and mm["distance"] < ENGAGED for mm in s["monsters"])
+        stalled = len(dists) > STALL and min(dists[-STALL:]) > dists[-STALL - 1] - 16
+        return near and stalled
     return check
 
 
@@ -178,7 +184,7 @@ def move(game, x, y):
     """MOVE; it stops as soon as monsters close in (go_to then says so, and the player fights). If the
     marine is hung up on a door frame or a wall with no monster in the way (say, after chasing a
     target round a corner), step back to open floor and try once more."""
-    result = game.do("MOVE", x, y, until=engaged())
+    result = game.do("MOVE", x, y, until=engaged(x, y))
     if result == "blocked" and not close_monsters(game.state()):
         game.do("MOVE", *open_floor(game.state()["player"]))
         result = game.do("MOVE", x, y)
@@ -241,9 +247,14 @@ def tool_go_to(game, args):
                         return {"result": f"Door locked: it needs the {need} keycard. Go to the keycards first.",
                                 "you_are_in": where(s["player"])}
                 close = close_monsters(s)
+                seen = {mm["pid"] for mm in s["monsters"] if mm["visible"]}
+                shootable = [pid for pid in close if pid in seen]
+                if shootable:   # only the ones in sight: one behind a door frame can't be hit
+                    return {"result": f"Blocked: monsters in the way ({len(shootable)} in sight). Attack them, "
+                                      "then try again.", "you_are_in": where(s["player"]), "closest_pids": shootable[:5]}
                 if close:
-                    return {"result": f"Blocked: monsters in the way ({len(close)} close by). Attack them, then try again.",
-                            "you_are_in": where(s["player"]), "closest_pids": close[:5]}
+                    return {"result": "Blocked by monsters out of sight (round the door frame). Try go_to again: "
+                                      "they'll come into view.", "you_are_in": where(s["player"])}
                 return {"result": f"Couldn't get there ({result}).", "you_are_in": where(s["player"])}
     s = game.state()
     return {"result": "arrived", "you_are_in": where(s["player"]), "keycards": [k for k, v in s["player"]["keys"].items() if v]}

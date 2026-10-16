@@ -323,15 +323,17 @@ def hall(m, vault, brand=False):
     if brand:                                                            # live dashboards in the south wall
         for x in (1312, 1600, 3360, 3776, 4480):
             m.rect(x, HALL_Y1 - 16, x + 128, HALL_Y1, 24, 152, 208, sign=SCREEN, sign_dir="S")
-    pillar = {"ftex": "FLAT20", "ctex": "FLAT20", "trim": "SUPPORT3", "wall": "SUPPORT3"}
+    # Lamp niches set into both walls, a tech lamp in each: nothing juts into the hall for the
+    # marine to catch a corner on when a fight or a straight-line move takes it near a wall.
+    niche = {"ftex": "FLAT20", "ctex": "TLITE6_1", "trim": "SUPPORT3", "wall": "SUPPORT3"}
     north = [x for bx in ARENA_X for x in (bx + 704, bx + 1600) if x + 64 <= 5120]
     south = (256, 1472, 1920, 3200, 3648, 4352, 4800)    # clear of the vault door, window and lobby
     for x in north:
-        m.rect(x, HALL_Y2 - 32, x + 64, HALL_Y2, 192, 192, 160, **pillar)
-        m.thing(85, x + 96, HALL_Y2 - 20)                                # tech lamps beside them
+        m.rect(x, HALL_Y2, x + 64, HALL_Y2 + 32, 0, 128, 200, **niche)
+        m.thing(85, x + 32, HALL_Y2 + 16)
     for x in south:
-        m.rect(x, HALL_Y1, x + 64, HALL_Y1 + 32, 192, 192, 160, **pillar)
-        m.thing(85, x + 96, HALL_Y1 + 20)
+        m.rect(x, HALL_Y1 - 32, x + 64, HALL_Y1, 0, 128, 200, **niche)
+        m.thing(85, x + 32, HALL_Y1 - 16)
 
 
 # What each room's alcoves keep: health on the west side, ammo on the east, armor and a backpack north.

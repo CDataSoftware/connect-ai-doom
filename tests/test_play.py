@@ -154,15 +154,18 @@ class ToolsTest(StateDirTest):
         self.assertEqual(out["result"], "Door locked: it needs the blue keycard. Go to the keycards first.")
 
     def test_walking_stops_when_monsters_close_in(self):
-        """A room's monsters rushing the door just opened: stop pushing into them after half a
-        second (go_to then says so and the player fights), not after MOVE's 20-second timeout."""
-        check = play.engaged()
-        near = {"monsters": [{"pid": 1, "health": 60, "visible": True, "distance": 90}]}
-        hidden = {"monsters": [{"pid": 1, "health": 60, "visible": False, "distance": 90}]}
-        dead = {"monsters": [{"pid": 1, "health": 0, "visible": True, "distance": 90}]}
-        self.assertEqual([check(near) for _ in range(5)], [False] * 4 + [True])
-        check = play.engaged()
-        self.assertFalse(any(check(s) for s in [hidden, dead, near, near, near, near, hidden]))
+        """A room's monsters crowding the door just opened: once the walk stalls with them in sight
+        close by, stop (go_to then says so and the player fights) rather than push for 20 seconds.
+        While the marine still gets closer, it keeps walking, monsters or not."""
+        near = [{"pid": 1, "health": 60, "visible": True, "distance": 90}]
+        hidden = [{"pid": 1, "health": 60, "visible": False, "distance": 90}]
+        at = lambda y, monsters: {"player": {"x": 0, "y": y}, "monsters": monsters}
+        check = play.engaged(0, 1000)
+        self.assertFalse(any(check(at(y, near)) for y in range(0, 400, 20)))          # walking in: on
+        check = play.engaged(0, 1000)
+        self.assertEqual([check(at(100, near)) for _ in range(8)], [False] * 6 + [True] * 2)   # stalled: stop
+        check = play.engaged(0, 1000)
+        self.assertFalse(any(check(at(100, hidden)) for _ in range(10)))              # nothing to shoot
         s = {"monsters": [{"pid": 1, "health": 60, "visible": False, "distance": 50},
                           {"pid": 2, "health": 60, "visible": True, "distance": 150}]}
         self.assertEqual(play.close_monsters(s), [2, 1])     # the one it can shoot first
@@ -172,8 +175,14 @@ class ToolsTest(StateDirTest):
         g = FakeGame(game_state(keys=("yellow",), monsters=[monster(1002, distance=50), monster(1005, distance=900)]),
                      {("MOVE", cx, 400): "stuck"})
         out = play.tool_go_to(g, {"place": "room 1"})
-        self.assertTrue(out["result"].startswith("Blocked: monsters in the way (1 close by)"))
+        self.assertTrue(out["result"].startswith("Blocked: monsters in the way (1 in sight)"))
         self.assertEqual(out["closest_pids"], [1002])
+        # only out of sight (round the door frame): nothing to shoot yet, so no pids to chase
+        g = FakeGame(game_state(keys=("yellow",), monsters=[monster(1002, visible=False, distance=50)]),
+                     {("MOVE", cx, 400): "stuck"})
+        out = play.tool_go_to(g, {"place": "room 1"})
+        self.assertTrue(out["result"].startswith("Blocked by monsters out of sight"))
+        self.assertNotIn("closest_pids", out)
         g = FakeGame(game_state(keys=("yellow",)), {("MOVE", cx, 400): "stuck"})
         self.assertEqual(play.tool_go_to(g, {"place": "room 1"})["result"], "Couldn't get there (stuck).")
 

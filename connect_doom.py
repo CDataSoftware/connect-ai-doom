@@ -21,7 +21,6 @@ import datetime as dt
 import hashlib
 import json
 import os
-import random
 import subprocess
 import sys
 import time
@@ -82,20 +81,92 @@ def to_monster(row, room_index, room):
     }
 
 
-def demo_mission():
-    """Made-up rooms for offline play (no Connect AI, no real customer data)."""
-    rng = random.Random(42)
-    words = ["Acme", "Globex", "Initech", "Umbrella", "Hooli", "Vandelay", "Wonka", "Stark",
-             "Tyrell", "Cyberdyne", "Soylent", "Wayne", "Oscorp", "Gringotts", "Monarch"]
-    rooms = [{"connection": "DemoCRM", "app": "Demo CRM", "title": "Deals slipping", "writable": True},
-             {"connection": "DemoDesk", "app": "Demo Helpdesk", "title": "Open escalations", "writable": True},
-             {"connection": "DemoBilling", "app": "Demo Billing", "title": "Overdue invoices", "writable": False}]
-    for r in rooms:
-        r["rows"] = [{"Id": f"{r['connection']}{i}", "Label": f"{rng.choice(words)} Corp",
-                      "Detail": f"${rng.choice([5969, 15127, 33077, 76718])}", "Hot": rng.choice([0, 1])}
-                     for i in range(12)]
-    return {"question": "(offline: made-up data)", "answer": "Made-up data for offline play.", "rooms": rooms,
-            "denied": [{"connection": "DemoPII", "error": "Request blocked: PII detected in inbound query"}],
+# The offline level: the live demo's question, answered from a sample CRM, help desk and billing
+# account in the same shapes the live queries return (brief.py), so it looks and plays like the
+# real thing. Every company is invented. Some show up in more than one app, as at-risk customers
+# do: a slipping deal, an angry ticket and an overdue invoice. Days are counted back from today.
+SAMPLE_DEALS = [   # account, amount, stage, pushed count, or days past its close date
+    ("Harborview Medical Group", 128400, "Negotiation/Review", 3, 0),
+    ("Ironclad Manufacturing", 142000, "Id. Decision Makers", 4, 0),
+    ("Meridian Hotel Partners", 112600, "Perception Analysis", 1, 24),
+    ("Cascade Freight Logistics", 96750, "Proposal/Price Quote", 1, 16),
+    ("Tidewater Ports Authority", 95000, "Id. Decision Makers", 0, 10),
+    ("Lakeshore Insurance Group", 87500, "Negotiation/Review", 2, 0),
+    ("Bluewater Credit Union", 74200, "Negotiation/Review", 2, 0),
+    ("Oakmont Senior Living", 71400, "Negotiation/Review", 3, 0),
+    ("Prairie State Utilities", 66300, "Value Proposition", 1, 0),
+    ("Summit Ridge School District", 58900, "Perception Analysis", 0, 14),
+    ("Copperline Mining", 51250, "Proposal/Price Quote", 1, 0),
+    ("Granite Peak Energy", 45000, "Value Proposition", 0, 0),
+    ("Redwood Analytics", 39800, "Qualification", 0, 0),
+    ("Silverline Pharmacy", 33900, "Needs Analysis", 1, 0),
+]
+SAMPLE_TICKETS = [   # subject, priority, status, days open
+    ("Harborview Medical: SSO logins failing for 40 users", "urgent", "open", 2),
+    ("Ironclad Manufacturing: asking to cancel after a third outage", "urgent", "open", 1),
+    ("Cascade Freight: renewal on hold until the outage credit lands", "urgent", "pending", 6),
+    ("Tidewater Ports: API rate limits blocking dispatch", "urgent", "open", 3),
+    ("Summit Ridge Schools: roster sync missing 300 students", "urgent", "open", 4),
+    ("Lakeshore Insurance: audit log gaps flagged by compliance", "urgent", "hold", 9),
+    ("Meridian Hotels: duplicate charges on the September invoice", "high", "open", 5),
+    ("Bluewater CU: nightly data export failing", "high", "open", 7),
+    ("Oakmont Senior Living: reports dashboard timing out", "high", "pending", 3),
+    ("Prairie State Utilities: field app crashes on login", "high", "open", 2),
+    ("Copperline Mining: webhook retries piling up", "high", "open", 8),
+    ("Redwood Analytics: SAML certificate expires Friday", "high", "new", 1),
+    ("Granite Peak Energy: invoice PDF missing the PO number", "high", "open", 11),
+]
+SAMPLE_INVOICES = [   # customer, amount due, status, payment attempts
+    ("Harborview Medical Group", 18450, "open", 3),
+    ("Lakeshore Insurance Group", 15600, "open", 1),
+    ("Cascade Freight Logistics", 12300, "open", 1),
+    ("Meridian Hotel Partners", 9870, "open", 2),
+    ("Riverbend Credit Partners", 7325, "open", 2),
+    ("Northgate Property Management", 6750, "open", 1),
+    ("Atlas Field Services", 4200, "uncollectible", 4),
+    ("Oakmont Senior Living", 3980, "open", 3),
+    ("Sunbelt Roofing Supply", 2240, "open", 1),
+    ("Pinecrest Dental Group", 1499, "open", 1),
+    ("Brightwater Veterinary", 1499, "open", 2),
+    ("Evergreen Pediatrics", 1499, "open", 1),
+    ("Crescent City Bakery", 899, "uncollectible", 5),
+]
+
+
+def demo_mission(today=None):
+    """The offline level (no Connect AI): the sample account above, as the live demo would find it."""
+    from brief import DEFAULT_QUESTION   # here, not at the top: the game runs this file every tick
+    today = today or dt.date.today()
+    day = lambda n: (today - dt.timedelta(days=n)).strftime("%b %-d")
+    deals = [{"Id": f"006S{i:03d}", "Label": name,
+              "Detail": f"${amount:,}, {stage}, " + (f"close date passed {day(late)}" if late else f"pushed {pushed}x"),
+              "Hot": int(late > 0 or pushed >= 2)}
+             for i, (name, amount, stage, pushed, late) in enumerate(SAMPLE_DEALS)]
+    tickets = [{"Id": str(48210 + i), "Label": subject, "Detail": f"{priority} {status}, since {day(days)}",
+                "Hot": int(priority == "urgent")}
+               for i, (subject, priority, status, days) in enumerate(SAMPLE_TICKETS)]
+    invoices = [{"Id": f"in_S{i:03d}", "Label": name,
+                 "Detail": f"${amount:,} unpaid, {status}, {attempts} attempt{'s' * (attempts != 1)}",
+                 "Hot": int(attempts >= 2 or status == "uncollectible")}
+                for i, (name, amount, status, attempts) in enumerate(SAMPLE_INVOICES)]
+    rooms = [{"connection": "Salesforce", "app": "Salesforce", "title": "Deals slipping", "writable": True,
+              "rows": deals},
+             {"connection": "Zendesk", "app": "Zendesk", "title": "Escalated tickets", "writable": True,
+              "rows": tickets},
+             {"connection": "Stripe", "app": "Stripe", "title": "Unpaid invoices", "writable": False,
+              "rows": invoices}]
+    answer = ("Harborview Medical Group is the clearest risk: a $128K deal pushed three times, an urgent ticket "
+              "with SSO logins failing for 40 users, and an $18K invoice three payment attempts overdue. "
+              "Ironclad Manufacturing is asking to cancel after a third outage, Cascade Freight's renewal is on "
+              "hold until an outage credit lands, and Meridian Hotel Partners has a $113K deal past its close "
+              "date and a disputed invoice. The SSN lookup in PostgreSQL PII was not run: Connect AI blocked it "
+              "with 'PII detected in inbound query', and I did not try to get around that.")
+    request = {"query": "SELECT [customer_id], [full_name], [email] FROM [PostgreSQLPII].[public].[customers] "
+                        "WHERE [ssn_text] = @ssn",
+               "parameters": {"@ssn": "123-45-6789"}, "parameterTypes": {"@ssn": "VARCHAR"}}
+    return {"question": DEFAULT_QUESTION, "answer": answer, "rooms": rooms,
+            "denied": [{"connection": "PostgreSQLPII", "tool": "queryData", "request": request,
+                        "error": "Request blocked: PII detected in inbound query"}],
             "masked": [], "calls": []}
 
 
@@ -111,7 +182,7 @@ def saved_data():
 
 
 def is_offline(mission):
-    """The offline mission (poll --demo) carries made-up rows; a live one has queries."""
+    """The offline mission (poll --demo) carries its sample rows; a live one has queries."""
     return bool(mission and mission.get("rooms")) and all("rows" in r for r in mission["rooms"])
 
 
@@ -244,7 +315,7 @@ def cmd_vault(_):
     live, and log what it says now (the side panel shows it)."""
     mission = read_json(MISSION) or {}
     d = next((d for d in mission.get("denied", []) if d.get("request")), None)
-    if not d or saved_data():  # offline missions have no real request to send; saved data asks nothing
+    if not d or is_offline(mission) or saved_data():   # offline and saved data ask Connect AI nothing
         return
     entry = {"connection": d["connection"], "tool": d["tool"], "request": d["request"]}
     start = time.time()
@@ -307,7 +378,7 @@ def restore_saved(mission, source="saved"):
 
 
 def cmd_poll(args):
-    """Refresh the cache. `poll --demo` uses made-up data; `poll --once` exits after one fetch,
+    """Refresh the cache. `poll --demo` plays the offline sample level; `poll --once` exits after one fetch,
     and if Connect AI can't be reached, falls back to the records this level last fetched
     (exit 3 when there are none)."""
     interval = int(os.environ.get("POLL_SECONDS", "15"))

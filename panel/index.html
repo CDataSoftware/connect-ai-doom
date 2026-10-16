@@ -742,7 +742,7 @@ function legendMonsters(rooms) {
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
 function liveRead(k, demo) {
-  if (demo) return `<div class="lread"><span class="tag">OFFLINE DATA</span>Made-up record: nothing to read live</div>`;
+  if (demo) return `<div class="lread"><span class="tag">OFFLINE</span>Sample level: not read live</div>`;
   const l = k.lookup;
   if (!l && Date.now() / 1000 - k.at > 60) return `<div class="lread err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
   if (!l) return `<div class="lread wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;

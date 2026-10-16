@@ -1,4 +1,5 @@
 """connect_doom.py: the psdoom bridge (list/kill/hit), the poller, score/reset, and the panel server."""
+import datetime as dt
 import functools
 import io
 import json
@@ -77,12 +78,32 @@ class MonsterTest(unittest.TestCase):
     def test_demo_mission_is_offline_and_deterministic(self):
         m = cd.demo_mission()
         self.assertEqual(m, cd.demo_mission())
-        self.assertEqual(len(m["rooms"]), 3)
-        self.assertTrue(all(len(r["rows"]) == 12 for r in m["rooms"]))
-        self.assertTrue(m["denied"])
+        self.assertEqual([r["app"] for r in m["rooms"]], ["Salesforce", "Zendesk", "Stripe"])
+        self.assertEqual([len(r["rows"]) for r in m["rooms"]], [14, 13, 13])
+        self.assertTrue(cd.is_offline(m) and m["denied"][0]["request"])
         monsters = cd.fetch(m)                       # never builds an MCP client
-        self.assertEqual(len(monsters), 36)
-        self.assertEqual({p["pid"] % 3 for p in monsters if p["app"] == "Demo Billing"}, {2})
+        self.assertEqual(len(monsters), 40)
+        self.assertEqual({p["pid"] % 3 for p in monsters if p["app"] == "Stripe"}, {2})
+
+    def test_demo_mission_reads_like_the_live_demo(self):
+        """The offline level: the live demo's question and the live queries' shapes, nothing that
+        says made up, and urgent flags by the live queries' rules."""
+        import brief
+        m = cd.demo_mission(today=dt.date(2026, 10, 16))
+        self.assertEqual(m["question"], brief.DEFAULT_QUESTION)
+        text = json.dumps(m).lower()
+        for word in ("made-up", "made up", "fake", "demo", "acme"):
+            self.assertNotIn(word, text)
+        deals, tickets, invoices = (r["rows"] for r in m["rooms"])
+        self.assertIn({"Id": "006S000", "Label": "Harborview Medical Group",
+                       "Detail": "$128,400, Negotiation/Review, pushed 3x", "Hot": 1}, deals)
+        self.assertIn("close date passed Sep 22", deals[2]["Detail"])          # days back from today
+        self.assertEqual(tickets[0]["Detail"], "urgent open, since Oct 14")
+        self.assertEqual([t["Hot"] for t in tickets], [int(t["Detail"].startswith("urgent")) for t in tickets])
+        self.assertEqual(invoices[0]["Detail"], "$18,450 unpaid, open, 3 attempts")
+        self.assertEqual(invoices[1]["Detail"], "$15,600 unpaid, open, 1 attempt")
+        names = [cd.short_name(r["Label"]) for room in m["rooms"] for r in room["rows"]]
+        self.assertTrue(all(len(n) >= 5 for n in names), names)                # real words on the name tags
 
 
 class CommandsTest(unittest.TestCase):
@@ -249,17 +270,17 @@ class PollCLITest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             r = bridge(tmp, "poll", "--demo")
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertRegex(r.stderr, r"demo: 36 monsters")
+            self.assertRegex(r.stderr, r"demo: 40 monsters")
             self.assertEqual(json.loads((Path(tmp) / "mission.json").read_text()), cd.demo_mission())
             cache = json.loads((Path(tmp) / "cache.json").read_text())
-            self.assertEqual((cache["source"], len(cache["monsters"])), ("demo", 36))
+            self.assertEqual((cache["source"], len(cache["monsters"])), ("demo", 40))
             listed = bridge(tmp, "list").stdout.splitlines()
-            self.assertEqual(len(listed), 36)
+            self.assertEqual(len(listed), 40)
             pid = listed[0].split()[1]
             self.assertRegex(bridge(tmp, "kill", pid).stdout, r", \d+ LEFT\n$")
             self.assertFalse((Path(tmp) / "lookups.jsonl").exists(), "the demo has no Connect AI to read from")
-            self.assertEqual(len(bridge(tmp, "list").stdout.splitlines()), 35)
-            self.assertIn("1 cleared, 35 still standing", bridge(tmp, "score").stdout)
+            self.assertEqual(len(bridge(tmp, "list").stdout.splitlines()), 39)
+            self.assertIn("1 cleared, 39 still standing", bridge(tmp, "score").stdout)
 
     def test_poll_once_against_the_mcp_server(self):
         with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
@@ -448,10 +469,10 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(set(s["mission"]), {"question", "answer", "rooms", "denied", "masked"})  # no raw calls
         self.assertEqual([k["id"] for k in s["kills"]], [k["id"] for k in kills[-12:]])
         self.assertEqual(s["kill_total"], 14)
-        self.assertEqual([r["left"] + r["killed"] for r in s["rooms_live"]], [12, 12, 12])
+        self.assertEqual([r["left"] + r["killed"] for r in s["rooms_live"]], [14, 13, 13])
         self.assertEqual(sum(r["killed"] for r in s["rooms_live"]), 14)
         self.assertIsNone(s["game"])
-        self.assertEqual(s["standing"], 36 - 14)
+        self.assertEqual(s["standing"], 40 - 14)
 
     def test_game_shows_only_this_games_kills_and_hits(self):
         mission = cd.demo_mission()
@@ -472,7 +493,7 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(s["kill_total"], 1)
         self.assertEqual([(h["id"], h["label"]) for h in s["hits"]], [(new["id"], new["label"])])
         self.assertEqual(sum(r["killed"] for r in s["rooms_live"]), 1)
-        self.assertEqual(s["standing"], 36 - 1)                  # earlier games' kills come back
+        self.assertEqual(s["standing"], 40 - 1)                  # earlier games' kills come back
 
     def test_corrupt_mission_is_null(self):
         (self.state / "mission.json").write_text("{")

@@ -239,7 +239,7 @@ class PanelTest(unittest.TestCase):
 
     def test_offline_counts_the_level(self):
         rooms = [{"app": "Demo CRM", "writable": True, "title": "T", "left": 10, "urgent_left": 1, "killed": 2},
-                 {"app": "Demo Billing", "writable": False, "title": "T", "left": 12, "urgent_left": 0, "killed": 0}]
+                 {"app": "Stripe", "writable": False, "title": "T", "left": 12, "urgent_left": 0, "killed": 0}]
         ids = self.render(events=[], rooms_live=rooms, game={"mode": "claude", "started": 0})
         self.assertEqual(ids["s-apps"]["text"], 2)                       # the mission's rooms
         self.assertEqual(ids["s-records"]["text"], 24)                   # every monster in the level

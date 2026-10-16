@@ -125,7 +125,7 @@ class RaidTest(unittest.TestCase):
 
     def test_demo(self):
         r = self.raid("offline", env=dict(os.environ))
-        self.assertEqual(self.assert_played(r), 36)
+        self.assertEqual(self.assert_played(r), 40)
         self.assertFalse((self.logs / "security.txt").exists(), "demo never looks up a token")
         self.assertIn("CONNECT AI: PII DETECTED IN INBOUND QUERY", (self.state / "level.deh").read_text())
         # the agent channel is always open, so Claude plays can be switched on from the Options menu
@@ -315,7 +315,7 @@ class RaidTest(unittest.TestCase):
             (self.state / "hits.jsonl").unlink()
             time.sleep(1.1)
             r = self.raid("replay", env={**env, "CONNECT_AI_MCP_URL": f"http://127.0.0.1:{free_port()}/mcp"})
-        self.assertEqual(self.assert_played(r), 36)              # the made-up offline records
+        self.assertEqual(self.assert_played(r), 40)              # the offline sample level's records
         self.assertIn("playing offline instead", r.stderr)
         self.assertIn("query", json.loads((self.state / "mission.json").read_text())["rooms"][0])
         self.assertFalse((self.state / "mission-live.json").exists())
@@ -325,7 +325,7 @@ class RaidTest(unittest.TestCase):
             self.assertEqual(self.raid("new", "-q", "Who is late?", env=env).returncode, 0)
             (self.state / "hits.jsonl").unlink()
             time.sleep(1.1)  # a game counts kills from its start, to the second
-            self.assertEqual(self.assert_played(self.raid("offline", env=env)), 36)
+            self.assertEqual(self.assert_played(self.raid("offline", env=env)), 40)
             self.assertEqual(json.loads((self.state / "mission.json").read_text())["question"], "Who is late?")
             (self.state / "hits.jsonl").unlink()
             time.sleep(1.1)
@@ -343,18 +343,18 @@ class RaidTest(unittest.TestCase):
     def test_booth_without_an_account_plays_offline(self):
         env = {k: v for k, v in os.environ.items() if k not in ("CONNECT_AI_USER", "CONNECT_AI_PAT")}
         r = self.raid("booth", env={**env, "BOOTH_GAMES": "1"})       # no token and no level
-        self.assertEqual(self.assert_played(r), 36)                    # the made-up records
+        self.assertEqual(self.assert_played(r), 40)                    # the sample records
         self.assertIn("No Connect AI account on this Mac, so booth mode plays offline", r.stderr)
 
     def test_booth_with_an_account_but_no_level_plays_offline(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             r = self.raid("booth", env={**env, "BOOTH_GAMES": "1"})
-        self.assertEqual(self.assert_played(r), 36)
+        self.assertEqual(self.assert_played(r), 40)
         self.assertIn("No level on this Mac yet", r.stderr)
 
     def test_booth_offline_never_looks_up_a_token(self):
         r = self.raid("booth", "offline", env={**os.environ, "BOOTH_GAMES": "1"})
-        self.assertEqual(self.assert_played(r), 36)
+        self.assertEqual(self.assert_played(r), 40)
         self.assertFalse((self.logs / "security.txt").exists())
 
     def test_booth_stops_when_the_game_cant_start(self):
@@ -384,7 +384,7 @@ class RaidTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k not in ("CONNECT_AI_USER", "CONNECT_AI_PAT")}
         r = self.raid("doctor", env={**env, "PANEL_PORT": str(free_port())})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("- no Connect AI token: ./raid.sh offline and ./raid.sh booth play made-up data", r.stdout)
+        self.assertIn("- no Connect AI token: ./raid.sh offline and ./raid.sh booth play sample data", r.stdout)
         self.assertIn("Ready to play offline", r.stdout)
 
 

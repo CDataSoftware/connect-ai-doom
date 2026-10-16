@@ -5,8 +5,8 @@
 #   ./raid.sh new -q "<question>" ask Claude your own question, then play
 #   ./raid.sh replay              play the last level again (no new Claude run)
 #   ./raid.sh booth               replay over and over: the next game starts a few seconds after one ends
-#   ./raid.sh booth offline       the same with made-up data; booth plays offline anyway without a token
-#   ./raid.sh offline             made-up data, no network
+#   ./raid.sh booth offline       the same with sample data; booth plays offline anyway without a token
+#   ./raid.sh offline             sample data, no network
 #   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
 #   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# booth loops the last level, or offline with made-up data; it never runs a new briefing.
+# booth loops the last level, or offline with sample data; it never runs a new briefing.
 if [[ -n "$BOOTH" && "$MODE" != demo ]]; then MODE=again; fi
 
 if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]] && [[ "$MODE" != doctor ]]; then
@@ -102,11 +102,11 @@ if [[ "$MODE" != demo ]]; then
       -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
   fi
   if [[ -z "${CONNECT_AI_PAT:-}" && -n "$BOOTH" ]]; then
-    echo "No Connect AI account on this Mac, so booth mode plays offline, with made-up data." >&2
+    echo "No Connect AI account on this Mac, so booth mode plays offline, with sample data." >&2
     MODE=demo
   elif [[ -z "${CONNECT_AI_PAT:-}" && "$MODE" != doctor ]]; then
     echo "No Connect AI token: run ./raid.sh login (or set CONNECT_AI_USER and CONNECT_AI_PAT)." >&2
-    echo "To play offline with made-up data: ./raid.sh offline" >&2
+    echo "To play offline with sample data: ./raid.sh offline" >&2
     exit 1
   fi
   export CONNECT_AI_USER CONNECT_AI_PAT
@@ -117,7 +117,7 @@ if [[ -n "$BOOTH" ]]; then
   # Terminal stops it. BOOTH_PAUSE sets the seconds between games, BOOTH_GAMES a limit.
   # Without Connect AI a replay falls back to saved records or offline by itself (see below).
   if [[ "$MODE" == again && ! -f state/mission.json ]]; then
-    echo "No level on this Mac yet (./raid.sh new makes one), so booth mode plays offline, with made-up data." >&2
+    echo "No level on this Mac yet (./raid.sh new makes one), so booth mode plays offline, with sample data." >&2
     MODE=demo
   fi
   GAME=replay; [[ "$MODE" == demo ]] && GAME=offline
@@ -179,7 +179,7 @@ if [[ "$MODE" == doctor ]]; then
       no "Connect AI didn't answer (${n##*$'\n'}). Check the Wi-Fi and the token, or play ./raid.sh offline"
     fi
   else
-    note "no Connect AI token: ./raid.sh offline and ./raid.sh booth play made-up data; ./raid.sh login for yours"
+    note "no Connect AI token: ./raid.sh offline and ./raid.sh booth play sample data; ./raid.sh login for yours"
   fi
   if [[ -f state/mission.json ]]; then
     ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"
@@ -206,7 +206,7 @@ if [[ "$MODE" == doctor ]]; then
   [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the main screen"
   if ((BAD)); then echo "Not ready: fix the ✗ lines."; exit 1; fi
   if [[ -n "${CONNECT_AI_PAT:-}" ]]; then echo "Ready: ./raid.sh booth plays the last level game after game, ./raid.sh new makes a fresh one."
-  else echo "Ready to play offline: ./raid.sh booth plays made-up data game after game."; fi
+  else echo "Ready to play offline: ./raid.sh booth plays sample data game after game."; fi
   exit
 fi
 

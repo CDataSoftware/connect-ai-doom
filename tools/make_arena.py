@@ -111,6 +111,8 @@ class Map:
             return (TWO_SIDED, DOOR_SPECIAL[b["key"]])
         if f.get("window") or b.get("window"):
             return (IMPASSABLE | TWO_SIDED | GLASS | SOUND_BLOCK, 0)
+        if bool(f.get("landing")) != bool(b.get("landing")):
+            return (TWO_SIDED | BLOCK_MONSTERS, 0)    # monsters never set foot on a door's landing
         return (TWO_SIDED, 0)
 
     # ------------------------------------------------------------ build
@@ -252,10 +254,11 @@ def build(mission, brand=False, records=None):
         bx = ARENA_X[i]
         key = "yellow" if room.get("writable") else "blue"
         keys.add(key)
-        themed_room(m, bx, theme, brand)
+        top = themed_room(m, bx, theme, brand)
         loot(m, bx, *room_records(room, i, records))
         if brand:
-            m.rect(bx + 384, 1024 + RING, bx + 640, 1040 + RING, 24, 152, 255, sign=f"CAIRM{i}", sign_dir="N")
+            m.rect(bx + 384, 1024 + RING, bx + 640, 1040 + RING, top + 8, top + 136, 255, sign=f"CAIRM{i}",
+                   sign_dir="N")
             m.rect(bx + 128, -64, bx + 384, -48, 24, 152, 255, sign=f"CAIRM{i}", sign_dir="N")
         door(m, bx + 448, -64, 0, key)
         # A window from the hall into the room: you see the records waiting, but the glass stops
@@ -340,31 +343,41 @@ def themed_room(m, bx, t, brand=False):
     h, light, trim = t["height"], t["light"], t["trim"]
     wall = t["wall"] or m.wall
     base = {"ctex": t["ceil"], "wall": wall}
-    # The ring is a walkway a step up from the box (a lake's is its shallows, a step down).
-    ring_floor = -8 if t.get("lake") else 16
-    m.rect(bx - RING, 0, bx + 1024 + RING, 1024 + RING, ring_floor, h, light - 16, ftex=t["ring_floor"], trim=trim,
-           **base)
+    # The ring climbs in three 24-unit tiers from the box to the walls, like stands round a pitch
+    # (a lake's is its shallows, a step down).
+    tiers = (-8,) if t.get("lake") else (72, 48, 24)
+    for k, z in enumerate(tiers):
+        inset = 64 * k
+        m.rect(bx - RING + inset, 0, bx + 1024 + RING - inset, 1024 + RING - inset, z, h, light - 16 - 8 * k,
+               ftex=t["ring_floor"], trim=trim, **base)
     m.rect(bx, 0, bx + 1024, 1024, 0, h, light, ftex=t["floor"], **base)
 
-    # Terrain inside the spawn box: every step is 24 units or less.
-    if t.get("dais"):                  # stairs up to a two-tier dais under a lowered, lit ceiling
-        m.rect(bx + 224, 288, bx + 800, 736, 8, h, light + 8, ftex=t["dais"][0], trim=trim, **base)
-        m.rect(bx + 256, 320, bx + 768, 704, 16, h, light + 16, ftex=t["dais"][0], trim=trim, **base)
-        m.rect(bx + 352, 384, bx + 672, 640, 24, h, light + 24, ftex=t["dais"][0], trim=trim, **base)
-        m.rect(bx + 384, 416, bx + 640, 608, 32, h - 64, light + 32, ftex=t["dais"][1], trim=trim,
-               ctex=t["lamp"], wall=wall)
+    # Terrain inside the spawn box: every step is 24 units or less, so monsters spawn anywhere
+    # and Claude's straight-line moves never snag.
+    if t.get("dais"):                  # a stepped pyramid up to a dais under a lowered, lit ceiling
+        for k, (hx, hy) in enumerate(((288, 256), (240, 208), (192, 160), (144, 112))):
+            z = 16 * (k + 1)
+            top = k == 3
+            m.rect(bx + 512 - hx, 512 - hy, bx + 512 + hx, 512 + hy, z, h - 64 if top else h, light + 8 * (k + 1),
+                   ftex=t["dais"][1 if top else 0], trim=trim, ctex=t["lamp"] if top else t["ceil"], wall=wall)
     if t.get("pit"):                   # a sunken ops pit, terraced down, its walls lined with screens
-        m.rect(bx + 256, 256, bx + 768, 768, -8, h, light - 8, ftex=t["floor"], trim=trim, **base)
-        m.rect(bx + 288, 288, bx + 736, 736, -16, h, light - 12, ftex=t["floor"], trim=trim, **base)
-        m.rect(bx + 320, 320, bx + 704, 704, -24, h, light - 16, ftex=t["pit"], trim=trim, **base)
-    if t.get("lake"):                  # a moat of data around a raised, grated island and its causeways
+        for k, half in enumerate((256, 224, 192)):
+            m.rect(bx + 512 - half, 512 - half, bx + 512 + half, 512 + half, -16 * (k + 1), h, light - 8 * (k + 1),
+                   ftex=t["pit"] if k == 2 else t["floor"], trim=trim, **base)
+    if t.get("lake"):                  # a moat of data round an island that rises to a grated summit
         m.rect(bx + 192, 192, bx + 832, 832, -16, h, light, ftex=t["lake"], trim=trim, special=8, **base)
         for x1, y1, x2, y2 in ((480, 192, 544, 320), (480, 704, 544, 832), (192, 480, 320, 544), (704, 480, 832, 544)):
             m.rect(bx + x1, y1, bx + x2, y2, 8, h, light + 8, ftex=t["floor"], trim=trim, **base)
         m.rect(bx + 320, 320, bx + 704, 704, 8, h, light + 16, ftex=t["floor"], trim=trim, **base)
-    if t.get("aisles"):                # three crate runs, the middle one stacked higher, aisles between them
-        for x, z in ((160, 16), (448, 24), (736, 16)):
-            m.rect(bx + x, 192, bx + x + 128, 832, z, h, light - 16, ftex=t["aisles"], trim=trim, **base)
+        m.rect(bx + 400, 400, bx + 624, 624, 32, h, light + 32, ftex=t["floor"], trim=trim, **base)
+    if t.get("aisles"):                # three crate runs, stacked two high down the middle, aisles between them
+        for x in (160, 448, 736):
+            m.rect(bx + x, 192, bx + x + 128, 832, 24, h, light - 16, ftex=t["aisles"], trim=trim, **base)
+            m.rect(bx + x + 32, 224, bx + x + 96, 800, 48, h, light - 8, ftex=t["aisles"], trim=trim, **base)
+
+    # A landing inside the door, a step up, that monsters can't set foot on: they spread round
+    # its edge instead of jamming the doorway, so there's always room to get in.
+    m.rect(bx + 384, 0, bx + 640, 160, 24, h, light + 16, ftex="STEP1", trim=trim, landing=True, **base)
 
     # Ceiling lamps over the box: pools of light, flickering or glowing as the theme says.
     for cx in (128, 384, 640, 896):
@@ -378,7 +391,7 @@ def themed_room(m, bx, t, brand=False):
     # are live dashboards.
     pillar = {"ftex": t["ceil"], "ctex": t["ceil"], "trim": trim, "wall": trim}
     alcove = {"ftex": t["ring_floor"], "ctex": t["lamp"], "wall": t["alcove"], "trim": trim}
-    sill = max(ring_floor, 0) + 16
+    sill = max(tiers[0], 0) + 16
     west, east, north = bx - RING, bx + 1024 + RING, 1024 + RING
     for y in (128, 512, 896):
         m.rect(west, y, west + 64, y + 64, h, h, light, **pillar)
@@ -402,6 +415,7 @@ def themed_room(m, bx, t, brand=False):
         m.thing(side, east - 24, y)
     for x in (160, 512, 864):          # the theme's set piece along the far wall
         m.thing(t["extra"], bx + x, north - 112)
+    return max(tiers[0], 0)
 
 
 def door(m, x, y1, y2, key):

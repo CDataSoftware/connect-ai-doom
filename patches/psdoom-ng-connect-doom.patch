@@ -1,5 +1,5 @@
 diff --git i/trunk/src/d_main.c w/trunk/src/d_main.c
-index 125d27b..2e73fc5 100644
+index 125d27b..9aa5b4c 100644
 --- i/trunk/src/d_main.c
 +++ w/trunk/src/d_main.c
 @@ -217,6 +217,8 @@ event_t *D_PopEvent(void)
@@ -19,7 +19,16 @@ index 125d27b..2e73fc5 100644
  	if (M_Responder (ev))
  	    continue;               // menu ate the event
  	G_Responder (ev);
-@@ -1239,6 +1242,10 @@ void D_DoomMain (void)
+@@ -300,6 +303,8 @@ void D_Display (void)
+ 	    redrawsbar = true;
+ 	if (inhelpscreensstate && !inhelpscreens)
+ 	    redrawsbar = true;              // just put away the help screen
++	if (menuactive || menuactivestate)
++	    redrawsbar = true;              // connect-doom: the Options menu reaches down over the status bar
+ 	ST_Drawer (viewheight == 200, redrawsbar );
+ 	fullscreen = viewheight == 200;
+ 	break;
+@@ -1239,6 +1244,10 @@ void D_DoomMain (void)
      p = M_CheckParm ("-nopslev");
      if (p)
      {
@@ -650,7 +659,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..09cc030 100644
+index fa4fe83..d73675d 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -722,7 +731,17 @@ index fa4fe83..09cc030 100644
  
      //mt_ext.flags = 7;
      //mt_ext.flags |= (MTF_SINGLE | MTF_COOPERATIVE | MTF_DEATHMATCH);
-@@ -872,7 +906,21 @@ void pr_kill(int pid) {
+@@ -634,7 +668,8 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
+        box_num = pid % 3;
+ 
+        mt_ext.x = ( 2048 * box_num ) + ( (pid % 16) * 64 );
+-       mt_ext.y = ( pid % 15 ) * 64;
++       // connect-doom: rows from y = 192 up, clear of the landing inside each door
++       mt_ext.y = 192 + ( pid % 13 ) * 64;
+        mt_ext.angle = 315 - ( 45 * box_num );
+ 
+        // This routine is called for custom level processing only.
+@@ -872,7 +907,21 @@ void pr_kill(int pid) {
      cmd = "kill -9";
    }
    sprintf(buf, "%s %d", cmd, pid);
@@ -745,7 +764,7 @@ index fa4fe83..09cc030 100644
  }
  
  // pr_renice
-@@ -890,3 +938,459 @@ void pr_renice(int pid) {
+@@ -890,3 +939,459 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }

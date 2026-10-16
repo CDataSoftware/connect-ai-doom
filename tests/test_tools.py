@@ -137,6 +137,19 @@ class ArenaTest(unittest.TestCase):
                    if m["sectors"][m["sides"][s][3]][0] in (32, 40)}       # the window sills
         self.assertEqual(len(windows), 4)                                    # three rooms and the vault
 
+    def test_door_landings_keep_monsters_off(self):
+        """Inside each door, a raised landing that monsters can't step onto, so they can't jam the
+        doorway; psdoom's spawn rows start above it (y = 192, the patch)."""
+        mp = make_arena.build(MISSION)
+        for bx in make_arena.ARENA_X:
+            s = mp.sectors[mp.cells[((bx + 512) // 16, 4)]]
+            self.assertTrue(s.get("landing"))
+            self.assertEqual(s["floor"], 24)
+        m = parse_map(mp.lumps())
+        blocked = [flags for _, _, flags, *_ in m["lines"] if flags & make_arena.BLOCK_MONSTERS]
+        self.assertGreaterEqual(len(blocked), 3 * 3)               # three sides of each landing at least
+        self.assertIn("mt_ext.y = 192 + ( pid % 13 ) * 64;", (ROOT / "patches/psdoom-ng-connect-doom.patch").read_text())
+
     def test_loot_follows_the_records(self):
         """Each record leaves shells in its room's ring, each urgent one a rocket and a stimpack too."""
         records = [{"pid": 3 * k + 0, "demon": int(k < 2)} for k in range(5)] + [{"pid": 3 * k + 2, "demon": 0}

@@ -39,7 +39,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
    ./raid.sh login
    ```
 
-6. **Check the Mac.** `doctor` checks the build, the token, that Connect AI answers over this network, Chrome, and the panel's port, and prints what to run for anything missing.
+6. **Check the Mac.** `doctor` checks the build, the token, that Connect AI answers over this network, that the game build is current, and the panel's port, and prints what to run for anything missing.
 
    ```bash
    ./raid.sh doctor
@@ -62,14 +62,13 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 | `offline` | none, made-up data | yes |
 | `brief-only` | runs one | no |
 
-The game opens on the left of your screen and the panel on the right, sized for a screen recording. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
+The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab gets you back to other apps; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
 
 **Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on.
 
-**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `replay` for each player. Every game starts with all the records back, and the panel reuses its Chrome window instead of opening a new one each game. Esc → *Quit Game* → Y ends a game.
+**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `replay` for each player. Every game starts with all the records back, on the same full screen. Esc → *Quit Game* → Y ends a game.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
-- **The first run asks** to let Terminal control Google Chrome (to place the panel). Click OK; if you decline, the panel opens as a plain tab.
 - **If the Wi-Fi is slow**, `replay` waits at most 20 seconds per Connect AI call (`CONNECT_AI_TIMEOUT`) and then plays the records it last fetched. If it's down, use `offline`.
 - **Between visitors**, `replay --claude-plays --loop` keeps Claude playing on its own, all day. A visitor can turn Claude plays off in the Options menu, play, and turn it back on. Each Claude run is up to 60 turns, at about $0.13 per 20.
 
@@ -112,7 +111,7 @@ More detail: [docs/internals.md](docs/internals.md).
 - **"The game isn't built yet"**: run `./setup.sh`. Its log is in `vendor/build.log`.
 - **"No Connect AI token"**: run `./raid.sh login`.
 - **Empty rooms**: your connections returned no rows for that question. Try `./raid.sh new -q "..."` with a question about data you have.
-- **The panel is a browser tab, not a window**: the side-by-side layout needs Google Chrome. Everything else works without it.
+- **The game is in a normal window and the panel in a browser tab**: the game was built before the full-screen layout. Run `./setup.sh` again to rebuild it.
 
 ## Contributing
 

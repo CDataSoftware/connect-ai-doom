@@ -40,9 +40,11 @@ class El {
 }
 
 const byId = {};
+const cssVars = {};
 const ctx = {
-  document: { getElementById: id => byId[id] ??= new El(id), createElement: tag => new El(tag), body: byId.body = new El("body") },
-  location: { search: "" },
+  document: { getElementById: id => byId[id] ??= new El(id), createElement: tag => new El(tag), body: byId.body = new El("body"),
+              documentElement: { style: { setProperty: (k, v) => { cssVars[k] = v; } } } },
+  location: { search: process.env.PANEL_SEARCH || "" },     // e.g. ?stage=... for the full-screen layout
   URLSearchParams, console,
   fetch: async url => {
     if (!url.startsWith("/state.json")) throw new Error(`unexpected fetch ${url}`);
@@ -55,7 +57,7 @@ vm.runInContext(script, ctx);
 
 (async () => {
   await vm.runInContext("tick()", ctx);           // a second tick must not duplicate anything
-  const out = { ids: Object.fromEntries(Object.entries(byId).map(([k, v]) => [k, v.dump()])) };
+  const out = { ids: Object.fromEntries(Object.entries(byId).map(([k, v]) => [k, v.dump()])), css: cssVars };
   if (expr) out.value = await vm.runInContext(expr, ctx);
   process.stdout.write(JSON.stringify(out));
 })().catch(e => { console.error(e); process.exit(1); });

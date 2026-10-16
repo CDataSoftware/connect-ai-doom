@@ -384,8 +384,10 @@ class RunTest(StateDirTest):
     STREAM = [
         {"type": "system", "subtype": "init", "model": "claude-sonnet-5-5",
          "tools": ["mcp__doom__look", "mcp__connectai__queryData", "Read"]},
+        {"type": "stream_event", "event": {"delta": {"type": "thinking_delta", "thinking": "Acme first."}}},
         {"type": "stream_event", "event": {"delta": {"type": "text_delta", "text": "Taking down Acme."}}},
         {"type": "assistant", "message": {"content": [
+            {"type": "thinking", "thinking": "Acme first.", "signature": "x"},
             {"type": "text", "text": "Taking down Acme."},
             {"type": "tool_use", "id": "t1", "name": "mcp__doom__attack", "input": {"pid": 1002}},
             {"type": "tool_use", "id": "t2", "name": "mcp__connectai__queryData",
@@ -439,8 +441,9 @@ class RunTest(StateDirTest):
         self.assertTrue(self.call["basic"])
 
         kinds = [e["kind"] for e in events]
-        self.assertEqual(kinds, ["question", "session", "text_delta", "thought", "call", "call", "result", "result",
-                                 "done"])
+        self.assertEqual(kinds, ["question", "session", "reasoning_delta", "text_delta", "reasoning", "thought",
+                                 "call", "call", "result", "result", "done"])
+        self.assertIn("Before EVERY tool call", prompt)                # the feed narrates each decision
         self.assertEqual(events[0]["text"], "Claude plays: Who is at risk?")
         self.assertEqual(events[1]["tools"], ["mcp__doom__look", "mcp__connectai__queryData"])
         calls = [e for e in events if e["kind"] == "call"]

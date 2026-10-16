@@ -52,8 +52,16 @@ echo "psdoom-ng..."; STEP="psdoom-ng"
 if [[ ! -d "$SRC/psdoom-ng" ]]; then
   git clone -q https://github.com/keymon/psdoom-ng.git "$SRC/psdoom-ng"
   git -C "$SRC/psdoom-ng" checkout -q 83d02bafe91439117421a0ccc3e238a0b9544e93   # the commit the patch is for
+fi
+# The patch the build carries, by checksum (raid.sh checks it too): a new or changed patch
+# goes onto a clean checkout, and the game is reconfigured and rebuilt.
+PATCH_SUM=$(shasum -a 256 patches/psdoom-ng-connect-doom.patch | cut -d' ' -f1)
+STAMP=$SRC/psdoom-ng/.connect-doom-patch
+if [[ "$(cat "$STAMP" 2>/dev/null)" != "$PATCH_SUM" ]]; then
+  git -C "$SRC/psdoom-ng" checkout -q -- .
   git -C "$SRC/psdoom-ng" apply --whitespace=nowarn "$ROOT/patches/psdoom-ng-connect-doom.patch"
   fresh_config "$SRC/psdoom-ng/trunk"
+  rm -f "$SRC/psdoom-ng/trunk/src/psdoom"   # the checkout put back upstream's Makefile: reconfigure
 fi
 (
   cd "$SRC/psdoom-ng/trunk"
@@ -63,6 +71,7 @@ fi
   [[ -x src/psdoom ]] || { make distclean || true; ./configure --prefix="$L"; }
   make -j"$JOBS"
 ) >>"$LOG" 2>&1
+echo "$PATCH_SUM" > "$STAMP"
 
 echo "zdbsp node builder..."; STEP="zdbsp"
 if [[ ! -x "$SRC/zdbsp/build/zdbsp" ]]; then

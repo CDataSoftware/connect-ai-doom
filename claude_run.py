@@ -90,6 +90,8 @@ def run(cmd, log, *, env=None, cwd=None, on_start=None):
             delta = msg.get("event", {}).get("delta") or {}
             if delta.get("type") == "text_delta" and delta.get("text"):
                 log("text_delta", text=delta["text"])
+            elif delta.get("type") == "thinking_delta" and delta.get("thinking"):   # when the model thinks aloud
+                log("reasoning_delta", text=delta["thinking"])
         elif kind == "result":
             final, finished = msg.get("result", ""), True
             log("done", cost_usd=msg.get("total_cost_usd"), duration_ms=msg.get("duration_ms"),
@@ -99,6 +101,8 @@ def run(cmd, log, *, env=None, cwd=None, on_start=None):
                 continue
             if c.get("type") == "text" and kind == "assistant":
                 log("thought", text=c["text"][:2000])
+            elif c.get("type") == "thinking" and kind == "assistant" and c.get("thinking"):
+                log("reasoning", text=c["thinking"][:2000])
             elif c.get("type") == "tool_use" and c["name"].startswith("mcp__"):
                 _, server, tool = c["name"].split("__", 2)
                 args = c.get("input", {})

@@ -108,15 +108,16 @@ if [[ "$MODE" == doctor ]]; then
   if [[ -f state/mission.json ]]; then
     ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"
   else note "no level yet: run ./raid.sh new once, then replay plays it"; fi
-  if [[ -d "${CHROME_APP:-/Applications/Google Chrome.app}" ]]; then ok "Google Chrome, for the side-by-side panel"
-  else note "no Google Chrome: the panel opens as a browser tab instead of beside the game"; fi
+  if [[ "$(cat vendor/src/psdoom-ng/.connect-doom-patch 2>/dev/null)" == "$(shasum -a 256 patches/psdoom-ng-connect-doom.patch | cut -d' ' -f1)" ]]
+  then ok "the game build is current, for the full-screen layout"
+  else no "the game was built from an older patch: run ./setup.sh again"; fi
   port=${PANEL_PORT:-8666}
   if ! lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then ok "port $port free for the panel"
   elif pgrep -f "$BRIDGE panel" >/dev/null; then note "port $port: an old panel is running; raid.sh replaces it"
   else no "port $port is taken by another app: run with PANEL_PORT=8667"; fi
   screen=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var v = $.NSScreen.mainScreen.visibleFrame;
     Math.round(v.size.width) + "x" + Math.round(v.size.height)' 2>/dev/null || true)
-  [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the screen the Terminal window is on"
+  [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the main screen"
   if ((BAD)); then echo "Not ready: fix the ✗ lines."; exit 1; fi
   echo "Ready: ./raid.sh replay plays the last level, ./raid.sh new makes a fresh one."
   exit
@@ -124,6 +125,7 @@ fi
 
 # A previous run's panel or poller (say, after a crash) would hold the port and serve stale state.
 pkill -f "$BRIDGE (panel|poll)" 2>/dev/null || true
+pkill -f "$PWD/tools/stage.js" 2>/dev/null || true
 
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
@@ -131,47 +133,46 @@ trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json' E
 PANEL_PORT=${PANEL_PORT:-8666}
 PANEL_URL="http://localhost:$PANEL_PORT"
 
-# Side by side for screen recording: Doom on the left, the panel in its own Chrome
-# window on the right. LAYOUT=off keeps psdoom's 1280x800 and opens a browser tab;
-# GEOMETRY=WxH sets the game's size. The game window can be resized either way.
+# Full screen, for booths and screen recordings: tools/stage.js covers the main screen with
+# the panel's stage page, menu bar and Dock hidden. The game's borderless window sits on the
+# left two thirds, as tall as fits, with branded bars above and below; the panel fills the
+# right third. LAYOUT=off keeps psdoom's 1280x800 window and opens the panel in a browser tab.
+# GEOMETRY=WxH sets the game's size either way.
 GEOMETRY=${GEOMETRY:-1280x800}
-SIDE=""
-if [[ "${LAYOUT:-side}" == side ]] && [[ -z "${NO_PANEL:-}" ]] && [[ -d "${CHROME_APP:-/Applications/Google Chrome.app}" ]]; then
-  # The main screen's usable area: left, top (below the menu bar), width, height.
-  SIDE=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var s = $.NSScreen.mainScreen;
-    var f = s.frame, v = s.visibleFrame;
-    [v.origin.x, f.size.height - v.origin.y - v.size.height, v.size.width, v.size.height].map(Math.round).join(" ")' \
-    2>/dev/null || true)
+STAGE=""
+if [[ "${LAYOUT:-full}" == full && -z "${NO_PANEL:-}" ]]; then
+  PATCHED=$(shasum -a 256 patches/psdoom-ng-connect-doom.patch 2>/dev/null | cut -d' ' -f1 || true)
+  if [[ "$(cat vendor/src/psdoom-ng/.connect-doom-patch 2>/dev/null)" != "$PATCHED" ]]; then
+    echo "The game was built from an older patch: run ./setup.sh again for the full-screen layout." >&2
+  else
+    # The screen the Terminal is on: its top-left corner in global (top-down) coordinates, its
+    # width and height, and the strip at the top the notch or menu bar keeps.
+    STAGE=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var s = $.NSScreen.mainScreen, f = s.frame;
+      var top = $.NSScreen.screens.objectAtIndex(0).frame.size.height;
+      [f.origin.x, top - f.origin.y - f.size.height, f.size.width, f.size.height, s.safeAreaInsets.top]
+        .map(Math.round).join(" ")' 2>/dev/null || true)
+  fi
 fi
-if [[ -n "$SIDE" ]]; then
-  read -r SX SY SW SH <<<"$SIDE"
-  # psdoom snaps to its aspect-corrected modes (n x 320x240 or n x 256x200), so pick the
-  # biggest that leaves the panel at least 440 px and fits under the title bar (28 px).
-  GW=640 GH=480
+if [[ -n "$STAGE" ]]; then
+  read -r SX SY SW SH ST <<<"$STAGE"
+  STAGE_W=$((SW * 2 / 3))
+  # psdoom snaps to its aspect-corrected modes (n x 320x240 or n x 256x200): the biggest that
+  # fits the stage and leaves 48 px above and below for the bars.
+  GW=320 GH=240
   for mode in 320x240 640x480 960x720 1280x960 1600x1200 256x200 512x400 768x600 1024x800 1280x1000; do
     w=${mode%x*} h=${mode#*x}
-    if ((w <= SW - 440 && h <= SH - 28 && w * h > GW * GH)); then GW=$w GH=$h; fi
+    if ((w <= STAGE_W && h <= SH - ST - 96 && w * h > GW * GH)); then GW=$w GH=$h; fi
   done
-  PANEL_W=$((SW - GW))
   [[ "$GEOMETRY" == 1280x800 ]] && GEOMETRY="${GW}x${GH}"
-  export SDL_VIDEO_WINDOW_POS="$SX,$SY"
+  GW=${GEOMETRY%x*} GH=${GEOMETRY#*x}
+  GX=$(((STAGE_W - GW) / 2)) GY=$((ST + (SH - ST - GH) / 2))
+  export SDL_VIDEO_WINDOW_POS="$((SX + GX)),$((SY + GY))" PSDOOM_FRAMELESS=1
 fi
 
 open_panel() {
-  # Reuses the last game's panel window, so a day of booth replays doesn't stack up windows.
-  if [[ -n "$SIDE" ]] && osascript -e "tell application \"Google Chrome\"
-      set w to missing value
-      repeat with x in windows
-        if URL of active tab of x starts with \"$PANEL_URL\" then set w to contents of x
-      end repeat
-      if w is missing value then
-        set w to make new window
-        set URL of active tab of w to \"$PANEL_URL\"
-      else
-        tell active tab of w to reload
-      end if
-      set bounds of w to {$((SX + SW - PANEL_W)), $SY, $((SX + SW)), $((SY + SH))}
-    end tell" >/dev/null 2>&1; then
+  if [[ -n "$STAGE" ]]; then
+    osascript -l JavaScript "$PWD/tools/stage.js" "$PANEL_URL/?stage=$GX,$GY,$GW,$GH,$STAGE_W,$ST" >/dev/null 2>&1 &
+    PIDS+=($!)
     return
   fi
   open "$PANEL_URL"
@@ -239,8 +240,9 @@ mouseb_strafe -1
 mouseb_forward -1
 mouse_sensitivity 6
 CFG
-# The mouse turns but doesn't walk; its right button opens doors.
-printf 'novert 1\ngrabmouse 1\nmouseb_use 1\n' > state/controls-extra.cfg
+# The mouse turns but doesn't walk; its right button opens doors. When Claude plays, the game
+# leaves the mouse free, so people can click through Claude's feed on the panel.
+printf 'novert 1\ngrabmouse %s\nmouseb_use 1\n' "$([[ -n "$PLAYS" ]] && echo 0 || echo 1)" > state/controls-extra.cfg
 
 GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
 printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json

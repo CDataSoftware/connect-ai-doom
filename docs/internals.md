@@ -25,7 +25,7 @@ raid.sh
 | `CONNECT_AI_USER`, `CONNECT_AI_PAT` | Override the saved account and token. |
 | `CONNECT_AI_OP_ITEM` | An `op://` path: the first run reads the token from 1Password and copies it into the Keychain. |
 | `CONNECT_AI_MCP_URL` | The MCP server (default `https://mcp.cloud.cdata.com/mcp`). |
-| `LAYOUT=off` | Keep psdoom's default window and open the panel in a browser tab, not side by side. |
+| `LAYOUT=off` | Keep psdoom's default window and open the panel in a browser tab, not full screen. |
 | `GEOMETRY=WxH` | The game window's size; psdoom snaps it to its own screen modes. |
 | `NO_PANEL=1` | No side panel. |
 | `PANEL_PORT` | The panel's port (default 8666). |
@@ -41,18 +41,19 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 
 ## Files
 
-- `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once.
+- `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once, and rebuilds the game when the patch changes.
 - `brief.py`: the briefing: runs `claude -p` with the Connect AI MCP server and turns the result into `state/mission.json`.
 - `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
 - `claude_run.py`: runs Claude Code headless (`claude -p`, stream-json) for `brief.py` and `play.py`: the read-only Connect AI MCP server config, and the event log the panel reads.
 - `connect_doom.py`: the psdoom bridge (`list`, `kill`, `hit`), the poller, the live `lookup` and `vault` checks, `score`/`reset`, and the panel server.
 - `play.py`: Claude plays: a Doom MCP server (`look`, `go_to`, `attack`) over the agent channel, the `claude -p` run that uses it, and `play.py loop`, which follows the Options menu's switches.
 - `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.
-- `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, the Connect AI logo on the Esc menu, the pause screen and the HUD corner, and the Options menu's *Claude plays* and *Auto replay* labels. The logos it needs from the CData brand kit are in `assets/brand/`.
+- `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, the Connect AI logo on the Esc menu, the pause screen and the HUD corner, the CData logotype on the arena signs and the pause screen, and the Options menu's *Claude plays* and *Auto replay* labels. The logos it needs from the CData brand kit are in `assets/brand/`.
 - `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
 - `tools/make_sprites.py`: the panel's sprite PNGs from the WAD, and its logos from `assets/brand/`.
 - `tools/screenshots.py`: headless screenshots of the game's screens (see testing.md).
-- `panel/index.html`: the side panel; it polls `/state.json` twice a second.
+- `panel/index.html`: the side panel; it polls `/state.json` twice a second. With `?stage=gx,gy,gw,gh,split,top` it's the full-screen page: the stage on the left (brand bars above and below the game's box) and the panel on the right.
+- `tools/stage.js`: the full-screen layout's backdrop, a JavaScript for Automation script: one borderless window over the main screen showing the stage page in a web view, with the menu bar and the Dock hidden. `raid.sh` sizes the game to the biggest psdoom mode that fits two thirds of the screen and puts its borderless window on the page's game box.
 
 ## The psdoom patch
 
@@ -63,6 +64,7 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - The kill command's first output line becomes the on-screen message.
 - The record under the crosshair: with `PSDOOM_LABELS` set, the game shows that monster's two lines from the file (`pid<TAB>line1<TAB>line2`, written by `connect_doom.py` with each cache refresh) on a dark band above the status bar.
 - The window is resizable on macOS too (upstream turned that off there).
+- With `PSDOOM_FRAMELESS` set, the window has no title bar, floats above other windows, and hides the menu bar and the Dock while it's in front (the full-screen layout).
 - The red door: using a red keycard door without the key also runs `PSDOOMVAULTCMD` in the background (at most every 2 seconds), which `raid.sh` points at `connect_doom.py vault`.
 - A small Connect AI logo (`CAICORNR` from `state/brand.wad`) in the view's top-right corner.
 - P pauses as well as Pause (Mac keyboards have no Pause key); the pause screen is `M_PAUSE` from `state/brand.wad`.

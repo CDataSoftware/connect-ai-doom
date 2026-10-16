@@ -11,9 +11,10 @@
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
 #   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
 #   --claude-plays                Claude plays instead of you; add it to any mode above,
-#                                 e.g. ./raid.sh replay --claude-plays
+#                                 e.g. ./raid.sh replay --claude-plays. It turns auto replay on too.
 #   --loop                        auto replay: once Claude clears the level (or its run ends),
 #                                 every record comes back and Claude plays again, all day
+#   --no-loop                     Claude plays the level once and stops there
 #   --offline-plays               Claude plays offline: a scripted player that narrates with
 #                                 Claude's lines from earlier runs, no network, no AI tokens. Claude
 #                                 plays also falls back to it when Claude can't run (no network,
@@ -60,11 +61,16 @@ while [[ $# -gt 0 ]]; do
     --no-music) NOMUSIC=1; shift ;;
     --no-sound-effects) NOSFX=1; shift ;;
     --loop|--auto-replay) LOOP=1; shift ;;
+    --no-loop) LOOP=0; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     *) break ;;
   esac
 done
+
+# Claude playing means auto replay too, unless --no-loop: a cleared level starts over, not sits there.
+if [[ -n "$PLAYS" && -z "$LOOP" ]]; then LOOP=1; fi
+[[ "$LOOP" == 0 ]] && LOOP=""
 
 # booth loops the last level, or offline with sample data; it never runs a new briefing.
 if [[ -n "$BOOTH" && "$MODE" != demo ]]; then MODE=again; fi

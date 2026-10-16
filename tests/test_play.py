@@ -41,7 +41,7 @@ class FakeGame:
     def state(self):
         return self.s
 
-    def do(self, verb, *args, timeout=25):
+    def do(self, verb, *args, timeout=25, until=None):
         self.commands.append((verb, *args))
         return self.results.get((verb, *args), "killed" if verb == "ATTACK" else "arrived")
 
@@ -153,6 +153,20 @@ class ToolsTest(StateDirTest):
         out = play.tool_go_to(g, {"place": "room 2"})
         self.assertEqual(out["result"], "Door locked: it needs the blue keycard. Go to the keycards first.")
 
+    def test_walking_stops_when_monsters_close_in(self):
+        """A room's monsters rushing the door just opened: stop pushing into them after half a
+        second (go_to then says so and the player fights), not after MOVE's 20-second timeout."""
+        check = play.engaged()
+        near = {"monsters": [{"pid": 1, "health": 60, "visible": True, "distance": 90}]}
+        hidden = {"monsters": [{"pid": 1, "health": 60, "visible": False, "distance": 90}]}
+        dead = {"monsters": [{"pid": 1, "health": 0, "visible": True, "distance": 90}]}
+        self.assertEqual([check(near) for _ in range(5)], [False] * 4 + [True])
+        check = play.engaged()
+        self.assertFalse(any(check(s) for s in [hidden, dead, near, near, near, near, hidden]))
+        s = {"monsters": [{"pid": 1, "health": 60, "visible": False, "distance": 50},
+                          {"pid": 2, "health": 60, "visible": True, "distance": 150}]}
+        self.assertEqual(play.close_monsters(s), [2, 1])     # the one it can shoot first
+
     def test_go_to_blocked_by_monsters(self):
         cx = play.ARENA_X[0] + 512
         g = FakeGame(game_state(keys=("yellow",), monsters=[monster(1002, distance=50), monster(1005, distance=900)]),
@@ -179,7 +193,7 @@ class ToolsTest(StateDirTest):
     def test_a_blocked_move_steps_back_and_tries_again(self):
         results = iter(["blocked", "arrived", "arrived"])
         g = FakeGame(game_state(x=559, y=-2))           # wedged on room 1's door frame
-        g.do = lambda verb, *a, timeout=25: (g.commands.append((verb, *a)), next(results))[1]
+        g.do = lambda verb, *a, timeout=25, until=None: (g.commands.append((verb, *a)), next(results))[1]
         self.assertEqual(play.move(g, 2560, -256), "arrived")
         self.assertEqual(g.commands, [("MOVE", 2560, -256), ("MOVE", 559, -256), ("MOVE", 2560, -256)])
         g = FakeGame(game_state(monsters=[monster(1002, distance=60)]), {("MOVE", 1, 2): "blocked"})
@@ -489,7 +503,7 @@ class AutopilotTest(StateDirTest):
         self.feed = []
         real_do = self.game.do
 
-        def do(verb, *args, timeout=25):
+        def do(verb, *args, timeout=25, until=None):
             if verb == "ATTACK":
                 next(m for m in self.game.s["monsters"] if m["pid"] == args[0])["health"] = 0
             return real_do(verb, *args, timeout=timeout)

@@ -52,8 +52,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh new                       # Claude briefs on your data (about a minute), then you play
 ./raid.sh new -q "Which vendors are we late paying?"
 ./raid.sh replay                    # play the last level again, no new Claude run
-./raid.sh replay --claude-plays     # watch Claude play it
-./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
+./raid.sh replay --claude-plays     # watch Claude play it, again and again (--no-loop: once)
 ./raid.sh booth                     # replay game after game, for a booth
 ./raid.sh booth offline             # the same with sample data, no account needed
 ./raid.sh offline --offline-plays   # Claude plays offline: no network at all, no AI tokens
@@ -79,7 +78,7 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 - *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
 - *Music* plays Freedoom's soundtrack, and *Sound effects* the gunfire, doors and monsters. Turning either off keeps its level on the Sound Volume sliders for when it's back on.
 
-Each is off unless its flag turned it on: `--claude-plays`, `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
+Each is off unless its flag turned it on: `--claude-plays` (which turns *Auto replay* on too, unless `--no-loop`), `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 
@@ -88,7 +87,7 @@ Each is off unless its flag turned it on: `--claude-plays`, `--loop`, `--god-mod
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
 - **If the Wi-Fi is slow or down**, each Connect AI call gets 20 seconds (`CONNECT_AI_TIMEOUT`). After that the game plays the records this level last fetched; if it never fetched any, it plays offline and keeps your level for the next game. Kills still count; the panel shows their live lookups as failed until the Wi-Fi is back.
 - **`offline` keeps your level.** After an offline game, `replay` plays your real level again.
-- **Between visitors**, `./raid.sh booth --claude-plays --loop` keeps Claude playing on its own, all day, and starts the game again if it quits or crashes. A visitor can turn Claude plays off in the Options menu and play; a minute after they walk away, Claude takes over again. If the network drops, the offline player carries on. Each Claude run is up to 60 turns, at about $0.13 per 20. A crash can leave a macOS "quit unexpectedly" alert on screen to click away.
+- **Between visitors**, `./raid.sh booth --claude-plays` keeps Claude playing on its own, all day, and starts the game again if it quits or crashes. A visitor can turn Claude plays off in the Options menu and play; a minute after they walk away, Claude takes over again. If the network drops, the offline player carries on. Each Claude run is up to 60 turns, at about $0.13 per 20. A crash can leave a macOS "quit unexpectedly" alert on screen to click away.
 
 ## How it works
 

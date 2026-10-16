@@ -62,8 +62,9 @@ class Game:
                 time.sleep(0.1)
         raise RuntimeError("the game isn't running in Claude-plays mode")
 
-    def do(self, verb, *args, timeout=25):
-        """Send one command and wait until the game reports it finished."""
+    def do(self, verb, *args, timeout=25, until=None):
+        """Send one command and wait until the game reports it finished. until(state): give the
+        command up (STOP) as soon as it says so, and return "interrupted"."""
         # past any seq another client (say, the run before this one) already sent
         self.seq = max(self.seq, self.state()["command"].get("seq", 0)) + 1
         tmp = AGENT / "cmd.tmp"
@@ -74,6 +75,9 @@ class Game:
             s = self.state()
             if s["command"]["done_seq"] >= self.seq:
                 return s["command"]["result"]
+            if until and until(s):
+                self.do_nowait("STOP")
+                return "interrupted"
             time.sleep(0.1)
         self.do_nowait("STOP")
         return "timeout"
@@ -139,8 +143,23 @@ def tool_look(game, _args):
 
 
 def close_monsters(s, within=200):
-    return [mm["pid"] for mm in sorted(s["monsters"], key=lambda mm: mm["distance"])
+    """The live monsters within reach, the ones in sight first: something behind a door can't be shot."""
+    return [mm["pid"] for mm in sorted(s["monsters"], key=lambda mm: (not mm["visible"], mm["distance"]))
             if mm["health"] > 0 and mm["distance"] < within]
+
+
+ENGAGED = 160     # a live monster in sight this close, for half a second: stop walking and fight
+
+
+def engaged():
+    """An until() for MOVE: monsters crowding the marine (say, a room's monsters rushing the door it
+    just opened). Walking on would only push into them for up to 20 seconds while they hit it."""
+    polls = []
+
+    def check(s):
+        polls.append(any(mm["health"] > 0 and mm["visible"] and mm["distance"] < ENGAGED for mm in s["monsters"]))
+        return len(polls) >= 5 and all(polls[-5:])
+    return check
 
 
 def open_floor(p):
@@ -156,9 +175,10 @@ def open_floor(p):
 
 
 def move(game, x, y):
-    """MOVE; if the marine is hung up on a door frame or a wall with no monster in the way
-    (say, after chasing a target round a corner), step back to open floor and try once more."""
-    result = game.do("MOVE", x, y)
+    """MOVE; it stops as soon as monsters close in (go_to then says so, and the player fights). If the
+    marine is hung up on a door frame or a wall with no monster in the way (say, after chasing a
+    target round a corner), step back to open floor and try once more."""
+    result = game.do("MOVE", x, y, until=engaged())
     if result == "blocked" and not close_monsters(game.state()):
         game.do("MOVE", *open_floor(game.state()["player"]))
         result = game.do("MOVE", x, y)

@@ -139,7 +139,13 @@ class RaidTest(unittest.TestCase):
     def test_offline_plays(self):
         r = self.raid("offline", "--offline-plays", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 0 0 1 1 1\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 0 0 1 1 1\n")   # loops too
+
+    def test_claude_plays_once_with_no_loop(self):
+        """Claude playing turns auto replay on (a cleared level starts over); --no-loop plays it once."""
+        r = self.raid("offline", "--claude-plays", "--no-loop", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 0 0 0 1 1\n")
 
     def test_god_mode_and_saved_data_flags(self):
         r = self.raid("offline", "--god-mode", "--saved-data", env=dict(os.environ))

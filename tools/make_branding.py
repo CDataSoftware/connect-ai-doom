@@ -11,6 +11,8 @@
   M_DOOM   the menu logo becomes the Connect AI logo.
   M_PAUSE  the pause screen: the Connect AI logo, a ×, DOOM, then the CData logotype.
   CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
+  DBRAIN1-4 128x128: a live dashboard (bars, a trend line, records), in place of the Icon of
+           Sin's wall, so Doom animates it.
   M_CLAUDE, M_AUTORP, M_GODMOD, M_SAVED, M_OFFAI, M_MUSON, M_SFXON  the Options menu's
            switches ("Claude plays:", "Auto replay:", "God mode:", "Saved data:", "Offline
            Claude:", "Music:", "Sound effects:"), in the stock labels' red shading.
@@ -245,6 +247,41 @@ def mission_textures(wall, mission):
     return out
 
 
+# Doom animates DBRAIN1-4 (the Icon of Sin's wall, only ever in MAP30), a frame every 8 tics:
+# redrawn here as a live Connect AI dashboard for the hall's wall screens and the rooms' far alcoves.
+SCREEN_FRAMES = ("DBRAIN1", "DBRAIN2", "DBRAIN3", "DBRAIN4")
+
+
+def screen_frames():
+    """Four 128x128 frames of a dashboard: bars and a trend line scrolling left, the
+    highlighted row stepping down, and a blinking LIVE light."""
+    bars = [38, 52, 30, 61, 45, 70, 56, 82, 64, 48, 74, 90]
+    trend = [20, 26, 22, 31, 28, 36, 33, 40, 37, 45, 42, 50, 47, 54]
+    rows = [(70, 30), (54, 40), (78, 22), (62, 34)]
+    frames = []
+    for f in range(4):
+        img = Image.new("RGBA", (128, 128), (40, 40, 48, 255))          # the bezel
+        d = ImageDraw.Draw(img)
+        d.rectangle([4, 4, 123, 123], fill=DEPTH + (255,))
+        d.text((9, 8), "CONNECT AI", font=font(13), fill=CLARITY + (255,))
+        d.ellipse([92, 10, 99, 17], fill=(KEY_RED if f < 2 else (90, 24, 20)) + (255,))
+        d.text((102, 8), "LIVE", font=font(11), fill=CLARITY + (255,))
+        d.line([9, 25, 118, 25], fill=(70, 70, 80, 255))
+        for i in range(8):                                               # the bar chart
+            h = bars[(i + f) % len(bars)] * 34 // 90
+            x = 10 + 13 * i
+            d.rectangle([x, 64 - h, x + 8, 64], fill=(AGILITY if i == 7 else (120, 124, 140)) + (255,))
+        points = [(9 + 8 * i, 92 - trend[(i + f) % len(trend)] * 20 // 54) for i in range(14)]
+        d.line(points, fill=(80, 200, 255, 255), width=2)                 # the trend line
+        for r, (w1, w2) in enumerate(rows):                               # rows of records
+            y = 98 + 6 * r
+            color = AGILITY if r == f else (88, 88, 100)
+            d.rectangle([10, y, 10 + w1, y + 3], fill=color + (255,))
+            d.rectangle([16 + w1, y, 16 + w1 + w2 // 2, y + 3], fill=color + (255,))
+        frames.append(img)
+    return frames
+
+
 def build(iwad, kit, out, mission=None):
     lumps = read_wad(iwad)
     pal = lumps["PLAYPAL"][:768]
@@ -278,7 +315,9 @@ def build(iwad, kit, out, mission=None):
     count = struct.unpack("<i", pn[:4])[0]
     names = [pn[4 + 8 * i:12 + 8 * i].rstrip(b"\0").decode().upper() for i in range(count)]
     extra = mission_textures(wall, mission) if mission else []
+    screens = screen_frames()
     names += ["CAILOGO", "CAIWALLP"] + [f"P{n[3:]}"[:8] for n, _ in extra]
+    names += [f"CAISCRN{i + 1}" for i in range(len(screens))]
     pnames = struct.pack("<i", len(names)) + b"".join(name8(n) for n in names)
 
     # TEXTURE1: a PWAD's TEXTURE1 replaces the IWAD's, so copy every entry, then append ours.
@@ -286,11 +325,21 @@ def build(iwad, kit, out, mission=None):
     tcount = struct.unpack("<i", tb[:4])[0]
     offs = list(struct.unpack(f"<{tcount}i", tb[4:4 + 4 * tcount]))
     entries = [tb[o:offs[i + 1]] if i + 1 < tcount else tb[o:] for i, o in enumerate(offs)]
+
+    def entry(tex, size, patch):
+        return (name8(tex) + struct.pack("<ihhih", 0, size[0], size[1], 0, 1)
+                + struct.pack("<hhhhh", 0, 0, names.index(patch), 0, 0))
+
+    # The screen frames replace DBRAIN1-4 where they stand: Doom animates a range by its place in the list.
+    for i, e in enumerate(entries):
+        tex = e[:8].rstrip(b"\0").decode().upper()
+        if tex in SCREEN_FRAMES:
+            k = SCREEN_FRAMES.index(tex)
+            entries[i] = entry(tex, screens[k].size, f"CAISCRN{k + 1}")
     textures = [("CAISIGN", sign.size, "CAILOGO"), ("CAIWALL", wall.size, "CAIWALLP")]
     textures += [(n, img.size, f"P{n[3:]}"[:8]) for n, img in extra]
-    for tex, (w, h), patch in textures:
-        entries.append(name8(tex) + struct.pack("<ihhih", 0, w, h, 0, 1)
-                       + struct.pack("<hhhhh", 0, 0, names.index(patch), 0, 0))
+    for tex, size, patch in textures:
+        entries.append(entry(tex, size, patch))
     head = 4 + 4 * len(entries)
     table, pos = [], head
     for e in entries:
@@ -303,7 +352,7 @@ def build(iwad, kit, out, mission=None):
         ("TEXTURE1", texture1),
         ("CAILOGO", to_patch(sign, palette)),
         ("CAIWALLP", to_patch(wall, palette)),
-    ]
+    ] + [(f"CAISCRN{i + 1}", to_patch(img, palette)) for i, img in enumerate(screens)]
     if has_kit:
         menu = menu_image(kit)
         # menu draws M_DOOM at (94, 2) minus offsets; these center it.

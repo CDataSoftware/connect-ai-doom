@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the level as a Doom 2 MAP01 PWAD from a mission (no nodes; run zdbsp after).
 
-  make_arena.py <out.wad> [--mission state/mission.json] [--brand]
+  make_arena.py <out.wad> [--mission state/mission.json] [--records state/cache.json] [--brand]
 
 psdoom-ng (with -nopslev) spawns data monsters into three 1024x1024 boxes whose
 bottom-left corners are (0,0), (2048,0) and (4096,0). Each box is one app Claude
@@ -40,8 +40,11 @@ KEY_THING = {"blue": 5, "yellow": 6}
 ARENA_X = (0, 2048, 4096)
 RING = 192          # scenery around each spawn box: west, east and north
 
-# linedef flags
+# linedef flags; GLASS is psdoom's (the patch): seen through, but sight, shots and moves stop there
 IMPASSABLE, BLOCK_MONSTERS, TWO_SIDED, UPPER_UNPEGGED, LOWER_UNPEGGED = 1, 2, 4, 8, 16
+SOUND_BLOCK, GLASS = 64, 1024
+SLOW_GLOW = 21      # psdoom's (the patch): a slow glow, the sector's tag its head start in tics
+SCREEN = "DBRAIN1"  # tools/make_branding.py redraws DBRAIN1-4, which Doom animates, as a live dashboard
 
 
 class Map:
@@ -107,7 +110,7 @@ class Map:
         if b.get("door"):
             return (TWO_SIDED, DOOR_SPECIAL[b["key"]])
         if f.get("window") or b.get("window"):
-            return (IMPASSABLE | TWO_SIDED, 0)
+            return (IMPASSABLE | TWO_SIDED | GLASS | SOUND_BLOCK, 0)
         return (TWO_SIDED, 0)
 
     # ------------------------------------------------------------ build
@@ -205,7 +208,7 @@ class Map:
                                   for u, lo, m, s in sides)),
             ("VERTEXES", b"".join(struct.pack("<hh", x, y) for x, y in verts)),
             ("SECTORS", b"".join(struct.pack("<hh8s8shhh", s["floor"], s["ceil"], n8(s.get("ftex", FLOOR)),
-                                             n8(s.get("ctex", CEIL)), s["light"], s.get("special", 0), 0)
+                                             n8(s.get("ctex", CEIL)), s["light"], s.get("special", 0), s.get("tag", 0))
                                  for s in self.sectors)),
         ]
 
@@ -229,7 +232,8 @@ HALL_Y1, HALL_Y2 = -448, -64     # the hall south of the arenas
 LOBBY = (2304, -960, 2816, -448)
 
 
-def build(mission, brand=False):
+def build(mission, brand=False, records=None):
+    """records: the monsters this level starts with (connect_doom.py's cache), for each room's loot."""
     m = Map(BRAND_WALL if brand else WALL)
     rooms = mission.get("rooms", [])[:3]
     denied = mission.get("denied", [])
@@ -248,11 +252,15 @@ def build(mission, brand=False):
         bx = ARENA_X[i]
         key = "yellow" if room.get("writable") else "blue"
         keys.add(key)
-        themed_room(m, bx, theme)
+        themed_room(m, bx, theme, brand)
+        loot(m, bx, *room_records(room, i, records))
         if brand:
             m.rect(bx + 384, 1024 + RING, bx + 640, 1040 + RING, 24, 152, 255, sign=f"CAIRM{i}", sign_dir="N")
             m.rect(bx + 128, -64, bx + 384, -48, 24, 152, 255, sign=f"CAIRM{i}", sign_dir="N")
         door(m, bx + 448, -64, 0, key)
+        # A window from the hall into the room: you see the records waiting, but the glass stops
+        # sight, shots and sound both ways, so nothing wakes or fights through it.
+        m.rect(bx + 800, -64, bx + 960, 0, 32, 120, theme["light"], window=True, wall="SUPPORT3", trim="SUPPORT3")
         # the hall in front of the door takes the room's floor and light
         m.overlay(bx + 384, -192, bx + 640, -64, ftex=theme["floor"], light=theme["light"] + 32)
 
@@ -268,21 +276,50 @@ def build(mission, brand=False):
         m.rect(1088, -576, 1216, -448, 40, 104, 255, window=True)
         if brand:
             m.rect(544, -464, 800, -448, 24, 152, 255, sign="CAIVAULT", sign_dir="S")
-    hall(m, bool(denied))
+    hall(m, bool(denied), brand)
     return m
 
 
-def hall(m, vault):
+def room_records(room, i, records):
+    """(records, urgent records) room i starts with: the cache's, else the offline mission's rows."""
+    if records is not None:
+        mine = [r for r in records if r.get("pid", -1) % 3 == i]
+        return len(mine), sum(1 for r in mine if r.get("demon"))
+    rows = room.get("rows") or []
+    return len(rows), sum(1 for r in rows if str(r.get("Hot", "0")).strip() in ("1", "True", "true"))
+
+
+LOOT_ROWS = 17      # rows of loot down each side of the ring, 64 apart
+
+
+def loot(m, bx, records, urgent):
+    """What the room's records drop, in rows down both sides of the ring: shells for every
+    record, and a rocket and a stimpack for every urgent one. More records, more loot."""
+    west, east = bx - RING, bx + 1024 + RING
+    for j in range(min(records, 2 * LOOT_ROWS)):
+        x, inward = (west + 112, 40) if j % 2 == 0 else (east - 112, -40)
+        y = 64 + 64 * (j // 2)
+        m.thing(2008, x, y)                                     # 4 shells
+        if j < urgent:
+            m.thing(2010, x + inward, y)                        # a rocket
+            m.thing(2011, x + inward, y + 32)                   # a stimpack
+
+
+def hall(m, vault, brand=False):
     """Dress the hall and lobby. Claude walks the hall's middle (y = -256) and straight down from
     each door, so the floor stays level and everything solid stands flush with the walls."""
     m.overlay(0, -288, 5120, -224, ftex="STEP1")                          # a metal walkway down the middle
-    for x in range(96, 5120, 256):                                       # beams across, light strips between
+    for i, x in enumerate(range(96, 5120, 256)):                         # beams across, light strips between
         m.overlay(x, HALL_Y1, x + 32, HALL_Y2, ceil=160, ctex="FLAT20", trim="SUPPORT3")
-        m.overlay(x + 112, -320, x + 144, -192, ctex="TLITE6_1", light=232)
+        # The strips breathe slowly, each a little behind the last: a ripple runs down the hall.
+        m.overlay(x + 112, -320, x + 144, -192, ctex="TLITE6_1", light=255, special=SLOW_GLOW, tag=8 * i)
     if vault:                                                            # hazard stripes at the red door, pulsing
         m.overlay(768, HALL_Y1, 1280, -384, ftex="AQF018", light=208, special=8)
     for x, y in ((2432, -832), (2688, -832), (2432, -576), (2688, -576)):   # the lobby's lamps
         m.overlay(x - 32, y - 32, x + 32, y + 32, ctex="TLITE6_1", light=240)
+    if brand:                                                            # live dashboards in the south wall
+        for x in (1312, 1600, 3360, 3776, 4480):
+            m.rect(x, HALL_Y1 - 16, x + 128, HALL_Y1, 24, 152, 208, sign=SCREEN, sign_dir="S")
     pillar = {"ftex": "FLAT20", "ctex": "FLAT20", "trim": "SUPPORT3", "wall": "SUPPORT3"}
     north = [x for bx in ARENA_X for x in (bx + 704, bx + 1600) if x + 64 <= 5120]
     south = (256, 1472, 1920, 3200, 3648, 4352, 4800)    # clear of the vault door, window and lobby
@@ -294,28 +331,40 @@ def hall(m, vault):
         m.thing(85, x + 96, HALL_Y1 + 20)
 
 
-def themed_room(m, bx, t):
+# What each room's alcoves keep: health on the west side, ammo on the east, armor and a backpack north.
+CACHE_WEST, CACHE_EAST, CACHE_NORTH = (2012, 2011, 2012), (2049, 2048, 2046), (2018, 8)
+
+
+def themed_room(m, bx, t, brand=False):
     """One app's room: the spawn box at x = bx, the ring of scenery around it, its terrain and lamps."""
     h, light, trim = t["height"], t["light"], t["trim"]
     wall = t["wall"] or m.wall
     base = {"ctex": t["ceil"], "wall": wall}
-    ring_floor = -8 if t.get("lake") else 0
-    m.rect(bx - RING, 0, bx + 1024 + RING, 1024 + RING, ring_floor, h, light - 16, ftex=t["ring_floor"], **base)
+    # The ring is a walkway a step up from the box (a lake's is its shallows, a step down).
+    ring_floor = -8 if t.get("lake") else 16
+    m.rect(bx - RING, 0, bx + 1024 + RING, 1024 + RING, ring_floor, h, light - 16, ftex=t["ring_floor"], trim=trim,
+           **base)
     m.rect(bx, 0, bx + 1024, 1024, 0, h, light, ftex=t["floor"], **base)
 
     # Terrain inside the spawn box: every step is 24 units or less.
-    if t.get("dais"):                  # a two-tier dais under a lowered, lit ceiling
+    if t.get("dais"):                  # stairs up to a two-tier dais under a lowered, lit ceiling
+        m.rect(bx + 224, 288, bx + 800, 736, 8, h, light + 8, ftex=t["dais"][0], trim=trim, **base)
         m.rect(bx + 256, 320, bx + 768, 704, 16, h, light + 16, ftex=t["dais"][0], trim=trim, **base)
+        m.rect(bx + 352, 384, bx + 672, 640, 24, h, light + 24, ftex=t["dais"][0], trim=trim, **base)
         m.rect(bx + 384, 416, bx + 640, 608, 32, h - 64, light + 32, ftex=t["dais"][1], trim=trim,
                ctex=t["lamp"], wall=wall)
-    if t.get("pit"):                   # a sunken ops pit, its walls lined with screens
+    if t.get("pit"):                   # a sunken ops pit, terraced down, its walls lined with screens
+        m.rect(bx + 256, 256, bx + 768, 768, -8, h, light - 8, ftex=t["floor"], trim=trim, **base)
+        m.rect(bx + 288, 288, bx + 736, 736, -16, h, light - 12, ftex=t["floor"], trim=trim, **base)
         m.rect(bx + 320, 320, bx + 704, 704, -24, h, light - 16, ftex=t["pit"], trim=trim, **base)
-    if t.get("lake"):                  # a moat of data around a grated island
+    if t.get("lake"):                  # a moat of data around a raised, grated island and its causeways
         m.rect(bx + 192, 192, bx + 832, 832, -16, h, light, ftex=t["lake"], trim=trim, special=8, **base)
-        m.rect(bx + 320, 320, bx + 704, 704, 0, h, light + 16, ftex=t["floor"], trim=trim, **base)
-    if t.get("aisles"):                # three low crate runs, aisles between them
-        for x in (160, 448, 736):
-            m.rect(bx + x, 192, bx + x + 128, 832, 16, h, light - 16, ftex=t["aisles"], trim=trim, **base)
+        for x1, y1, x2, y2 in ((480, 192, 544, 320), (480, 704, 544, 832), (192, 480, 320, 544), (704, 480, 832, 544)):
+            m.rect(bx + x1, y1, bx + x2, y2, 8, h, light + 8, ftex=t["floor"], trim=trim, **base)
+        m.rect(bx + 320, 320, bx + 704, 704, 8, h, light + 16, ftex=t["floor"], trim=trim, **base)
+    if t.get("aisles"):                # three crate runs, the middle one stacked higher, aisles between them
+        for x, z in ((160, 16), (448, 24), (736, 16)):
+            m.rect(bx + x, 192, bx + x + 128, 832, z, h, light - 16, ftex=t["aisles"], trim=trim, **base)
 
     # Ceiling lamps over the box: pools of light, flickering or glowing as the theme says.
     for cx in (128, 384, 640, 896):
@@ -325,26 +374,34 @@ def themed_room(m, bx, t):
 
     # The ring: pillars flush with the walls, lit alcoves (bookshelves, screens, vault panels)
     # set into the walls between them, lamps in the corners. Nothing stands where Claude or a
-    # monster could get behind it.
+    # monster could get behind it. Each alcove keeps a cache, and the far wall's two alcoves
+    # are live dashboards.
     pillar = {"ftex": t["ceil"], "ctex": t["ceil"], "trim": trim, "wall": trim}
     alcove = {"ftex": t["ring_floor"], "ctex": t["lamp"], "wall": t["alcove"], "trim": trim}
+    sill = max(ring_floor, 0) + 16
     west, east, north = bx - RING, bx + 1024 + RING, 1024 + RING
     for y in (128, 512, 896):
         m.rect(west, y, west + 64, y + 64, h, h, light, **pillar)
         m.rect(east - 64, y, east, y + 64, h, h, light, **pillar)
-    for y in (256, 640, 1024):
-        m.rect(west - 32, y, west, y + 128, 16, 144, light + 16, **alcove)
-        m.rect(east, y, east + 32, y + 128, 16, 144, light + 16, **alcove)
+    for y, west_item, east_item in zip((256, 640, 1024), CACHE_WEST, CACHE_EAST):
+        m.rect(west - 32, y, west, y + 128, sill, sill + 128, light + 16, **alcove)
+        m.rect(east, y, east + 32, y + 128, sill, sill + 128, light + 16, **alcove)
+        m.thing(west_item, west - 16, y + 64)
+        m.thing(east_item, east + 16, y + 64)
     for x in (256, 704):
         m.rect(bx + x, north - 64, bx + x + 64, north, h, h, light, **pillar)
-    for x in (64, 832):
-        m.rect(bx + x, north, bx + x + 128, north + 32, 16, 144, light + 16, **alcove)
+    for x, item in zip((64, 832), CACHE_NORTH):
+        m.rect(bx + x, north, bx + x + 128, north + 32, sill, sill + 128, light + 16,
+               **{**alcove, "wall": SCREEN if brand else t["alcove"]})
+        m.thing(item, bx + x + 64, north + 16)
     corner, side = t["decor"]
     for x, y in ((west + 32, 32), (east - 32, 32), (west + 32, north - 32), (east - 32, north - 32)):
         m.thing(corner, x, y)
     for y in (224, 608, 992):
         m.thing(side, west + 24, y)
         m.thing(side, east - 24, y)
+    for x in (160, 512, 864):          # the theme's set piece along the far wall
+        m.thing(t["extra"], bx + x, north - 112)
 
 
 def door(m, x, y1, y2, key):
@@ -372,6 +429,14 @@ if __name__ == "__main__":
         i = args.index("--mission")
         mission = json.load(open(args[i + 1]))
         del args[i:i + 2]
+    records = None
+    if "--records" in args:            # connect_doom.py's cache: the records this level starts with
+        i = args.index("--records")
+        try:
+            records = json.load(open(args[i + 1]))["monsters"]
+        except (OSError, ValueError, KeyError):
+            pass
+        del args[i:i + 2]
     brand = "--brand" in args
     args = [a for a in args if a != "--brand"]
-    write_wad(args[0] if args else "arena-raw.wad", build(mission, brand).lumps())
+    write_wad(args[0] if args else "arena-raw.wad", build(mission, brand, records).lumps())

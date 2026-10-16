@@ -90,7 +90,7 @@ class ArenaTest(unittest.TestCase):
     def test_spawn_boxes_are_open_floor(self):
         """psdoom drops monsters into 1024x1024 boxes at x = 0, 2048, 4096, and Claude crosses them in
         straight lines: every cell is open, roomy floor, and no step between neighbors tops 24 units."""
-        for rooms in (ROOMS, [{"connection": c, "app": c} for c in ("Snowflake", "Acme", "Other")]):
+        for rooms in (ROOMS, [{"connection": c, "app": c} for c in ("Snowflake", "Acme", "NetSuite")]):
             mp = make_arena.build({"rooms": rooms})
             for bx in make_arena.ARENA_X:
                 box = {(cx, cy) for cx in range(bx // 16, (bx + 1024) // 16) for cy in range(64)}
@@ -122,6 +122,55 @@ class ArenaTest(unittest.TestCase):
         textures = {t for u, lo, mid, _ in m["sides"] for t in (u, lo, mid)}
         self.assertTrue({"WOOD9", "PANBOOK", "SPACEW3", "COMPTALL", "BROWNGRN", "SILVER2"} <= textures)  # QuickBooks green
         self.assertEqual([t["key"] for t in make_arena.room_themes([ROOMS[0]] * 3)], ["salesforce", "tech", "data"])
+
+    def test_windows_are_glass(self):
+        """Each room has a window onto the hall that stops sight, shots and sound: monsters
+        don't wake, and nobody fights through it."""
+        m = self.level(MISSION, brand=True)
+        self.assert_valid(m)
+        glass = [(f, b) for _, _, flags, _, _, f, b in m["lines"] if flags & make_arena.GLASS]
+        self.assertTrue(all(b != -1 for _, b in glass))
+        for _, _, flags, *_ in m["lines"]:
+            if flags & make_arena.GLASS:
+                self.assertTrue(flags & make_arena.IMPASSABLE and flags & make_arena.SOUND_BLOCK)
+        windows = {m["sides"][s][3] for pair in glass for s in pair
+                   if m["sectors"][m["sides"][s][3]][0] in (32, 40)}       # the window sills
+        self.assertEqual(len(windows), 4)                                    # three rooms and the vault
+
+    def test_loot_follows_the_records(self):
+        """Each record leaves shells in its room's ring, each urgent one a rocket and a stimpack too."""
+        records = [{"pid": 3 * k + 0, "demon": int(k < 2)} for k in range(5)] + [{"pid": 3 * k + 2, "demon": 0}
+                                                                                  for k in range(3)]
+        base = Counter(t for t, *_ in make_arena.build(MISSION).things)
+        mp = make_arena.build(MISSION, records=records)
+        self.assertEqual(Counter(t for t, *_ in mp.things) - base, Counter({2008: 8, 2010: 2, 2011: 2}))
+        rooms = Counter((t, (x + make_arena.RING) // 2048) for t, x, y, _ in mp.things if t in (2008, 2010) and y >= 0)
+        self.assertEqual(rooms, Counter({(2008, 0): 5, (2008, 2): 3, (2010, 0): 2}))
+        # without a cache, the offline mission's own rows
+        rows = {**ROOMS[1], "rows": [{"Id": 1, "Hot": 1}, {"Id": 2, "Hot": 0}]}
+        mp = make_arena.build({"rooms": [rows]})
+        self.assertEqual(Counter(t for t, *_ in mp.things if t in (2008, 2010)), Counter({2008: 2, 2010: 1}))
+
+    def test_alcove_caches_and_set_pieces(self):
+        mp = make_arena.build(MISSION)
+        things = Counter(t for t, *_ in mp.things)
+        for item in (*make_arena.CACHE_WEST, *make_arena.CACHE_EAST, *make_arena.CACHE_NORTH):
+            self.assertGreaterEqual(things[item], 3, item)                   # in every room
+        for t in make_arena.room_themes(ROOMS):
+            self.assertGreaterEqual(things[t["extra"]], 3, t["key"])
+
+    def test_hall_lights_ripple(self):
+        """The hall's light strips glow slowly (psdoom's special 21), each starting a little later."""
+        m = self.level(MISSION)
+        tags = sorted({tag for *_, light, special, tag in m["sectors"] if special == make_arena.SLOW_GLOW})
+        self.assertEqual(tags, [8 * i for i in range(20)])
+
+    def test_screens_only_with_the_brand(self):
+        """The animated dashboards are the branding WAD's: without it, DBRAIN is the stock Icon of Sin."""
+        def screens(brand):
+            return sum(make_arena.SCREEN in side[:3] for side in self.level(MISSION, brand)["sides"])
+        self.assertGreater(screens(True), 0)
+        self.assertEqual(screens(False), 0)
 
     # Every app on the demo's Connect AI account (getCatalogs: connection, app), as of 2026-10.
     ACCOUNT = [("Acumatica", "Acumatica"), ("ADP", "ADP"), ("BullhornCRM_Somya", "Bullhorn CRM"),
@@ -343,9 +392,15 @@ class BrandingTest(unittest.TestCase):
     def test_without_mission_or_kit(self):
         lumps = self.build()
         self.assertEqual(list(lumps), ["PNAMES", "TEXTURE1", "CAILOGO", "CAIWALLP",     # no menu logo,
+                                       "CAISCRN1", "CAISCRN2", "CAISCRN3", "CAISCRN4",
                                        *[n for n, _ in make_branding.MENU_SWITCHES]])  # but the switches
         tex = self.textures(lumps)
         self.assertEqual(tex["TEKWALL4"], (64, 128, ["W94_1"]))                         # IWAD textures kept
+        # the dashboard's frames take DBRAIN1-4's places, in order, so Doom animates them
+        self.assertEqual(list(tex)[1:5], ["DBRAIN1", "DBRAIN2", "DBRAIN3", "DBRAIN4"])
+        self.assertEqual([tex[f"DBRAIN{i}"] for i in range(1, 5)], [(128, 128, [f"CAISCRN{i}"]) for i in range(1, 5)])
+        frames = [make_branding.patch_pixels(lumps[f"CAISCRN{i}"])[2] for i in range(1, 5)]
+        self.assertEqual(len({tuple(sorted(f.items())) for f in frames}), 4)            # every frame moves
         self.assertEqual(tex["CAISIGN"], (256, 128, ["CAILOGO"]))
         self.assertEqual(tex["CAIWALL"], (64, 128, ["CAIWALLP"]))
         w, h, px = make_branding.patch_pixels(lumps["CAIWALLP"])

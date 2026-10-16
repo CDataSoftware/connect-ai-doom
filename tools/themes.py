@@ -45,6 +45,8 @@ URGENT = ("demon", "caco", "knight", "baron", "revenant", "mancubus")
 
 # The layouts. Light specials (sector type): 0 steady, 8 glow, 17 flicker. `wall` None is the
 # level's own wall (branded or not). The terrain key picks the layout: dais, pit, lake or aisles.
+# `decor` is the scenery's corner and side things, `extra` the set piece along the far wall: office
+# planters, server columns, candelabras, blue torches, or explosive barrels.
 FAMILIES = {
     "crm": {
         "label": "CRM office", "match": ("crm", "hubspot", "pipedrive", "zoho", "sugar", "insightly"),
@@ -52,7 +54,7 @@ FAMILIES = {
         "wall": "WOOD9", "trim": "WOODMET1", "alcove": "PANBOOK",
         "floor": "FLAT5_2", "ring_floor": "FLAT5_1", "ceil": "CEIL3_1", "lamp": "CEIL3_4",
         "dais": ("FLOOR0_2", "AQF048"), "height": 256, "light": 200, "special": 0,
-        "decor": (2028, 35),
+        "decor": (2028, 35), "extra": 31,
     },
     "support": {
         "label": "Support ops center", "match": ("desk", "ticket", "support", "intercom", "help", "chat",
@@ -61,7 +63,7 @@ FAMILIES = {
         "wall": "SPACEW3", "trim": "COMPBLUE", "alcove": "COMPTALL",
         "floor": "FLOOR0_6", "ring_floor": "FLAT14", "ceil": "CEIL4_3", "lamp": "TLITE6_5",
         "pit": "CONS1_5", "height": 224, "light": 192, "special": 17,
-        "decor": (85, 86),
+        "decor": (85, 86), "extra": 48,
     },
     "billing": {
         "label": "Billing treasury", "match": ("invoice", "billing", "payment", "finance", "account", "ledger",
@@ -70,7 +72,7 @@ FAMILIES = {
         "wall": "BRONZE1", "trim": "BRONZE2", "alcove": "SILVER2",
         "floor": "AQF076", "ring_floor": "FLOOR5_1", "ceil": "CEIL5_2", "lamp": "TLITE6_6",
         "dais": ("FLAT23", "GATE4"), "height": 256, "light": 200, "special": 8,
-        "decor": (2028, 48),
+        "decor": (2028, 48), "extra": 35,
     },
     "data": {
         "label": "Data lake", "match": ("sql", "postgres", "oracle", "database", "db", "warehouse", "lake",
@@ -79,7 +81,7 @@ FAMILIES = {
         "wall": "SILVER3", "trim": "METAL1", "alcove": "COMPUTE2",
         "floor": "FCGRATE2", "ring_floor": "FWATER1", "ceil": "FLAT4", "lamp": "FLAT17",
         "lake": "FWATER1", "height": 256, "light": 192, "special": 8,
-        "decor": (86, 48),
+        "decor": (86, 48), "extra": 44,
     },
     "erp": {
         "label": "ERP warehouse", "match": ("erp", "inventory", "order", "shop", "commerce", "drive", "file",
@@ -88,7 +90,7 @@ FAMILIES = {
         "wall": "METAL2", "trim": "SUPPORT2", "alcove": "CRATWIDE",
         "floor": "AQF050", "ring_floor": "FLAT5_4", "ceil": "FLAT20", "lamp": "FLAT17",
         "aisles": "CRATOP1", "height": 256, "light": 192, "special": 0,
-        "decor": (2028, 70),
+        "decor": (2028, 70), "extra": 2035,
     },
     "tech": {
         "label": "Tech base", "match": (),
@@ -96,7 +98,7 @@ FAMILIES = {
         "wall": None, "trim": "TEKLITE", "alcove": "COMPSTA1",
         "floor": "FLOOR4_8", "ring_floor": "FLOOR5_1", "ceil": "CEIL3_5", "lamp": "TLITE6_1",
         "dais": ("FLOOR0_6", "FLOOR0_3"), "height": 256, "light": 200, "special": 0,
-        "decor": (2028, 85),
+        "decor": (2028, 85), "extra": 2035,
     },
 }
 FALLBACK = ("tech", "data", "crm", "support", "billing", "erp")   # for an unknown app, or a repeat

@@ -30,6 +30,21 @@ index 125d27b..2e73fc5 100644
  // Add psdoom1.wad if this is registered (Doom 1) or retail (Ultimite Doom).
  // If we loaded it, set the flag to true so we can place the monsters in the
  // correct positions.
+diff --git i/trunk/src/doomdata.h w/trunk/src/doomdata.h
+index 66733ae..e490260 100644
+--- i/trunk/src/doomdata.h
++++ w/trunk/src/doomdata.h
+@@ -139,6 +139,10 @@ typedef struct
+ // Set if already seen, thus drawn in automap.
+ #define ML_MAPPED		256
+ 
++// connect-doom: a window's glass. You see through it, but sight, shots,
++// projectiles and moves stop at it (tools/make_arena.py).
++#define ML_GLASS		1024
++
+ 
+ 
+ 
 diff --git i/trunk/src/g_game.c w/trunk/src/g_game.c
 index e630741..c422923 100644
 --- i/trunk/src/g_game.c
@@ -466,6 +481,43 @@ index 89b6532..337b8e4 100644
  	    return;
  	}
  	break;
+diff --git i/trunk/src/p_lights.c w/trunk/src/p_lights.c
+index 5ea0390..12b0604 100644
+--- i/trunk/src/p_lights.c
++++ w/trunk/src/p_lights.c
+@@ -314,6 +314,14 @@ EV_LightTurnOn
+ 
+ void T_Glow(glow_t*	g)
+ {
++    // connect-doom: direction -2/2 is a slow glow (sector special 21)
++    if (g->direction == 2 || g->direction == -2)
++    {
++	g->sector->lightlevel += g->direction / 2;  // a light level a tic
++	if (g->sector->lightlevel <= g->minlight || g->sector->lightlevel >= g->maxlight)
++	    g->direction = -g->direction;
++	return;
++    }
+     switch(g->direction)
+     {
+       case -1:
+@@ -353,6 +361,17 @@ void P_SpawnGlowingLight(sector_t*	sector)
+     g->thinker.function.acp1 = (actionf_p1) T_Glow;
+     g->direction = -1;
+ 
++    // connect-doom: special 21 glows slowly, and the sector's tag sets
++    // where in the pulse it starts (tics), so a row of lights can ripple.
++    if (sector->special == 21)
++    {
++	int i;
++
++	g->direction = -2;
++	for (i = 0; i < sector->tag; i++)
++	    T_Glow(g);
++    }
++
+     sector->special = 0;
+ }
+ 
 diff --git i/trunk/src/p_local.h w/trunk/src/p_local.h
 index 5ffefa3..b1dfbe5 100644
 --- i/trunk/src/p_local.h
@@ -479,9 +531,38 @@ index 5ffefa3..b1dfbe5 100644
  boolean P_ChangeSector (sector_t* sector, boolean crunch);
  
 diff --git i/trunk/src/p_map.c w/trunk/src/p_map.c
-index cac44dd..0a10fe5 100644
+index cac44dd..d28a4ac 100644
 --- i/trunk/src/p_map.c
 +++ w/trunk/src/p_map.c
+@@ -244,8 +244,8 @@ boolean PIT_CheckLine (line_t* ld)
+     // so two special lines that are only 8 pixels apart
+     // could be crossed in either order.
+     
+-    if (!ld->backsector)
+-	return false;		// one sided line
++    if (!ld->backsector || ld->flags & ML_GLASS)
++	return false;		// one sided line, or connect-doom's glass
+ 		
+     if (!(tmthing->flags & MF_MISSILE) )
+     {
+@@ -872,7 +872,7 @@ PTR_AimTraverse (intercept_t* in)
+     {
+ 	li = in->d.line;
+ 	
+-	if ( !(li->flags & ML_TWOSIDED) )
++	if ( !(li->flags & ML_TWOSIDED) || li->flags & ML_GLASS )
+ 	    return false;		// stop
+ 	
+ 	// Crosses a two sided line.
+@@ -967,7 +967,7 @@ boolean PTR_ShootTraverse (intercept_t* in)
+ 	if (li->special)
+ 	    P_ShootSpecialLine (shootthing, li);
+ 
+-	if ( !(li->flags & ML_TWOSIDED) )
++	if ( !(li->flags & ML_TWOSIDED) || li->flags & ML_GLASS )
+ 	    goto hitline;
+ 	
+ 	// crosses a two sided line
 @@ -1214,6 +1214,48 @@ void P_UseLines (player_t*	player)
  }
  
@@ -543,6 +624,31 @@ index fb45bdc..2d3ab84 100644
  		P_SlideMove (mo);
  	    }
  	    else if (mo->flags & MF_MISSILE)
+diff --git i/trunk/src/p_sight.c w/trunk/src/p_sight.c
+index 79c1bb1..a59b3d2 100644
+--- i/trunk/src/p_sight.c
++++ w/trunk/src/p_sight.c
+@@ -204,7 +204,7 @@ boolean P_CrossSubsector (int num)
+ 
+ 	// stop because it is not two sided anyway
+ 	// might do this after updating validcount?
+-	if ( !(line->flags & ML_TWOSIDED) )
++	if ( !(line->flags & ML_TWOSIDED) || line->flags & ML_GLASS )
+ 	    return false;
+ 	
+ 	// crosses a two sided line
+diff --git i/trunk/src/p_spec.c w/trunk/src/p_spec.c
+index 90d0bb7..e965768 100644
+--- i/trunk/src/p_spec.c
++++ w/trunk/src/p_spec.c
+@@ -1432,6 +1432,7 @@ void P_SpawnSpecials (void)
+ 	    break;
+ 	    
+ 	  case 8:
++	  case 21:  // connect-doom: slow glow
+ 	    // GLOWING LIGHT
+ 	    P_SpawnGlowingLight(sector);
+ 	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
 index fa4fe83..09cc030 100644
 --- i/trunk/src/pr_process.c

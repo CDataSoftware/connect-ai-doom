@@ -304,7 +304,7 @@ fi
 
 # The level for this mission: map, signs, keycard messages (and, with NOGORE=1, no blood or corpses).
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
-python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --brand
+python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --records state/cache.json --brand
 "$ZDBSP" -o state/level.wad state/level-raw.wad >/dev/null
 if [[ "${NOGORE:-}" == 1 ]]; then
   python3 tools/make_deh.py state/mission.json state/level.deh --no-gore

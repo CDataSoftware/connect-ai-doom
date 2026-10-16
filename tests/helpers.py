@@ -204,7 +204,7 @@ def wad_lumps(data):
 
 
 def tiny_iwad(path):
-    """Just enough of freedoom2.wad for make_branding.py: PLAYPAL, PNAMES, TEXTURE1 and W94_1."""
+    """Just enough of freedoom2.wad for make_branding.py: PLAYPAL, PNAMES, TEXTURE1 (TEKWALL4, DBRAIN1-4) and W94_1."""
     from make_branding import to_patch
     from PIL import Image
 
@@ -217,8 +217,11 @@ def tiny_iwad(path):
         for y in range(128):
             wall.putpixel((x, y), ((x * 4) % 256, (y * 2) % 256, 90, 255))
     pnames = struct.pack("<i", 1) + b"W94_1\0\0\0"
-    entry = b"TEKWALL4" + struct.pack("<ihhih", 0, 64, 128, 0, 1) + struct.pack("<hhhhh", 0, 0, 0, 0, 0)
-    texture1 = struct.pack("<ii", 1, 8) + entry
+    # TEKWALL4, then DBRAIN1-4 (Doom animates them; make_branding redraws them as screens)
+    entries = [name.ljust(8, b"\0") + struct.pack("<ihhih", 0, 64, 128, 0, 1) + struct.pack("<hhhhh", 0, 0, 0, 0, 0)
+               for name in (b"TEKWALL4", b"DBRAIN1", b"DBRAIN2", b"DBRAIN3", b"DBRAIN4")]
+    texture1 = struct.pack("<i", len(entries)) + b"".join(
+        struct.pack("<i", 4 + 4 * len(entries) + i * len(entries[0])) for i in range(len(entries))) + b"".join(entries)
     lumps = [("PLAYPAL", playpal), ("PNAMES", pnames), ("TEXTURE1", texture1),
              ("W94_1", to_patch(wall, palette))]
     data, directory, pos = b"", b"", 12

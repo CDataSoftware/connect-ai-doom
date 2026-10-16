@@ -138,6 +138,16 @@ class PanelTest(unittest.TestCase):
         self.assertIn("Tried 1× this game", ids["rooms-live"]["html"])
         self.assertRegex(ids["rooms-live"]["html"], r"Live: 15 rows [45]s ago, in 7\.2 s")
 
+    def test_saved_records_say_so(self):
+        """Connect AI didn't answer at launch: the rooms say the records are saved, not live."""
+        fetched = datetime.datetime(2026, 10, 15, 15, 35).timestamp()
+        rooms = [{"app": "Zendesk", "writable": True, "title": "T", "left": 3, "urgent_left": 0, "killed": 0,
+                  "refresh": {"connection": "Zendesk", "rows": 15, "ms": 7249, "at": fetched}}]
+        ids = self.render(rooms_live=rooms, records={"source": "saved", "fetched_at": fetched},
+                          game={"mode": "player", "started": 0})
+        self.assertIn("Saved Oct 15, 15:35: Connect AI isn't answering", ids["rooms-live"]["html"])
+        self.assertNotIn("Live:", ids["rooms-live"]["html"])
+
     def test_all_rooms_clear(self):
         kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "", "writable": True,
                 "demon": 0, "killed_at": "2026-10-15T13:54:10"}
@@ -258,7 +268,8 @@ class PanelTest(unittest.TestCase):
         """Every key the panel reads from /state.json is one connect_doom.py serves."""
         script = (ROOT / "panel/index.html").read_text()
         served = (ROOT / "connect_doom.py").read_text()
-        for key in ("events", "play_events", "mission", "game", "kills", "kill_total", "hits", "rooms_live"):
+        for key in ("events", "play_events", "mission", "game", "kills", "kill_total", "hits", "rooms_live",
+                    "records"):
             self.assertIn(f"s.{key}", script)
             self.assertIn(f'"{key}":', served)
 

@@ -753,7 +753,9 @@ function gameEvents(s) {
 }
 
 // A room's last refresh through Connect AI (the poller re-runs its query every 15 s).
-function refreshed(r) {
+function refreshed(r, records) {
+  if (records?.source === "saved")   // Connect AI didn't answer at launch: the level's last good records
+    return `<div class="live err">Saved ${new Date(records.fetched_at * 1000).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false})}: Connect AI isn't answering</div>`;
   if (!r) return "";
   if (r.error) return `<div class="live err">Refresh failed: ${esc(r.error)}</div>`;
   const ago = Math.max(0, Math.round(Date.now() / 1000 - r.at));
@@ -792,7 +794,7 @@ function renderGame(s) {
       <div class="num">${r.killed}<small> / ${total} cleared</small></div>
       <div class="bar"><span style="width:${total ? Math.round(100 * r.killed / total) : 0}%"></span></div>
       <div class="sub">${r.left ? `${r.left} left${r.urgent_left ? `, ${r.urgent_left} urgent` : ""}` : "Room clear"} · ${esc(r.title)}</div>
-      ${refreshed(r.refresh)}</div>`;
+      ${refreshed(r.refresh, s.records)}</div>`;
   });
   const tries = s.vault || [];
   for (const d of m.denied || [])

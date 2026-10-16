@@ -329,6 +329,31 @@ def cmd_poll(args):
         time.sleep(max(1, interval - (time.time() - started)))  # a refresh every 15 s, not 15 s apart
 
 
+def cmd_check(_):
+    """For raid.sh doctor: run each room's query once, timed, and say what a game would play
+    without Connect AI. One `status<TAB>text` line each; status is ok, slow, error or note."""
+    mission = read_json(MISSION)
+    if not mission or is_offline(mission):
+        return
+    mcp = connect_ai_mcp.Client(timeout=TIMEOUT)
+    for room in mission["rooms"][:3]:
+        start = time.time()
+        try:
+            rows = mcp.query(room["query"])
+            secs = time.time() - start
+            status = "slow" if secs > TIMEOUT / 2 else "ok"
+            print(f"{status}\t{room['app']}: {len(rows)} records in {secs:.1f} s"
+                  + (f", close to the game's {TIMEOUT:g} s limit" if status == "slow" else ""), flush=True)
+        except Exception as e:
+            print(f"error\t{room['app']}: {str(e).splitlines()[0][:120]}", flush=True)
+    saved = read_json(SAVED)
+    if saved and saved.get("mission") == mission_key(mission):
+        print(f"note\twithout Wi-Fi, games play this level's records saved "
+              f"{dt.datetime.fromtimestamp(saved['fetched_at']):%b %d %H:%M}")
+    else:
+        print("note\twithout Wi-Fi, games play offline: play this level once with Wi-Fi to save its records")
+
+
 def cmd_score(_):
     kills = game_kills()
     left = len([m for m in cached_monsters() if m["id"] not in killed_ids()])
@@ -416,7 +441,7 @@ def cmd_reset(_):
 
 
 COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "lookup": cmd_lookup, "vault": cmd_vault,
-            "poll": cmd_poll,
+            "poll": cmd_poll, "check": cmd_check,
             "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel}
 
 if __name__ == "__main__":

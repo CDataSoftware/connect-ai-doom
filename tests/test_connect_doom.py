@@ -217,6 +217,31 @@ class FetchTest(unittest.TestCase):
             self.assertEqual(len(cd.fetch(mission)), 7)
 
 
+class CheckCLITest(unittest.TestCase):
+    """`check`, which raid.sh doctor runs: each room's query, timed."""
+
+    def test_times_each_room_and_reports_a_failing_one(self):
+        rooms = [{"connection": "Salesforce1", "app": "Salesforce", "query": query("Salesforce1")},
+                 {"connection": "Gone", "app": "Gone App", "query": "SELECT 1 AS Id"}]
+        with FakeMCP() as mcp, tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "mission.json").write_text(json.dumps({"rooms": rooms}))
+            r = bridge(tmp, "check", env={"CONNECT_AI_MCP_URL": mcp.url, "CONNECT_AI_USER": USER,
+                                          "CONNECT_AI_PAT": PAT})
+        lines = [line.split("\t") for line in r.stdout.splitlines()]
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(lines[0][0], "ok")
+        self.assertRegex(lines[0][1], r"^Salesforce: \d+ records in \d+\.\d s$")
+        self.assertEqual(lines[1], ["error", "Gone App: Cannot obtain connection"])
+        self.assertEqual(lines[2], ["note", "without Wi-Fi, games play offline: play this level once with Wi-Fi "
+                                            "to save its records"])
+
+    def test_offline_level_has_nothing_to_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge(tmp, "poll", "--demo")
+            r = bridge(tmp, "check")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+
 class PollCLITest(unittest.TestCase):
     """`poll` as raid.sh runs it."""
 
@@ -308,7 +333,7 @@ class PollCLITest(unittest.TestCase):
             for args in ((), ("bogus",)):
                 r = bridge(tmp, *args)
                 self.assertNotEqual(r.returncode, 0)
-                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|score|reset|panel}", r.stderr)
+                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|check|score|reset|panel}", r.stderr)
 
 
 class PanelServerTest(unittest.TestCase):

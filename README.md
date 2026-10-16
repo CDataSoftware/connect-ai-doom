@@ -39,7 +39,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
    ./raid.sh login
    ```
 
-6. **Check the Mac.** `doctor` checks the build, the token, that Connect AI answers over this network, that the game build is current, and the panel's port, and prints what to run for anything missing.
+6. **Check the Mac.** `doctor` checks the build, the token, that Connect AI answers over this network, how long each of the level's queries takes, that the game build is current, and the panel's port, and prints what to run for anything missing. Without a token it checks the Mac for offline play.
 
    ```bash
    ./raid.sh doctor
@@ -54,13 +54,14 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh replay --claude-plays     # watch Claude play it
 ./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
 ./raid.sh booth                     # replay game after game, for a booth
+./raid.sh booth offline             # the same with made-up data, no account needed
 ```
 
 | Mode | Claude briefing | Game |
 |---|---|---|
 | `new` | runs one (about $0.30 of Claude usage) | yes |
 | `replay` | reuses the last | yes |
-| `booth` | reuses the last | one after another |
+| `booth` | reuses the last (or none, offline) | one after another |
 | `offline` | none, made-up data | yes |
 | `brief-only` | runs one | no |
 
@@ -68,7 +69,7 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 
 **Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on.
 
-**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `./raid.sh booth`. Each player's game ends with Esc → *Quit Game* → Y, and the next one starts 10 seconds later with all the records back, on the same full screen (`BOOTH_PAUSE` changes the wait). Ctrl-C in the Terminal stops it. The screen stays awake while `raid.sh` runs.
+**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `./raid.sh booth`. Each player's game ends with Esc → *Quit Game* → Y, and the next one starts 10 seconds later with all the records back, on the same full screen (`BOOTH_PAUSE` changes the wait). Ctrl-C in the Terminal stops it. The screen stays awake while `raid.sh` runs. On a Mac with no Connect AI account, or no level yet, `booth` plays offline with made-up data; `./raid.sh booth offline` does that on purpose.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
 - **If the Wi-Fi is slow or down**, each Connect AI call gets 20 seconds (`CONNECT_AI_TIMEOUT`). After that the game plays the records this level last fetched; if it never fetched any, it plays offline and keeps your level for the next game. Kills still count; the panel shows their live lookups as failed until the Wi-Fi is back.

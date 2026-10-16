@@ -307,8 +307,26 @@ class RaidTest(unittest.TestCase):
         self.assertEqual(r.stdout.count("1 cleared"), 2)                    # two games, each from a full level
         self.assertEqual(r.stdout.count("Next game in 1.1 seconds"), 1)
 
+    def test_booth_without_an_account_plays_offline(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("CONNECT_AI_USER", "CONNECT_AI_PAT")}
+        r = self.raid("booth", env={**env, "BOOTH_GAMES": "1"})       # no token and no level
+        self.assertEqual(self.assert_played(r), 36)                    # the made-up records
+        self.assertIn("No Connect AI account on this Mac, so booth mode plays offline", r.stderr)
+
+    def test_booth_with_an_account_but_no_level_plays_offline(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            r = self.raid("booth", env={**env, "BOOTH_GAMES": "1"})
+        self.assertEqual(self.assert_played(r), 36)
+        self.assertIn("No level on this Mac yet", r.stderr)
+
+    def test_booth_offline_never_looks_up_a_token(self):
+        r = self.raid("booth", "offline", env={**os.environ, "BOOTH_GAMES": "1"})
+        self.assertEqual(self.assert_played(r), 36)
+        self.assertFalse((self.logs / "security.txt").exists())
+
     def test_booth_stops_when_the_game_cant_start(self):
-        r = self.raid("booth", env={**os.environ, "BOOTH_PAUSE": "0"})   # no level yet
+        (self.repo / "vendor/src/zdbsp/build/zdbsp").unlink()          # the level can't be built
+        r = self.raid("booth", "offline", env={**os.environ, "BOOTH_PAUSE": "0"})
         self.assertEqual(r.returncode, 1)
         self.assertIn("booth mode stopped", r.stderr)
 
@@ -321,11 +339,20 @@ class RaidTest(unittest.TestCase):
         self.assertIn("no level yet", r.stdout)
         self.assertIn("Ready:", r.stdout)
 
-    def test_doctor_without_a_token_says_what_to_run(self):
+    def test_doctor_times_each_rooms_query(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.assertEqual(self.raid("new", env=env).returncode, 0)
+            r = self.raid("doctor", env={**env, "PANEL_PORT": str(free_port())})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r"✓ Salesforce: 2 records in \d+\.\d s")
+        self.assertIn("without Wi-Fi, games play this level's records saved", r.stdout)
+
+    def test_doctor_without_a_token_is_ready_to_play_offline(self):
         env = {k: v for k, v in os.environ.items() if k not in ("CONNECT_AI_USER", "CONNECT_AI_PAT")}
         r = self.raid("doctor", env={**env, "PANEL_PORT": str(free_port())})
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("✗ no Connect AI token: run ./raid.sh login", r.stdout)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("- no Connect AI token: ./raid.sh offline and ./raid.sh booth play made-up data", r.stdout)
+        self.assertIn("Ready to play offline", r.stdout)
 
 
 if __name__ == "__main__":

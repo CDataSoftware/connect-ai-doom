@@ -321,12 +321,39 @@
   .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--doom-red); animation: pulse 1s infinite; }
   #stage .screen { position: absolute; left: var(--gx); top: var(--gy); width: var(--gw); height: var(--gh);
                    background: #000; --frame-out: -12px; --frame-arm: 64px; display: flex; align-items: center; justify-content: center; }
-  .splash { width: min(84%, 760px); display: grid; gap: 20px; }
-  .splash .headline { font: 500 clamp(24px, 3.4vw, 38px)/1.2 var(--sans); letter-spacing: -.01em; }
-  .splash .ask { font-size: 19px; font-weight: 600; border-left: 4px solid var(--agility); padding: 2px 0 2px 14px; color: #E5E2DA; }
+  .splash { width: min(90%, 900px); height: 94%; display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+  .splash > * { flex: none; }
+  .splash .headline { font: 500 clamp(20px, 2.6vw, 30px)/1.2 var(--sans); letter-spacing: -.01em; }
+  .splash .ask { font-size: 17px; font-weight: 600; border-left: 4px solid var(--agility); padding: 2px 0 2px 14px; color: #E5E2DA; }
   .splash .ask:empty, .splash .progress:empty { display: none; }
-  .splash .progress { font: 14px/1.4 var(--mono); color: var(--ok); }
+  .splash .progress { font: 13px/1.4 var(--mono); color: var(--ok); margin-left: auto; white-space: nowrap; }
   .splash .how { margin: 0; }
+  /* the level under construction: Doom's automap, drawn from the briefing's calls as they land */
+  .automap { position: relative; flex: 1 1 auto; min-height: 140px; max-height: 420px; background: #000; border: 1px solid var(--line);
+             border-radius: 4px; overflow: hidden; box-shadow: inset 0 0 40px rgba(0,0,0,.9); }
+  .automap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .automap::after {  /* CRT scanlines */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px);
+  }
+  .automap .tag { position: absolute; left: 10px; top: 9px; z-index: 1; font: 8px/1 var(--pixel); color: var(--doom-red); letter-spacing: 1px; }
+  .automap .tag::after { content: " _"; animation: blink .7s steps(1) infinite; }
+  .phases-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .phases { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; }
+  .phases li { font: 8px/1 var(--pixel); letter-spacing: .5px; padding: 7px 8px; border-radius: 2px;
+               background: var(--depth-2); color: var(--gray-7); border: 1px solid var(--line); white-space: nowrap; }
+  .phases li.done { color: var(--depth); background: var(--ok); border-color: var(--ok); }
+  .phases li.on { color: var(--depth); background: var(--agility); border-color: var(--agility); animation: pulse 1s infinite; }
+  .splash .doing { font: 15px/1.35 var(--sans); color: #E5E2DA; display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+  .splash .doing:empty { display: none; }
+  .splash .doing .tag { flex: none; font: 8px/1.6 var(--pixel); color: var(--agility); }
+  .splash .doing .tag::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%;
+                                background: var(--doom-red); animation: pulse .8s infinite; }
+  .splash .doing .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .splash .doing b { color: var(--agility); font-weight: 600; }
+  .splash .doing .res { font: 13px var(--mono); color: var(--balance); }
+  .splash .doing .res .ok { color: var(--ok); }
+  @media (max-height: 800px) { .splash .how { display: none; } }
   #stage .bar.bottom .line { display: flex; gap: 12px; align-items: baseline; min-width: 0; }
   #stage .bar.bottom .tag { flex: none; font: 8px/1.6 var(--pixel); color: var(--agility); }
   #stage .bar.bottom .q { font: 600 17px/1.3 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -385,7 +412,12 @@
       <div class="eyebrow"><span>Claude</span><span class="rule"></span><span>Connect AI MCP server</span><span class="rule"></span><span>live data</span></div>
       <div class="headline" id="stage-headline">Claude is building a Doom level from your <span class="hl">live</span> business data</div>
       <div class="ask" id="stage-ask"></div>
-      <div class="progress" id="stage-progress"></div>
+      <div class="automap"><span class="tag" id="automap-tag">AUTOMAP · BUILDING THE LEVEL</span><canvas id="automap"></canvas></div>
+      <div class="phases-row">
+        <ol class="phases" id="stage-phases"><li>CONNECT</li><li>SCOUT</li><li>READ RECORDS</li><li>PLAN</li><li>BUILD</li></ol>
+        <div class="progress" id="stage-progress"></div>
+      </div>
+      <div class="doing" id="stage-doing"></div>
       <ol class="how">
         <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
         <li><b>Clear the rooms</b>Each room is an app, each monster a record. The biggest monster in each room is urgent.</li>
@@ -879,6 +911,243 @@ if (STAGED) {
 
 function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
 
+// ---------- the automap: the level drawing itself while Claude briefs ----------
+// Each app Claude touches becomes a room off the lobby, its walls traced in like Doom's automap.
+// Records it reads spawn as monsters; a room Connect AI blocks turns red. Only the stage runs it.
+const automap = {
+  rooms: new Map(), active: new Set(), done: false, seen: 0, player: null, running: false,
+  // room cells around the lobby (0, 0), in the order apps show up; a corner room hangs off the middle one beside it
+  SLOTS: [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]],
+
+  // the briefing so far -> rooms (idempotent: called every tick)
+  update(events, m) {
+    if (events.length < this.seen) this.rooms.clear();   // a new run started
+    this.seen = events.length;
+    const pending = new Map();
+    for (const e of events) {
+      if (e.kind === "call" && e.connection) {
+        this.room(e.connection);
+        pending.set(e.id ?? `${e.tool}:${e.connection}`, e.connection);
+      } else if (e.kind === "result" && e.connection) {
+        pending.delete(e.id ?? `${e.tool}:${e.connection}`);
+        const r = this.room(e.connection);
+        if (e.error && BLOCKED.test(e.text || "")) r.vault = true;
+        if (e.tool === "queryData" && !e.error && e.rows > r.rows) {
+          if (!r.rows) r.readAt = Date.now();
+          r.rows = e.rows;
+          const rows = parseCSV((e.text || "").split(/\r?\nQuery ID:/)[0].trim());
+          const hot = rows.length ? rows[0].findIndex(h => /^hot$/i.test(h)) : -1;
+          r.hot = hot < 0 ? [] : rows.slice(1).map(rw => /^(1|true|yes)$/i.test(rw[hot] || ""));
+        }
+      }
+    }
+    this.active = new Set(pending.values());
+    this.done = events.some(e => e.kind === "mission");
+    if (!this.done) m = null;    // mission.json is the last run's until this one's lands
+    for (const r of (m && m.rooms) || []) { const x = this.room(r.connection || r.app); x.name = r.app; x.title = r.title; x.writable = r.writable; }
+    for (const d of (m && m.denied) || []) this.room(d.connection || "PII vault").vault = true;
+    if (!events.length) { this.rooms.clear(); this.done = false; }
+  },
+  room(conn) {
+    if (!this.rooms.has(conn)) {
+      const used = new Set([...this.rooms.values()].map(r => r.slot));
+      const slot = this.SLOTS.findIndex((_, i) => !used.has(i));
+      if (slot < 0) return {rows: 0};   // more apps than cells: the panel lists them all anyway
+      this.rooms.set(conn, {conn, name: conn, slot, born: Date.now(), rows: 0, hot: [], vault: false});
+    }
+    return this.rooms.get(conn);
+  },
+
+  start() {
+    if (this.running || typeof requestAnimationFrame !== "function") return;
+    const canvas = $("automap");
+    this.ctx = canvas.getContext && canvas.getContext("2d");
+    if (!this.ctx) return;
+    this.canvas = canvas; this.t0 = Date.now(); this.running = true;
+    const frame = () => {
+      if (document.body.classList.contains("in-game")) { this.running = false; return; }  // the game needs the Mac
+      try { this.draw(Date.now()); } catch (e) { /* a bad frame never stops the loop */ }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  },
+
+  draw(now) {
+    const c = this.canvas, dpr = window.devicePixelRatio || 1;
+    const W = c.clientWidth, H = c.clientHeight;
+    if (!W || !H) return;
+    if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    const g = this.ctx, t = (now - this.t0) / 1000;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+
+    // the automap grid
+    g.strokeStyle = "rgba(61,107,255,.10)"; g.lineWidth = 1;
+    g.beginPath();
+    for (let x = (W / 2) % 32; x < W; x += 32) { g.moveTo(x + .5, 0); g.lineTo(x + .5, H); }
+    for (let y = (H / 2) % 32; y < H; y += 32) { g.moveTo(0, y + .5); g.lineTo(W, y + .5); }
+    g.stroke();
+
+    const top = 22, cw = W / 3, ch = (H - top) / 3, rw = Math.min(cw * .62, 230), rh = ch * .64;   // under the tag
+    const lobby = {cx: W / 2, cy: top + (H - top) / 2, w: rw * .8, h: rh * .8};
+    const box = (cx, cy, w, h) => [[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2, cy + h / 2], [cx - w / 2, cy + h / 2], [cx - w / 2, cy - h / 2]];
+
+    // radar sweep from the lobby while Claude works
+    if (!this.done) {
+      const a = t * 1.6, rad = Math.hypot(W, H) / 2;
+      const grad = g.createConicGradient ? g.createConicGradient(a, lobby.cx, lobby.cy) : null;
+      if (grad) {
+        grad.addColorStop(0, "rgba(255,229,0,.11)"); grad.addColorStop(.08, "rgba(255,229,0,0)"); grad.addColorStop(1, "rgba(255,229,0,0)");
+        g.fillStyle = grad; g.beginPath(); g.arc(lobby.cx, lobby.cy, rad, 0, Math.PI * 2); g.fill();
+      }
+    }
+
+    // the lobby, drawn in first
+    this.path(g, box(lobby.cx, lobby.cy, lobby.w, lobby.h), Math.min(1, t / 1.2), "#E8290B", 2);
+    this.label(g, "LOBBY", lobby.cx, lobby.cy - 4, "#B5B9BC", 9, Math.min(1, t / 1.2));
+
+    let target = {x: lobby.cx, y: lobby.cy + lobby.h * .15};
+    for (const r of this.rooms.values()) {
+      const [dx, dy] = this.SLOTS[r.slot];
+      const cx = lobby.cx + dx * cw, cy = lobby.cy + dy * ch;
+      const red = r.vault, live = this.active.has(r.conn);
+      const p = Math.min(1, (now - r.born) / 1400);
+      const wall = red ? "#FF3B2F" : "#E8290B";
+      // corridor: straight out of the lobby, or for a corner room out of the room beside it
+      const corridor = dy === 0 ? [[lobby.cx + dx * lobby.w / 2, cy], [cx - dx * rw / 2, cy]]
+        : dx === 0 ? [[cx, lobby.cy + dy * lobby.h / 2], [cx, cy - dy * rh / 2]]
+        : [[lobby.cx + dx * rw / 2, cy], [cx - dx * rw / 2, cy]];
+      const off = 7, across = corridor[0][1] === corridor[1][1];
+      const side = s => corridor.map(([x, y]) => across ? [x, y + s * off] : [x + s * off, y]);
+      this.path(g, side(-1), p, "#8A8A86", 1.5);
+      this.path(g, side(1), p, "#8A8A86", 1.5);
+      this.path(g, box(cx, cy, rw, rh), Math.max(0, p * 1.4 - .4), wall, red ? 3 : 2);
+      // the door: yellow (a keycard opens it) or the red door with no key
+      if (p > .5) {
+        const [ex, ey] = corridor[1];
+        g.strokeStyle = red ? (Math.sin(t * 8) > 0 ? "#FF3B2F" : "#7A1505") : "#FFE500"; g.lineWidth = 3;
+        g.beginPath();
+        if (!across) { g.moveTo(ex - off - 2, ey); g.lineTo(ex + off + 2, ey); } else { g.moveTo(ex, ey - off - 2); g.lineTo(ex, ey + off + 2); }
+        g.stroke();
+      }
+      if (red && p > .5) {   // the vault: hatched and stamped
+        g.save(); g.beginPath(); g.rect(cx - rw / 2, cy - rh / 2, rw, rh); g.clip();
+        g.strokeStyle = "rgba(255,59,47,.18)"; g.lineWidth = 6; g.beginPath();
+        for (let k = -rh; k < rw; k += 16) { g.moveTo(cx - rw / 2 + k, cy + rh / 2); g.lineTo(cx - rw / 2 + k + rh, cy - rh / 2); }
+        g.stroke(); g.restore();
+      }
+      // a live call: the room pulses, a scan line crosses it, data runs down the corridor
+      if (live && p >= 1) {
+        g.strokeStyle = `rgba(255,229,0,${.45 + .4 * Math.sin(t * 6)})`; g.lineWidth = 2; g.setLineDash([6, 5]); g.lineDashOffset = -t * 30;
+        g.strokeRect(cx - rw / 2 - 5, cy - rh / 2 - 5, rw + 10, rh + 10); g.setLineDash([]);
+        const sx = cx - rw / 2 + ((t * .9) % 1) * rw;
+        g.strokeStyle = "rgba(61,220,132,.6)"; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, cy - rh / 2 + 2); g.lineTo(sx, cy + rh / 2 - 2); g.stroke();
+        const route = [...corridor].reverse();
+        for (let k = 0; k < 4; k++) {
+          const [x, y] = this.along(route, ((t * .8) + k / 4) % 1);
+          g.fillStyle = "#3DDC84"; g.fillRect(x - 2, y - 2, 4, 4);
+        }
+        target = dx && dy ? {x: corridor[0][0], y: cy} : {x: corridor[0][0] - dx * 14, y: corridor[0][1] - (dx ? 0 : dy * 14)};
+      }
+      // the records it read: monsters, popping in one by one; urgent ones bigger and red
+      const spawned = Math.min(r.rows, 18, Math.floor((now - (r.readAt || now)) / 90) + 1);
+      for (let i = 0; i < spawned; i++) {
+        const hot = r.hot[i];
+        const h1 = this.hash(r.conn + i), h2 = this.hash(i + r.conn);
+        const mx = cx - rw / 2 + 14 + h1 * (rw - 28) + Math.sin(t * 1.3 + i) * 3;
+        const my = cy - rh / 2 + 30 + h2 * (rh - 56) + Math.cos(t * 1.1 + i * 2) * 3;
+        this.thing(g, mx, my, t * (hot ? 2 : 1) + i, hot ? 7 : 4.5, hot ? "#FF3B2F" : "#3DDC84");
+      }
+      const fade = Math.max(0, p * 2 - 1);
+      this.label(g, (r.name || r.conn).toUpperCase(), cx, cy - rh / 2 + 19, red ? "#FF3B2F" : "#FFE500", 9, fade);
+      const sub = red ? (Math.sin(t * 5) > -.3 ? "BLOCKED BY CONNECT AI" : "") : r.title ? r.title : r.rows ? `${r.rows} RECORDS` : live ? "SCOUTING..." : "";
+      this.label(g, sub, cx, cy + rh / 2 - 10, red ? "#FF3B2F" : "#B5B9BC", red ? 7 : 8, fade, !red && !!r.title);
+    }
+
+    // you: the white arrow, heading for whichever room Claude is reading
+    const pl = this.player || (this.player = {x: lobby.cx, y: lobby.cy + lobby.h * .15, a: 0});
+    const ddx = target.x - pl.x, ddy = target.y - pl.y;
+    pl.x += ddx * .05; pl.y += ddy * .05;
+    if (Math.hypot(ddx, ddy) > 3) pl.a += (((Math.atan2(ddy, ddx) - pl.a) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI) * .12;
+    else pl.a += .015;   // waiting on Connect AI: look around
+    this.arrow(g, pl.x, pl.y, pl.a);
+
+    if (this.done) {   // the level is built: Doom's own banner, blinking
+      g.fillStyle = "rgba(0,0,0,.82)"; g.fillRect(0, H / 2 - 30, W, 60);
+      if (Math.sin(t * 5) > -.4) this.label(g, "LEVEL BUILT · ENTERING THE LEVEL", W / 2, H / 2 + 6, "#FFE500", 14, 1);
+    }
+  },
+
+  // a polyline traced in up to fraction p of its length
+  path(g, pts, p, color, width) {
+    if (p <= 0) return;
+    const lens = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+    let left = lens.reduce((a, b) => a + b, 0) * p;
+    g.strokeStyle = color; g.lineWidth = width; g.lineCap = "square";
+    g.shadowColor = color; g.shadowBlur = 6;
+    g.beginPath(); g.moveTo(...pts[0]);
+    for (let i = 0; i < lens.length && left > 0; i++) {
+      const f = Math.min(1, left / lens[i]);
+      g.lineTo(pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f);
+      left -= lens[i];
+    }
+    g.stroke(); g.shadowBlur = 0;
+  },
+  along(pts, f) {
+    const lens = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+    let d = lens.reduce((a, b) => a + b, 0) * f;
+    for (let i = 0; i < lens.length; i++) {
+      if (d <= lens[i]) { const k = d / lens[i]; return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k]; }
+      d -= lens[i];
+    }
+    return pts[pts.length - 1];
+  },
+  label(g, text, x, y, color, size, alpha, sans = false) {
+    if (!text || alpha <= 0) return;
+    g.globalAlpha = alpha; g.fillStyle = color; g.textAlign = "center";
+    g.font = sans ? `500 ${size + 4}px "DM Sans", sans-serif` : `${size}px "Press Start 2P", monospace`;
+    g.fillText(text, x, y); g.globalAlpha = 1;
+  },
+  thing(g, x, y, a, s, color) {   // Doom's automap things: little triangles
+    g.fillStyle = color; g.beginPath();
+    for (let k = 0; k < 3; k++) g[k ? "lineTo" : "moveTo"](x + Math.cos(a + k * 2.094) * s, y + Math.sin(a + k * 2.094) * s);
+    g.closePath(); g.fill();
+  },
+  arrow(g, x, y, a) {
+    const pts = [[9, 0], [-7, 0], [-7, 0], [-11, 5], [-7, 0], [-11, -5], [9, 0], [3, 5], [9, 0], [3, -5]];
+    g.strokeStyle = "#F1EEE9"; g.lineWidth = 2; g.shadowColor = "#F1EEE9"; g.shadowBlur = 6; g.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+      g.moveTo(x + x1 * Math.cos(a) - y1 * Math.sin(a), y + x1 * Math.sin(a) + y1 * Math.cos(a));
+      g.lineTo(x + x2 * Math.cos(a) - y2 * Math.sin(a), y + x2 * Math.sin(a) + y2 * Math.cos(a));
+    }
+    g.stroke(); g.shadowBlur = 0;
+  },
+  hash(s) { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return ((h >>> 0) % 1000) / 1000; },
+};
+
+// The briefing's stage: which of the five steps it's on, and the one thing it's doing right now.
+const PHASE = {getCatalogs: 0, getSchemas: 1, getTables: 1, getColumns: 1, getInstructions: 1, queryData: 2};
+function stagePhase(events) {
+  if (events.some(e => e.kind === "mission")) return 4;
+  if (events.some(e => e.kind === "done") || /^\s*(\{|```)/.test(feed.liveText)) return 3;
+  return events.reduce((n, e) => e.kind === "call" && PHASE[e.tool] != null ? Math.max(n, PHASE[e.tool]) : n, events.length ? 0 : -1);
+}
+function stageDoing(events) {
+  if (!events.length) return "";
+  if (events.some(e => e.kind === "mission")) return `<span class="tag">BUILD</span><span class="txt">Building the map, the monsters and the doors. The game opens next.</span>`;
+  if (feed.liveEl) {
+    const plan = /^\s*(\{|```)/.test(feed.liveText);
+    const tail = feed.liveText.replace(/\s+/g, " ").trim().slice(-140);
+    return `<span class="tag">CLAUDE</span><span class="txt">${plan ? "Drawing up the level plan: a room per app, a monster per record" : esc(tail)}</span>`;
+  }
+  const calls = [...feed.calls.values()];
+  const c = calls.find(c => !c.result) || calls[calls.length - 1];
+  if (!c) return `<span class="tag">CLAUDE</span><span class="txt">Reading the question</span>`;
+  const [, res] = status(c);
+  return `<span class="tag">${c.result ? "DONE" : "NOW"}</span><span class="txt">${describe(c)}</span><span class="res">${res}</span>`;
+}
+
 function renderStage(s, events) {
   const game = s.game, m = s.mission;
   const q = (m && m.question) || (events.find(e => e.kind === "question") || {}).text || "";
@@ -890,6 +1159,16 @@ function renderStage(s, events) {
   const calls = events.filter(e => e.kind === "call").length;
   setText($("stage-progress"), briefed ? `Level built from ${(m?.rooms || []).length} apps. Loading the game...`
     : calls ? `${calls} call${calls === 1 ? "" : "s"} through Connect AI so far` : "");
+  if (!game) {
+    const phase = stagePhase(events);
+    [...$("stage-phases").children || []].forEach((li, i) => { li.className = i < phase ? "done" : i === phase ? "on" : ""; });
+    setHTML($("stage-doing"), stageDoing(events));
+    const t0 = (events.find(e => e.t) || {}).t;
+    const since = t0 && Date.now() / 1000 - t0 < 3600 ? Math.max(0, Math.round(Date.now() / 1000 - t0)) : null;   // not a stale run's
+    setText($("automap-tag"), `AUTOMAP · ${briefed ? "LEVEL BUILT" : "BUILDING THE LEVEL"}${since != null && !briefed ? ` · ${Math.floor(since / 60)}:${String(since % 60).padStart(2, "0")}` : ""}`);
+    automap.update(events, m);
+    automap.start();
+  }
   // Under the game: Claude's latest line as it plays, or the controls when you play.
   let say = "";
   if (claudePlays(game)) {

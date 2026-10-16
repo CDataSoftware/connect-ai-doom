@@ -226,6 +226,12 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(ids["stage-q"]["text"], "Who is <at risk>?")
         self.assertRegex(ids["stage-progress"]["text"], r"^\d+ calls through Connect AI so far$")
         self.assertEqual(ids["stage-say"]["html"], "")
+        self.assertRegex(ids["automap-tag"]["text"], r"^AUTOMAP · BUILDING THE LEVEL")
+        self.assertRegex(ids["stage-doing"]["html"], r'<span class="tag">(NOW|DONE|CLAUDE)</span>')
+        # the automap: a room per app Claude touched, monsters for the rows it read, red for the block
+        _, rooms = self.render("[...automap.rooms.values()].map(r => [r.conn, r.rows, r.vault])", search=search,
+                               events=[e for e in self.events if e["kind"] != "mission"], mission=None)
+        self.assertEqual(rooms, [["Salesforce1", 2, False], ["PostgreSQLPII", 0, True], ["Zendesk1", 1, True]])
 
         ids = self.render(search=search, game={"mode": "player", "started": 0})
         self.assertEqual(ids["stage-mode"]["text"], "YOU'RE PLAYING · LIVE")

@@ -213,6 +213,11 @@
   .rl .bar { height: 8px; background: #0D0D12; border-radius: 4px; overflow: hidden; }
   .rl .bar span { display: block; height: 100%; background: var(--doom-red); transition: width .4s; }
   .rl .sub { font-size: 12.5px; color: var(--balance); }
+  .rl .mons { display: flex; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--balance); }
+  .rl .mons img { height: 26px; width: 26px; object-fit: contain; object-position: bottom; image-rendering: pixelated; }
+  .rl .mons b { color: var(--clarity); font-weight: 600; }
+  .tile .pair { display: flex; gap: 2px; flex: none; }
+  #legend-monsters { display: contents; }
   .rl.done { opacity: .6; }
   .rl .live { font: 12px/1.4 var(--mono); color: var(--ok); display: flex; align-items: center; gap: 6px; }
   .rl .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
@@ -345,6 +350,7 @@
   body.stage .rl .num { font-size: 24px; }
   body.stage .rl .sub { font-size: 11.5px; }
   body.stage .rl .live { font-size: 11px; }
+  body.stage .rl .mons { font-size: 11px; } body.stage .rl .mons img { height: 20px; width: 20px; }
   /* a third of the screen fits "ROOM 1 · R+W" on one line, not "ROOM 1 · READ + WRITE" */
   .rl .acc-s, body.stage .rl .acc { display: none; }
   body.stage .rl .acc-s { display: inline; }
@@ -382,7 +388,7 @@
       <div class="progress" id="stage-progress"></div>
       <ol class="how">
         <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
-        <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent.</li>
+        <li><b>Clear the rooms</b>Each room is an app, each monster a record. The biggest monster in each room is urgent.</li>
         <li><b>Try the red door</b>It guards data Connect AI blocked. There is no key.</li>
       </ol>
     </div>
@@ -404,7 +410,7 @@
   <div class="sub">A Doom level built from your <span class="hl">live</span> business data. Every monster is a real record Claude found through the Connect AI MCP server.</div>
   <ol class="how">
     <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
-    <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent. A kill reads that record live through Connect AI.</li>
+    <li><b>Clear the rooms</b>Each room is an app, each monster a record. The biggest monster in each room is urgent. A kill reads that record live through Connect AI.</li>
     <li><b>Try the red door</b>It guards data Connect AI blocked. There is no key.</li>
   </ol>
 </header>
@@ -428,8 +434,8 @@
     <details class="legend" id="legend" open>
       <summary>WHAT YOU'RE LOOKING AT</summary>
       <div class="tiles">
-        <div class="tile"><img src="sprites/demon.png" alt=""><span><b>Pink demon</b> urgent record</span></div>
-        <div class="tile"><img src="sprites/soldier.png" alt=""><span><b>Soldier</b> record</span></div>
+        <div id="legend-monsters"><div class="tile"><img src="sprites/demon.png" alt=""><span><b>Big monster</b> urgent record</span></div>
+        <div class="tile"><img src="sprites/soldier.png" alt=""><span><b>Monster</b> record</span></div></div>
         <div class="tile"><span class="sign">APP</span><span><b>Room</b> one app</span></div>
         <div class="tile"><img src="sprites/bluekey.png" alt=""><span><b>Blue key</b> read access</span></div>
         <div class="tile"><img src="sprites/yellowkey.png" alt=""><span><b>Yellow key</b> read + write</span></div>
@@ -720,6 +726,19 @@ function renderMission(m, events, rooms) {
 }
 
 // ---------- the game view ----------
+// Each room's monsters, after its app's theme (tools/themes.py): a record, and an urgent record.
+function monsters(r) {
+  if (!r.monster) return "";
+  return `<div class="mons"><img src="sprites/${esc(r.monster.key)}.png" alt=""><span><b>${esc(r.monster.name)}</b> record</span>
+    <img src="sprites/${esc(r.urgent_monster.key)}.png" alt=""><span><b>${esc(r.urgent_monster.name)}</b> urgent</span></div>`;
+}
+// The legend's monster tiles: this run's pair for each room, once the rooms are known.
+function legendMonsters(rooms) {
+  const themed = rooms.filter(r => r.monster);
+  if (!themed.length) return;
+  setHTML($("legend-monsters"), themed.map(r => `<div class="tile"><span class="pair"><img src="sprites/${esc(r.monster.key)}.png" alt=""><img src="sprites/${esc(r.urgent_monster.key)}.png" alt=""></span>
+    <span><b>${esc(r.app.toUpperCase())}</b>${esc(r.monster.name)}; urgent: ${esc(r.urgent_monster.name)}</span></div>`).join(""));
+}
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
 function liveRead(k, demo) {
@@ -791,6 +810,7 @@ function renderGame(s) {
     return `<div class="rl ${r.writable ? "write" : "read"}${r.left ? "" : " done"}">
       <div class="top"><img src="sprites/${r.writable ? "yellow" : "blue"}key.png" alt=""><span class="no">ROOM ${i + 1}<span class="acc"> · ${r.writable ? "READ + WRITE" : "READ ONLY"}</span><span class="acc-s"> · ${r.writable ? "R+W" : "READ"}</span></span></div>
       <div class="app">${esc(r.app)}</div>
+      ${monsters(r)}
       <div class="num">${r.killed}<small> / ${total} cleared</small></div>
       <div class="bar"><span style="width:${total ? Math.round(100 * r.killed / total) : 0}%"></span></div>
       <div class="sub">${r.left ? `${r.left} left${r.urgent_left ? `, ${r.urgent_left} urgent` : ""}` : "Room clear"} · ${esc(r.title)}</div>
@@ -802,6 +822,7 @@ function renderGame(s) {
       <div class="app">PII vault</div><div class="sub why">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
       <div class="sub">${tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
   setHTML($("rooms-live"), cards.join(""));
+  legendMonsters(s.rooms_live || []);
 
   const evs = gameEvents(s);
   const demo = (m.rooms || []).length > 0 && m.rooms.every(r => r.rows);

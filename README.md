@@ -8,7 +8,8 @@
 ![Claude playing a level built from live Connect AI data: Salesforce deals, the blocked PII vault and Zendesk tickets, with the side panel showing every kill](assets/demo.gif)
 
 - **Each room is a data source**: Salesforce, Zendesk, Stripe, whatever answers the question.
-- **Each monster is a record** from that source. Aim at one to see it. Pink demons are urgent.
+- **Each monster is a record** from that source. Aim at one to see it. The biggest monster in each room is urgent.
+- **Each room looks like its app**: a wood-paneled Salesforce office, a Zendesk ops center, a Stripe treasury, a Snowflake data lake, and so on for every app on the account, each with its own monsters.
 - **Keycards are your permissions**: blue for read-only apps, yellow for read + write.
 - **The red door is data Connect AI blocked**, like a lookup by Social Security number. There is no key.
 

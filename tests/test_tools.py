@@ -88,12 +88,74 @@ class ArenaTest(unittest.TestCase):
         self.assertEqual(sp[34] * 2, sp[32])                                 # one yellow door, two blue
 
     def test_spawn_boxes_are_open_floor(self):
-        """psdoom drops monsters into 1024x1024 boxes at x = 0, 2048, 4096; each must be one sector."""
-        mp = make_arena.build(MISSION)
-        for bx in make_arena.ARENA_X:
-            cells = {mp.cells.get((cx, cy)) for cx in range(bx // 16, (bx + 1024) // 16) for cy in range(64)}
-            self.assertEqual(len(cells), 1)
-            self.assertIsNotNone(cells.pop())
+        """psdoom drops monsters into 1024x1024 boxes at x = 0, 2048, 4096, and Claude crosses them in
+        straight lines: every cell is open, roomy floor, and no step between neighbors tops 24 units."""
+        for rooms in (ROOMS, [{"connection": c, "app": c} for c in ("Snowflake", "Acme", "Other")]):
+            mp = make_arena.build({"rooms": rooms})
+            for bx in make_arena.ARENA_X:
+                box = {(cx, cy) for cx in range(bx // 16, (bx + 1024) // 16) for cy in range(64)}
+                for cell in box:
+                    s = mp.sectors[mp.cells[cell]]
+                    self.assertGreaterEqual(s["ceil"] - s["floor"], 128, (rooms[0]["app"], cell))
+                    for n in ((cell[0] + 1, cell[1]), (cell[0], cell[1] + 1)):
+                        if n in box:
+                            self.assertLessEqual(abs(s["floor"] - mp.sectors[mp.cells[n]]["floor"]), 24)
+
+    def test_hall_stays_open_and_level(self):
+        """Claude's routes run along the hall and straight down from each door: the hall's scenery
+        (pillars, lamps) stays within 32 units of its walls, and its floor stays level."""
+        mp = make_arena.build(MISSION, brand=True)
+        for cx in range(0, 5120 // 16):
+            for cy in range((make_arena.HALL_Y1 + 32) // 16, (make_arena.HALL_Y2 - 32) // 16):
+                s = mp.sectors[mp.cells[(cx, cy)]]
+                self.assertEqual(s["floor"], 0, (cx * 16, cy * 16))
+                self.assertGreaterEqual(s["ceil"], 128)
+        for t, x, y, _ in mp.things:
+            if make_arena.HALL_Y1 < y < make_arena.HALL_Y2:
+                self.assertTrue(y < make_arena.HALL_Y1 + 32 or y > make_arena.HALL_Y2 - 32, (t, x, y))
+
+    def test_rooms_are_themed_by_app(self):
+        """Each room gets its app's look, and the three rooms never share one."""
+        m = self.level(MISSION)
+        flats = {f.rstrip(b"\0").decode() for _, _, f, *_ in m["sectors"]}
+        self.assertTrue({"FLAT5_2", "FLOOR0_6", "AQF076"} <= flats)          # office, ops center, treasury
+        textures = {t for u, lo, mid, _ in m["sides"] for t in (u, lo, mid)}
+        self.assertTrue({"WOOD9", "PANBOOK", "SPACEW3", "COMPTALL", "BROWNGRN", "SILVER2"} <= textures)  # QuickBooks green
+        self.assertEqual([t["key"] for t in make_arena.room_themes([ROOMS[0]] * 3)], ["salesforce", "tech", "data"])
+
+    # Every app on the demo's Connect AI account (getCatalogs: connection, app), as of 2026-10.
+    ACCOUNT = [("Acumatica", "Acumatica"), ("ADP", "ADP"), ("BullhornCRM_Somya", "Bullhorn CRM"),
+               ("Dynamics3651", "Dynamics 365"), ("Dynamics365BC", "Dynamics 365 Business Central"),
+               ("EpicorKinetic1", "Epicor Kinetic"), ("ExcelOnline1", "Excel Online"), ("Gmail1", "Gmail"),
+               ("GoogleAds", "Google Ads"), ("GoogleBigQuery1", "Google BigQuery"), ("GoogleDrive", "Google Drive"),
+               ("ITSM_ServiceNow", "ServiceNow"), ("Jira", "Jira"), ("MicrosoftTeams_Somya", "Microsoft Teams"),
+               ("MYOB", "MYOB"), ("MySQL1", "MySQL"), ("NetSuite", "NetSuite"), ("Office3651_Somya", "Office 365"),
+               ("Oracle1", "Oracle"), ("PostgreSQL1", "PostgreSQL"), ("QuickBooksOnline", "QuickBooks Online"),
+               ("SageIntacct1", "Sage Intacct"), ("Salesforce", "Salesforce"), ("SAPHANA", "SAP HANA"),
+               ("Shopify", "Shopify"), ("Slack1", "Slack"), ("Snowflake", "Snowflake"), ("SQLServer", "SQL Server"),
+               ("Stripe1", "Stripe"), ("Workday", "Workday"), ("Xero", "Xero"),
+               ("YouTubeAnalytics1", "YouTube Analytics"), ("Zendesk", "Zendesk")]
+
+    def test_every_account_app_has_its_own_look(self):
+        themes = [make_arena.room_themes([{"connection": c, "app": a}])[0] for c, a in self.ACCOUNT]
+        self.assertEqual(len({t["key"] for t in themes}), len(self.ACCOUNT), [t["key"] for t in themes])
+        for (_, app), t in zip(self.ACCOUNT, themes):
+            self.assertNotIn(t["key"], make_arena.FAMILIES, app)     # its own entry, not just a layout
+        by_key = {t["key"]: t for t in themes}
+        self.assertEqual(by_key["dynamics"]["family"], "crm")
+        self.assertEqual(by_key["business central"]["family"], "erp")   # not taken for Dynamics 365 CRM
+        self.assertEqual(by_key["sql server"]["family"], "data")
+        # each one builds, and three rooms of a level never share a monster pair
+        for i in range(0, len(self.ACCOUNT), 3):
+            rooms = [{"connection": c, "app": a} for c, a in self.ACCOUNT[i:i + 3]]
+            self.assert_valid(self.level({"rooms": rooms}))
+            pairs = [t["monsters"] for t in make_arena.room_themes(rooms)]
+            self.assertEqual(len(set(pairs)), len(pairs))
+        # the same app twice: the second room falls back to another layout and pair
+        twice = make_arena.room_themes([{"connection": "Salesforce", "app": "Salesforce"},
+                                        {"connection": "Salesforce_CRM", "app": "Salesforce"}])
+        self.assertNotEqual(twice[0]["monsters"], twice[1]["monsters"])
+        self.assertNotEqual(twice[0]["key"], twice[1]["key"])
 
     def test_no_denials_no_vault(self):
         m = self.level({"rooms": ROOMS[:2], "denied": []})
@@ -158,6 +220,10 @@ class DehTest(unittest.TestCase):
         text = make_deh.patch(MISSION)
         self.assertTrue(text.startswith("Patch File for DeHackEd v3.0\n# *allow-long-strings*\n"))
         blocks = text.split("\n\n")[1:-1]
+        things = [b for b in blocks if b.startswith("Thing ")]
+        self.assertIn("Thing 18 (Hell knight)\nHit points = 200", things)   # big monsters, demon-tough
+        self.assertEqual(len(things), sum("health" in m for m in make_deh.MONSTERS.values()))
+        blocks = [b for b in blocks if b not in things]
         self.assertEqual(len(blocks), 5)
         swaps = {}
         for block in blocks:
@@ -195,11 +261,13 @@ class DehTest(unittest.TestCase):
                 frames[int(lines[0].split()[1])] = dict(line.split(" = ") for line in lines[1:])
         for n in make_deh.BLOOD_FRAMES:   # every blood frame, not just the first: P_SpawnBlood skips it
             self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_PUFF))
-        for death in (make_deh.SHOTGUY_DEATH, make_deh.DEMON_DEATH):
-            for n in death:
+        for monster in make_deh.MONSTERS.values():   # every monster a room can have
+            first, last = monster["die"]
+            for n in range(first, last + 1):
                 self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_TFOG))
-            self.assertEqual(frames[death[-1]]["Duration"], "-1")   # the death still ends, so the kill counts
-        self.assertIn("Thing 3 (Shotgun guy)\nExploding frame = 222", text)
+            self.assertEqual(frames[last]["Duration"], "-1")   # the death still ends, so the kill counts
+        self.assertIn("Thing 3 (Shotgun soldier)\nExploding frame = 222", text)
+        self.assertIn("Thing 12 (Imp)\nExploding frame = 457", text)
         self.assertNotIn("Frame ", make_deh.patch(MISSION))
 
     def test_cli_no_gore(self):

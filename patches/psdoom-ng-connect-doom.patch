@@ -407,7 +407,7 @@ index 89b6532..337b8e4 100644
  	}
  	break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..7017dee 100644
+index fa4fe83..ac67a68 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -418,7 +418,68 @@ index fa4fe83..7017dee 100644
  #include <math.h>
  #include <unistd.h>
  
-@@ -872,7 +873,21 @@ void pr_kill(int pid) {
+@@ -564,6 +565,43 @@ void cleanup_pid_list(mobj_t *del_mobj) {
+ }
+ 
+ 
++// connect-doom: PSDOOM_MONSTERS lists six doomednums, a record's then an urgent record's
++// monster for rooms 1-3 (tools/themes.py). A missing or unknown number keeps psdoom's own
++// pair: shotgun guys, and pink demons for urgent records.
++static mobjtype_t room_monster(int room, int urgent)
++{
++    static mobjtype_t table[3][2];
++    static boolean loaded = false;
++
++    if (!loaded) {
++        const char *env = getenv("PSDOOM_MONSTERS");
++        int r, u, i;
++
++        for (r = 0; r < 3; r++) {
++            table[r][0] = MT_SHOTGUY;
++            table[r][1] = MT_SERGEANT;
++        }
++        for (r = 0; env && r < 3; r++) {
++            for (u = 0; u < 2; u++) {
++                char *end;
++                long num = strtol(env, &end, 10);
++
++                if (end == env)
++                    break;
++                env = end;
++                for (i = 0; i < NUMMOBJTYPES; i++) {
++                    if (mobjinfo[i].doomednum == num && (mobjinfo[i].flags & MF_COUNTKILL)) {
++                        table[r][u] = i;
++                        break;
++                    }
++                }
++            }
++        }
++        loaded = true;
++    }
++    return table[room][urgent];
++}
++
+ // add_new_process
+ // Need to return the newly created mobj_t from this routine, or
+ // NULL if the monster couldn't be spawned due to collisions.
+@@ -601,13 +639,9 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
+     /* make sure the unused data is zero */
+     memset((void*)&mt_ext, 0, sizeof(mt_ext));
+ 
+-    if (demon){
+-      mt_ext.type = mobjinfo[MT_SERGEANT].doomednum;  // demon, the pink dudes
+-      monster_radius = mobjinfo[MT_SERGEANT].radius>>FRACBITS;
+-    } else {
+-      mt_ext.type = mobjinfo[MT_SHOTGUY].doomednum;  // sarge, with the shotguns
+-      monster_radius = mobjinfo[MT_SHOTGUY].radius>>FRACBITS;
+-    }
++    // connect-doom: each room (pid % 3) has its own record and urgent-record monster.
++    mt_ext.type = mobjinfo[room_monster(pid % 3, demon != 0)].doomednum;
++    monster_radius = mobjinfo[room_monster(pid % 3, demon != 0)].radius>>FRACBITS;
+ 
+     //mt_ext.flags = 7;
+     //mt_ext.flags |= (MTF_SINGLE | MTF_COOPERATIVE | MTF_DEATHMATCH);
+@@ -872,7 +906,21 @@ void pr_kill(int pid) {
      cmd = "kill -9";
    }
    sprintf(buf, "%s %d", cmd, pid);
@@ -441,7 +502,7 @@ index fa4fe83..7017dee 100644
  }
  
  // pr_renice
-@@ -890,3 +905,440 @@ void pr_renice(int pid) {
+@@ -890,3 +938,440 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -882,6 +943,53 @@ index fa4fe83..7017dee 100644
 +    system(buf);
 +}
 +// *** VAULT END ***
+diff --git i/trunk/src/r_bsp.c w/trunk/src/r_bsp.c
+index 47194d9..c4f2c8c 100644
+--- i/trunk/src/r_bsp.c
++++ w/trunk/src/r_bsp.c
+@@ -86,7 +86,7 @@ typedef	struct
+ } cliprange_t;
+ 
+ 
+-#define MAXSEGS		32
++#define MAXSEGS		256    // connect-doom: 32, and vanilla never checks it
+ 
+ // newend is one past the last valid seg
+ cliprange_t*	newend;
+diff --git i/trunk/src/r_defs.h w/trunk/src/r_defs.h
+index e4381a2..f95a25a 100644
+--- i/trunk/src/r_defs.h
++++ w/trunk/src/r_defs.h
+@@ -56,7 +56,7 @@
+ #define SIL_TOP			2
+ #define SIL_BOTH		3
+ 
+-#define MAXDRAWSEGS		256
++#define MAXDRAWSEGS		2048    // connect-doom: 256
+ 
+ 
+ 
+diff --git i/trunk/src/r_plane.c w/trunk/src/r_plane.c
+index 400821d..70af371 100644
+--- i/trunk/src/r_plane.c
++++ w/trunk/src/r_plane.c
+@@ -50,14 +50,14 @@ planefunction_t		ceilingfunc;
+ //
+ 
+ // Here comes the obnoxious "visplane".
+-#define MAXVISPLANES	128
++#define MAXVISPLANES	1024    // connect-doom: 128; the themed rooms and hall need more
+ visplane_t		visplanes[MAXVISPLANES];
+ visplane_t*		lastvisplane;
+ visplane_t*		floorplane;
+ visplane_t*		ceilingplane;
+ 
+ // ?
+-#define MAXOPENINGS	SCREENWIDTH*64
++#define MAXOPENINGS	SCREENWIDTH*256    // connect-doom: SCREENWIDTH*64
+ short			openings[MAXOPENINGS];
+ short*			lastopening;
+ 
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
 index e60ec34..fb441a9 100644
 --- i/trunk/src/r_things.c
@@ -908,3 +1016,16 @@ index e60ec34..fb441a9 100644
      }
  // *** PID END ***
  }
+diff --git i/trunk/src/r_things.h w/trunk/src/r_things.h
+index 406a65f..60e0c2f 100644
+--- i/trunk/src/r_things.h
++++ w/trunk/src/r_things.h
+@@ -31,7 +31,7 @@
+ 
+ 
+ 
+-#define MAXVISSPRITES  	128
++#define MAXVISSPRITES  	512    // connect-doom: 128
+ 
+ extern vissprite_t	vissprites[MAXVISSPRITES];
+ extern vissprite_t*	vissprite_p;

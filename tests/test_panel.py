@@ -84,8 +84,11 @@ class PanelTest(unittest.TestCase):
                   "demon": i % 2, "killed_at": f"2026-10-15T13:54:{i}"} for i in range(18, 30)]
         hits = [{"id": "Stripe:9", "app": "Stripe", "label": "Acme <b>Corp</b>", "detail": "$5", "demon": 0,
                  "at": datetime.datetime(2026, 10, 15, 13, 54, 40).timestamp() + n} for n in range(3)]
-        rooms = [{"app": "Zendesk", "writable": True, "title": "Escalated", "left": 3, "urgent_left": 1, "killed": 12},
-                 {"app": "Stripe", "writable": False, "title": "Unpaid", "left": 0, "urgent_left": 0, "killed": 4}]
+        rooms = [{"app": "Zendesk", "writable": True, "title": "Escalated", "left": 3, "urgent_left": 1, "killed": 12,
+                  "monster": {"key": "imp", "name": "Imp"}, "urgent_monster": {"key": "caco", "name": "Cacodemon"}},
+                 {"app": "Stripe", "writable": False, "title": "Unpaid", "left": 0, "urgent_left": 0, "killed": 4,
+                  "monster": {"key": "soldier", "name": "Shotgun soldier"},
+                  "urgent_monster": {"key": "demon", "name": "Pink demon"}}]
         ids = self.render(kills=kills, kill_total=30, hits=hits, rooms_live=rooms,
                           game={"mode": "player", "started": 0})
         self.assertIn("in-game", ids["body"]["className"])              # the briefing sections hide
@@ -104,6 +107,10 @@ class PanelTest(unittest.TestCase):
         self.assertIn("3 left, 1 urgent", rl)
         self.assertIn("Room clear", rl)
         self.assertIn("PII vault", rl)                                   # the mission's blocked lookup
+        self.assertIn('sprites/caco.png" alt=""><span><b>Cacodemon</b> urgent', rl)   # each room's own monsters
+        legend = ids["legend-monsters"]["html"]
+        self.assertIn("<b>ZENDESK</b>Imp; urgent: Cacodemon", legend)
+        self.assertIn("sprites/soldier.png", legend)
         self.assertTrue(ids["play"]["hidden"])
 
     def test_kill_shows_connect_ais_live_read(self):

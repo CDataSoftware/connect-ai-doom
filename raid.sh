@@ -232,7 +232,7 @@ open_panel() {
 }
 
 if [[ "${NO_PANEL:-}" != 1 ]]; then
-  [[ -f panel/sprites/demon.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
+  [[ -f panel/sprites/knight.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
   python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
   PIDS+=($!)
   /bin/sleep 0.5
@@ -266,6 +266,9 @@ if [[ "${NOGORE:-}" == 1 ]]; then
 else
   python3 tools/make_deh.py state/mission.json state/level.deh
 fi
+# Each room's monsters, after its app's theme (tools/themes.py): a record's and an urgent record's.
+PSDOOM_MONSTERS=$(python3 tools/themes.py monsters state/mission.json)
+export PSDOOM_MONSTERS
 
 if [[ "$MODE" != demo ]]; then
   python3 "$BRIDGE" poll 2>>state/poll.log &

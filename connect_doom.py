@@ -29,6 +29,9 @@ from pathlib import Path
 
 import connect_ai_mcp
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
+from themes import MONSTERS, room_themes  # noqa: E402  (each room's look and monsters)
+
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 CACHE = STATE / "cache.json"
@@ -404,11 +407,14 @@ def cmd_panel(args):
             kills = [{**k, "lookup": looked.get(k["id"])} for k in kills]
             refreshed = {r["connection"]: r for r in (read_json(CACHE) or {}).get("rooms", [])}
             rooms = []
-            for i, room in enumerate((mission or {}).get("rooms", [])[:3]):
+            mission_rooms = (mission or {}).get("rooms", [])[:3]
+            for i, (room, theme) in enumerate(zip(mission_rooms, room_themes(mission_rooms))):
                 mine = [m for m in monsters if m["pid"] % 3 == i]   # monster_id puts the room in pid mod 3
                 alive = [m for m in mine if m["id"] not in dead]
+                record, urgent = ({"key": k, "name": MONSTERS[k]["name"]} for k in theme["monsters"])
                 rooms.append({"app": room.get("app", room["connection"]), "writable": room.get("writable", False),
                               "title": room.get("title", ""), "left": len(alive),
+                              "theme": theme["label"], "monster": record, "urgent_monster": urgent,
                               "urgent_left": sum(m["demon"] for m in alive),
                               "killed": sum(m["id"] in dead for m in mine),
                               "refresh": refreshed.get(room["connection"])})

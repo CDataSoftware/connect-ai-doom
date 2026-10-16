@@ -4,7 +4,7 @@
   make_sprites.py <freedoom2.wad> <out dir> [brand dir]
 
 The game's own sprites as PNGs for the legend, so it shows exactly what's on
-screen: the pink demon (an urgent record), the shotgun soldier (a record), the
+screen: every monster a room can have (tools/themes.py), named by its key, the
 keycards and the marine. With the brand dir (assets/brand), also the Connect AI
 and CData logos, into <out dir>/../brand; the panel falls back to text without them.
 """
@@ -15,10 +15,10 @@ from pathlib import Path
 from PIL import Image
 
 from make_branding import patch_pixels, read_wad
+from themes import MONSTERS
 
 SPRITES = {
-    "demon": "SARGA1",     # the pink demon: an urgent record
-    "soldier": "SPOSA1",   # the shotgun soldier: a record
+    **{key: m["sprite"] for key, m in MONSTERS.items()},
     "marine": "PLAYA1",
     "bluekey": "BKEYA0",
     "yellowkey": "YKEYA0",

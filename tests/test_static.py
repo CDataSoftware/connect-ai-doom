@@ -7,6 +7,8 @@ from pathlib import Path
 
 from helpers import ROOT
 
+import themes
+
 SCRIPTS = ["raid.sh", "setup.sh"]
 
 
@@ -80,6 +82,30 @@ class PatchTest(unittest.TestCase):
         r = subprocess.run(["git", "apply", "--check", "--reverse", str(self.PATCH)], cwd=src,
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, f"vendor/src/psdoom-ng doesn't carry the committed patch:\n{r.stderr}")
+
+    def test_monster_numbers_match_the_game(self):
+        """tools/themes.py hardcodes each monster's doomednum, DeHackEd number and death frames."""
+        src = psdoom_checkout()
+        if not src:
+            self.skipTest("psdoom-ng is not checked out (run ./setup.sh)")
+        info = (src / "trunk/src/info.c").read_text().splitlines()
+        frames = [m.group(1) for line in info if line.strip().startswith("{SPR")
+                  and (m := re.search(r"//\s*(S_\w+)\s*$", line))]
+        enum = re.search(r"typedef enum\s*{\s*(MT_PLAYER.*?)NUMMOBJTYPES",
+                         (src / "trunk/src/info.h").read_text(), re.S).group(1)
+        mobjs = re.findall(r"MT_\w+", enum)
+        # mobjinfo entries, in mobjtype order: each one's doomednum is its first field
+        nums = [int(n) for n in re.findall(r"{\s*// MT_\w+\s*\n\s*(-?\d+),", "\n".join(info))]
+        for key, m in themes.MONSTERS.items():
+            with self.subTest(monster=key):
+                spr = m["sprite"][:4]
+                for kind in ("die", "xdie"):
+                    if kind in m:
+                        first, last = m[kind]
+                        self.assertEqual(frames[first], f"S_{spr}_{kind.upper()}1")
+                        self.assertRegex(frames[last], rf"S_{spr}_{kind.upper()}\d+")
+                        self.assertNotRegex(frames[last + 1], rf"S_{spr}_{kind.upper()}\d+")
+                self.assertEqual(nums[m["deh"] - 1], m["thing"], mobjs[m["deh"] - 1])
 
 
 class RepoTest(unittest.TestCase):

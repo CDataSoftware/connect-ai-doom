@@ -98,7 +98,7 @@ def records():
 def where(p):
     x, y = p["x"], p["y"]
     if y >= 0:
-        return f"room {min(int(x // 2048), 2) + 1}"
+        return f"room {min(max(int((x + 512) // 2048), 0), 2) + 1}"   # a room and its scenery ring
     if y > -448:
         return "hall"
     if 512 <= x <= 1280 and y < -448:
@@ -300,7 +300,8 @@ for this question: {question}
 
 The level: a lobby with keycards, a hall, and one room per app behind a keycard door.
 {rooms}
-Pink demons (urgent: true) matter most. Clear the urgent records first, then whatever is left.
+Urgent records (urgent: true, the biggest monster in each room) matter most. Clear the urgent
+records first, then whatever is left.
 
 Use the doom tools: look, go_to, attack. Pick up the keycards first. Then go room by room.
 People watch your feed live next to the game. Before EVERY tool call, write ONE short line, as if

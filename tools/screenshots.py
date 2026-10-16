@@ -13,6 +13,7 @@ brand WAD, drives it through the agent channel (see docs/internals.md) and saves
 Kills and hits go to no-op commands, so the kill log is untouched.
 Usage: tools/screenshots.py <out dir> [--brand path/to/brand.wad]
 """
+import json
 import math
 import os
 import subprocess
@@ -26,6 +27,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import play  # noqa: E402  (the agent channel client)
+import themes  # noqa: E402  (each room's monsters)
 
 PSDOOM = ROOT / "vendor/src/psdoom-ng/trunk/src/psdoom"
 KEY_ESCAPE, KEY_ENTER, KEY_DOWN = 27, 13, 0xaf   # doomkeys.h
@@ -40,7 +42,8 @@ def main(out, brand):
                "PSDOOM_AGENT_DIR": str(agent), "PSDOOM_AGENT_CLAUDE": "1",
                "PSDOOM_LABELS": str(ROOT / "state/labels.tsv"),
                "PSDOOMPSCMD": f"{sys.executable} {ROOT / 'connect_doom.py'} list",
-               "PSDOOMKILLCMD": "true", "PSDOOMRENICECMD": "true"}
+               "PSDOOMKILLCMD": "true", "PSDOOMRENICECMD": "true",
+               "PSDOOM_MONSTERS": themes.psdoom_monsters(json.loads((ROOT / "state/mission.json").read_text()))}
         game = subprocess.Popen(
             [str(PSDOOM), "-iwad", str(ROOT / "wads/freedoom2.wad"), "-file", str(ROOT / "state/level.wad"),
              str(brand), "-deh", str(ROOT / "state/level.deh"), "-nopslev", "-psallusers", "-warp", "1",

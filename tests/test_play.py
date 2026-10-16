@@ -73,6 +73,8 @@ class StateDirTest(unittest.TestCase):
 class HelpersTest(StateDirTest):
     def test_where(self):
         cases = {(100, 500): "room 1", (2100, 0): "room 2", (5000, 900): "room 3", (9000, 10): "room 3",
+                 (-150, 600): "room 1", (1200, 600): "room 1", (1880, 300): "room 2", (3250, 1200): "room 2",
+                 (3920, 300): "room 3",                                  # each room's scenery ring
                  (2560, -200): "hall", (900, -600): "vault door", (2560, -896): "lobby", (300, -600): "lobby"}
         for (x, y), want in cases.items():
             self.assertEqual(play.where({"x": x, "y": y}), want, (x, y))

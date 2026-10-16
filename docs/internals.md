@@ -28,6 +28,7 @@ raid.sh
 | `LAYOUT=off` | Keep psdoom's default window and open the panel in a browser tab, not full screen. |
 | `GEOMETRY=WxH` | The game window's size; psdoom snaps it to its own screen modes. |
 | `NO_PANEL=1` | No side panel. |
+| `NOGORE=1` | No blood or corpses: hits throw bullet puffs, and a killed record vanishes in green teleport fog (`make_deh.py --no-gore`). For booths and talks. |
 | `PANEL_PORT` | The panel's port (default 8666). |
 | `CONNECT_AI_TIMEOUT` | Seconds the bridge gives each Connect AI call during a game, start to finish (20). Each live refresh is saved in `state/saved-records.json`, and a game that starts without Connect AI plays those. |
 | `BOOTH_PAUSE`, `BOOTH_GAMES` | `booth` mode: seconds between games (10), and a number of games to stop after (none). |
@@ -53,7 +54,7 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - `play.py`: Claude plays: a Doom MCP server (`look`, `go_to`, `attack`) over the agent channel, the `claude -p` run that uses it, `play.py replay`, the offline player, and `play.py loop`, which follows the Options menu's switches.
 - `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.
 - `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, the Connect AI logo on the Esc menu, the pause screen and the HUD corner, the CData logotype on the arena signs and the pause screen, and the Options menu's *Claude plays* and *Auto replay* labels. The logos it needs from the CData brand kit are in `assets/brand/`.
-- `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
+- `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals. With `--no-gore` it also redraws the blood frames as bullet puffs and the two monsters' death frames as teleport fog.
 - `tools/make_sprites.py`: the panel's sprite PNGs from the WAD, and its logos from `assets/brand/`.
 - `tools/screenshots.py`: headless screenshots of the game's screens (see testing.md).
 - `panel/index.html`: the side panel; it polls `/state.json` twice a second. Its fonts are in `panel/fonts` (DM Sans and DM Mono from the CData brand, Press Start 2P and VT323 for Doom; SIL Open Font License), so it needs no network. With `?stage=gx,gy,gw,gh,split,top` it's the full-screen page: the stage on the left (brand bars above and below the game's box) and the panel on the right.

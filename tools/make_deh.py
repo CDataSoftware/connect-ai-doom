@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Write a DeHackEd patch that turns Doom's keycard messages into Connect AI's.
 
-  make_deh.py <mission.json> <out.deh>
+  make_deh.py <mission.json> <out.deh> [--no-gore]
 
-The red door's message is the refusal Connect AI actually returned in this run.
+The red door's message is the refusal Connect AI actually returned in this run. With --no-gore
+(raid.sh passes it for NOGORE=1), hits throw bullet puffs instead of blood, and a killed record
+vanishes in green teleport fog instead of dying on the floor.
 """
 import json
 import sys
@@ -23,7 +25,32 @@ def refusal(mission):
     return "CONNECT AI: " + error.removeprefix("Request blocked: ").upper()
 
 
-def patch(mission):
+# No gore. Frame and thing numbers are vanilla Doom's, which psdoom-ng keeps. The death frames keep
+# their code pointers (A_Scream, A_Fall), so a kill still stops the monster being solid and psdoom
+# still sees it; only the sprites change. psdoom spawns two monster types: demons and shotgun guys.
+SPR_PUFF, SPR_TFOG, BRIGHT = 17, 26, 32768
+BLOOD_FRAMES = range(90, 93)        # S_BLOOD1..3
+SHOTGUY_DEATH = range(222, 227)     # S_SPOS_DIE1..5
+DEMON_DEATH = range(490, 496)       # S_SARG_DIE1..6
+FOG_LAST = 9                        # TFOG's faintest frame, left where the corpse would lie
+
+
+def no_gore():
+    out = ""
+    # Blood: P_SpawnBlood jumps straight to S_BLOOD2 or S_BLOOD3 for most hits, skipping the
+    # thing's initial frame, so the three frames themselves become puff frames B..D.
+    for i, n in enumerate(BLOOD_FRAMES):
+        out += f"Frame {n}\nSprite number = {SPR_PUFF}\nSprite subnumber = {i + 1}\n\n"
+    for frames in (SHOTGUY_DEATH, DEMON_DEATH):
+        for i, n in enumerate(frames[:-1]):
+            out += f"Frame {n}\nSprite number = {SPR_TFOG}\nSprite subnumber = {BRIGHT + i * 2}\nDuration = 4\n\n"
+        out += f"Frame {frames[-1]}\nSprite number = {SPR_TFOG}\nSprite subnumber = {BRIGHT + FOG_LAST}\nDuration = -1\n\n"
+    out += f"Thing 3 (Shotgun guy)\nExploding frame = {SHOTGUY_DEATH[0]}\n\n"   # its gib death fogs too
+    out += "Thing 39 (Blood)\nInitial frame = 93\n\n"                           # S_PUFF1
+    return out
+
+
+def patch(mission, gore=True):
     swaps = [
         (PD_BLUEK, "READ ACCESS REQUIRED. GRAB THE BLUE KEY"),
         (PD_YELLOWK, "WRITE ACCESS REQUIRED. GRAB THE YELLOW KEY"),
@@ -35,9 +62,12 @@ def patch(mission):
     out = "Patch File for DeHackEd v3.0\n# *allow-long-strings*\nDoom version = 19\nPatch format = 6\n\n"
     for old, new in swaps:
         out += f"Text {len(old)} {len(new)}\n{old}{new}\n\n"
+    if not gore:
+        out += no_gore()
     return out
 
 
 if __name__ == "__main__":
-    mission = json.load(open(sys.argv[1]))
-    open(sys.argv[2], "w").write(patch(mission))
+    args = [a for a in sys.argv[1:] if a != "--no-gore"]
+    mission = json.load(open(args[0]))
+    open(args[1], "w").write(patch(mission, gore="--no-gore" not in sys.argv[1:]))

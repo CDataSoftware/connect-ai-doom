@@ -23,6 +23,7 @@
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
 # --demo (offline), brief (brief-only).
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
+# NOGORE=1: hits throw bullet puffs instead of blood, and a kill vanishes in teleport fog.
 # Kills write nothing back: each is logged and its record read again live through Connect AI.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -256,11 +257,15 @@ if [[ "$MODE" != demo ]] && ! python3 "$BRIDGE" poll --once; then
   python3 "$BRIDGE" poll --demo
 fi
 
-# The level for this mission: map, signs, keycard messages.
+# The level for this mission: map, signs, keycard messages (and, with NOGORE=1, no blood or corpses).
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
 python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --brand
 "$ZDBSP" -o state/level.wad state/level-raw.wad >/dev/null
-python3 tools/make_deh.py state/mission.json state/level.deh
+if [[ "${NOGORE:-}" == 1 ]]; then
+  python3 tools/make_deh.py state/mission.json state/level.deh --no-gore
+else
+  python3 tools/make_deh.py state/mission.json state/level.deh
+fi
 
 if [[ "$MODE" != demo ]]; then
   python3 "$BRIDGE" poll 2>>state/poll.log &

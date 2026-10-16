@@ -1,6 +1,6 @@
 # Connect AI × DOOM
 
-[![test](https://github.com/JoeKarlsson/connect-doom/actions/workflows/test.yml/badge.svg)](https://github.com/JoeKarlsson/connect-doom/actions/workflows/test.yml)
+[![test](https://github.com/CDataSoftware/connect-ai-doom/actions/workflows/test.yml/badge.svg)](https://github.com/CDataSoftware/connect-ai-doom/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 **But can it run Connect AI?** Ask Claude a business question, and Claude answers it through the [CData Connect AI](https://www.cdata.com/ai/) MCP server. A Doom level is built from what it finds, and every monster in it is a live record from your apps.
@@ -27,8 +27,8 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 4. **Clone and build.** `setup.sh` installs SDL 1.2 with Homebrew, builds the game ([psdoom-ng](https://github.com/keymon/psdoom-ng)) and a map builder from source, and downloads [Freedoom](https://freedoom.github.io/) for the game's art. It takes about five minutes.
 
    ```bash
-   git clone https://github.com/JoeKarlsson/connect-doom.git
-   cd connect-doom
+   git clone https://github.com/CDataSoftware/connect-ai-doom.git
+   cd connect-ai-doom
    ./setup.sh
    ./raid.sh offline        # check the build: made-up data, no account needed
    ```

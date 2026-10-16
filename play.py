@@ -35,6 +35,7 @@ MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
 REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
 REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
+OFFLINE_AFTER = float(os.environ.get("OFFLINE_AFTER", "20"))  # seconds without a network before Claude is swapped out
 IDLE_SECONDS = float(os.environ.get("IDLE_SECONDS", "60"))   # with auto replay: no input this long, Claude plays
 PLAYER = os.environ.get("PLAYER", "claude")                  # "replay": always the offline player
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
@@ -137,12 +138,31 @@ def tool_look(game, _args):
             "rooms": rooms, "pii_vault": bool(m.get("denied")), "visible_monsters": visible[:12]}
 
 
-def walk(game, points):
-    for x, y in points:
+def close_monsters(s, within=200):
+    return [mm["pid"] for mm in sorted(s["monsters"], key=lambda mm: mm["distance"])
+            if mm["health"] > 0 and mm["distance"] < within]
+
+
+def open_floor(p):
+    """Somewhere with room to turn, near the marine: the middle of its room, the lobby, or the hall."""
+    here = where(p)
+    if here.startswith("room"):
+        return ARENA_X[int(here[-1]) - 1] + 512, 512
+    if here == "lobby":
+        return 2560, -704
+    if here == "vault door":
+        return 896, -256
+    return p["x"], -256    # the hall, or a doorway off it
+
+
+def move(game, x, y):
+    """MOVE; if the marine is hung up on a door frame or a wall with no monster in the way
+    (say, after chasing a target round a corner), step back to open floor and try once more."""
+    result = game.do("MOVE", x, y)
+    if result == "blocked" and not close_monsters(game.state()):
+        game.do("MOVE", *open_floor(game.state()["player"]))
         result = game.do("MOVE", x, y)
-        if result != "arrived":
-            return result, (x, y)
-    return "arrived", None
+    return result
 
 
 def tool_go_to(game, args):
@@ -186,11 +206,11 @@ def tool_go_to(game, args):
         elif step[0] == "TURN":
             game.do("TURN", step[1])  # face the door: use only reaches straight ahead
         else:
-            result = game.do("MOVE", *step)
+            result = move(game, *step)
             if result != "arrived":
                 s = game.state()
                 need = None
-                if "vault" in target:
+                if "vault" in target and where(s["player"]) == "vault door":
                     return {"result": "The red door won't open. There is no red keycard: "
                                       f"Connect AI refused this request. {m['denied'][0]['error'].splitlines()[0]}",
                             "you_are_in": where(s["player"])}
@@ -200,8 +220,7 @@ def tool_go_to(game, args):
                     if not s["player"]["keys"].get(need):
                         return {"result": f"Door locked: it needs the {need} keycard. Go to the keycards first.",
                                 "you_are_in": where(s["player"])}
-                close = [mm["pid"] for mm in sorted(s["monsters"], key=lambda mm: mm["distance"])
-                         if mm["health"] > 0 and mm["distance"] < 200]
+                close = close_monsters(s)
                 if close:
                     return {"result": f"Blocked: monsters in the way ({len(close)} close by). Attack them, then try again.",
                             "you_are_in": where(s["player"]), "closest_pids": close[:5]}
@@ -213,6 +232,14 @@ def tool_go_to(game, args):
 def tool_attack(game, args):
     pid = int(args.get("pid", 0))
     rec = records().get(pid, {})
+    s = game.state()
+    target = next((mm for mm in s["monsters"] if mm["pid"] == pid and mm["health"] > 0), None)
+    if target and not target["visible"] and "x" in target:
+        # ATTACK closes in on a target out of sight in a straight line; from the hall or another
+        # room that runs into the wall beside a door, so go in through the door first
+        there = where(target)
+        if there.startswith("room") and there != where(s["player"]):
+            tool_go_to(game, {"place": there})
     result = game.do("ATTACK", pid, timeout=16)
     out = {"result": result, "app": rec.get("app"), "record": rec.get("label"), "detail": rec.get("detail")}
     if result == "killed":
@@ -316,6 +343,7 @@ def run():
         signal.SIGTERM, lambda *_: (proc.terminate(), sys.exit(0))))
     if out["returncode"] and not out["finished"]:   # hitting --max-turns also exits non-zero, after a result
         event("failed", text=out["stderr"][-500:])
+        sys.exit(2)    # the supervisor hands the game to the offline player
     elif out["finished"]:
         save_recording(m)
 
@@ -516,8 +544,10 @@ def online():
 class Supervisor:
     """Follows the Options menu: Claude plays on starts a run, off stops it. A run is Claude
     (`play.py run`) when it can be, else the offline player (`play.py replay`): with PLAYER=replay,
-    on the offline level, with no network, or for 5 minutes after a Claude run that died within
-    30 s (say, claude isn't signed in). With auto replay on, a level that's clear (after
+    on the offline level, with no network, or for 5 minutes after a Claude run failed (it exited
+    with an error or within 30 s, say because claude isn't signed in, or the network was gone for
+    OFFLINE_AFTER seconds mid-run): the offline player then carries on from where the marine
+    stands, auto replay or not. With auto replay on, a level that's clear (after
     REPLAY_GRACE for the vault and a summary) or a run that ended starts over: every record
     back (a new game.json start, so the bridge lists them all again), the level restarted, and
     a new run; and with Claude plays off, IDLE_SECONDS without a key or the mouse hands the
@@ -528,7 +558,8 @@ class Supervisor:
         self.start = start or (lambda player: subprocess.Popen(
             [sys.executable, str(ROOT / "play.py"), "run" if player == "claude" else "replay"]))
         self.proc = self.mode = self.player = self.claude_failed_at = None
-        self.started = self.cleared_at = self.ended_at = None
+        self.started = self.cleared_at = self.ended_at = self.offline_since = None
+        self.checked = 0           # when the network was last checked during a Claude run
         self.seen_alive = False    # a level with no records never counts as clear
 
     def tick(self):
@@ -545,9 +576,17 @@ class Supervisor:
         else:
             self.cleared_at = None
         if self.proc and self.proc.poll() is not None:
+            failed = self.proc.returncode != 0 or now - self.started < 30
             self.proc, self.ended_at = None, now
-            if self.player == "claude" and now - self.started < 30:
+            if self.player == "claude" and failed:
                 self.claude_failed_at, self.ended_at = now, None    # straight to the offline player
+        if self.proc and self.player == "claude" and now - self.checked >= 10:
+            # claude retries a dead network for minutes; don't leave the marine standing that long
+            self.checked = now
+            self.offline_since = None if self.online() else self.offline_since or now
+            if self.offline_since and now - self.offline_since >= OFFLINE_AFTER:
+                self.stop()
+                self.claude_failed_at, self.offline_since = now, None
 
         if not opts.get("claude_plays"):
             if self.proc:

@@ -7,8 +7,8 @@ Thanks for helping. Bug reports, ideas and pull requests are all welcome.
 You need Python 3.9 or newer (a stock Mac's `python3` works). The tests need no Connect AI account, no `claude` login and no game build. They run against fakes, so they also run on Linux.
 
 ```bash
-git clone https://github.com/JoeKarlsson/connect-doom.git
-cd connect-doom
+git clone https://github.com/CDataSoftware/connect-ai-doom.git
+cd connect-ai-doom
 pip install -r requirements-dev.txt     # Pillow
 make test                               # V=1 lists each test
 ```

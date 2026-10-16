@@ -425,7 +425,7 @@
   <div class="now ingame" id="now">
     <div class="mode" id="now-mode">YOU'RE PLAYING · LIVE</div>
     <div class="big" id="now-big"><div class="hint">Grab the keycards in the lobby, then clear the rooms. Every kill shows up here.</div></div>
-    <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>E</b> open doors <b>Shift</b> run <b>P</b> pause</div>
+    <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
   <section id="play" class="grow big" hidden><h2>CLAUDE'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
@@ -893,7 +893,7 @@ function renderStage(s, events) {
     const line = playFeed.liveText.trim() || playFeed.lastThought;
     if (line) say = `<span class="tag">CLAUDE</span><span class="txt">${esc(line)}</span>`;
   } else if (game)
-    say = `<span class="tag">CONTROLS</span><span><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>E</b> doors <b>Shift</b> run <b>P</b> pause</span>`;
+    say = `<span class="tag">CONTROLS</span><span><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</span>`;
   setHTML($("stage-say"), say);
 }
 

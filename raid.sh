@@ -299,7 +299,7 @@ python3 play.py loop 2>>state/play.err &
 PIDS+=($!)
 
 # Modern FPS controls, as in GZDoom: WASD to move, the mouse to turn, left click or Space to
-# fire, E or right click to open doors, Shift to run, P to pause; the arrows turn too. Written
+# fire, walk into a door (or E, or right click) to open it, Shift to run, P to pause; the arrows turn too. Written
 # fresh each launch (values are keyboard scancodes), so a booth machine always plays the same.
 cat > state/controls.cfg <<'CFG'
 key_up 17

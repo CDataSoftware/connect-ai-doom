@@ -67,6 +67,7 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 
 - `-nopslev` always means arena mode (upstream checks the game mode before Freedoom is identified, so monsters landed in the void).
 - Name tags show only the short name.
+- Walking into a shut door opens it, as the use key would (`P_BumpDoors`): a Mac trackpad has no right button, and Doom veterans press Space, which fires here. A door already moving or open is left alone, and a locked door's message comes at most once a second.
 - Each room has its own monsters: `PSDOOM_MONSTERS` is six doomednums, a record's then an urgent record's for rooms 1-3 (`tools/themes.py`); without it, shotgun guys and pink demons as upstream.
 - The renderer's vanilla limits are raised (visplanes 128 to 1024, drawsegs 256 to 2048, and the sprite, opening and clip-range tables), since the themed rooms and hall draw far more floor and ceiling planes than vanilla allows: looking down the hall used to end the game with `R_FindPlane: no more visplanes`.
 - The kill command's first output line becomes the on-screen message.

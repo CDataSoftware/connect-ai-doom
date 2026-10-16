@@ -67,7 +67,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 | `offline` | none, made-up data | yes |
 | `brief-only` | runs one | no |
 
-The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the panel ends the game; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
+The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the panel ends the game; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, walk into a door to open it (or press E), Shift to run, P to pause.
 
 **Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on. With *Auto replay* on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
 

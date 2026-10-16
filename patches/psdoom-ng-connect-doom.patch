@@ -406,6 +406,83 @@ index 89b6532..337b8e4 100644
  	    return;
  	}
  	break;
+diff --git i/trunk/src/p_local.h w/trunk/src/p_local.h
+index 5ffefa3..b1dfbe5 100644
+--- i/trunk/src/p_local.h
++++ w/trunk/src/p_local.h
+@@ -222,6 +222,7 @@ boolean P_TeleportMove (mobj_t* thing, fixed_t x, fixed_t y);
+ void	P_SlideMove (mobj_t* mo);
+ boolean P_CheckSight (mobj_t* t1, mobj_t* t2);
+ void 	P_UseLines (player_t* player);
++void	P_BumpDoors (mobj_t* mo);	// connect-doom: walking into a shut door opens it
+ 
+ boolean P_ChangeSector (sector_t* sector, boolean crunch);
+ 
+diff --git i/trunk/src/p_map.c w/trunk/src/p_map.c
+index cac44dd..0a10fe5 100644
+--- i/trunk/src/p_map.c
++++ w/trunk/src/p_map.c
+@@ -1214,6 +1214,48 @@ void P_UseLines (player_t*	player)
+ }
+ 
+ 
++// connect-doom: walking into a closed door opens it, as the use key would. Booth players on a
++// Mac have no right button, and Doom veterans press Space, which fires here. Only a shut door
++// reacts (one already moving or open is left alone), and quietly: no "oof" off plain walls, and
++// a locked door's message and sound come at most once a second.
++static int bump_last = -1000;
++
++static boolean PTR_BumpTraverse (intercept_t* in)
++{
++    line_t	*li = in->d.line;
++    sector_t	*door = li->backsector;
++
++    if (!li->special)
++    {
++	P_LineOpening (li);
++	return openrange > 0;		// see through openings, stop at walls
++    }
++    if (P_PointOnLineSide (usething->x, usething->y, li) == 1 || door == NULL
++	|| door->specialdata || door->ceilingheight > door->floorheight)
++	return false;
++    switch (li->special)
++    {
++      case 1: case 26: case 27: case 28: case 31: case 32: case 33: case 34: case 117: case 118:
++	bump_last = leveltime;
++	P_UseSpecialLine (usething, li, 0);
++	break;
++    }
++    return false;
++}
++
++void P_BumpDoors (mobj_t* mo)
++{
++    int		angle;
++
++    if (!mo->player || leveltime - bump_last < TICRATE || (!mo->momx && !mo->momy))
++	return;
++    usething = mo;
++    angle = R_PointToAngle2 (0, 0, mo->momx, mo->momy) >> ANGLETOFINESHIFT;
++    P_PathTraverse (mo->x, mo->y, mo->x + (USERANGE>>FRACBITS)*finecosine[angle],
++		    mo->y + (USERANGE>>FRACBITS)*finesine[angle], PT_ADDLINES, PTR_BumpTraverse);
++}
++
++
+ //
+ // RADIUS ATTACK
+ //
+diff --git i/trunk/src/p_mobj.c w/trunk/src/p_mobj.c
+index fb45bdc..2d3ab84 100644
+--- i/trunk/src/p_mobj.c
++++ w/trunk/src/p_mobj.c
+@@ -180,6 +180,7 @@ void P_XYMovement (mobj_t* mo)
+ 	    // blocked move
+ 	    if (mo->player)
+ 	    {	// try to slide along it
++		P_BumpDoors (mo);	// connect-doom: a shut door in the way opens
+ 		P_SlideMove (mo);
+ 	    }
+ 	    else if (mo->flags & MF_MISSILE)
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
 index fa4fe83..ac67a68 100644
 --- i/trunk/src/pr_process.c

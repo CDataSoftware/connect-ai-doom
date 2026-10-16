@@ -45,8 +45,12 @@ def no_gore():
     for monster in MONSTERS.values():
         first, last = monster["die"]
         frames = range(first, last + 1)
+        steps = len(frames) - 1
         for i, n in enumerate(frames[:-1]):
-            out += f"Frame {n}\nSprite number = {SPR_TFOG}\nSprite subnumber = {BRIGHT + i * 2}\nDuration = 4\n\n"
+            # spread the death over the fog's frames A..I (J ends it): a long death (a hell knight's
+            # seven frames, a mancubus's ten) must not step past J, or the game quits mid-kill
+            fog = round(i * (FOG_LAST - 1) / max(steps - 1, 1))
+            out += f"Frame {n}\nSprite number = {SPR_TFOG}\nSprite subnumber = {BRIGHT + fog}\nDuration = 4\n\n"
         out += f"Frame {frames[-1]}\nSprite number = {SPR_TFOG}\nSprite subnumber = {BRIGHT + FOG_LAST}\nDuration = -1\n\n"
         if "xdie" in monster:   # its gib death fogs too
             out += f"Thing {monster['deh']} ({monster['name']})\nExploding frame = {first}\n\n"

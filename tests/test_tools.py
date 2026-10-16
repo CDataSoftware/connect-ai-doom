@@ -325,8 +325,14 @@ class DehTest(unittest.TestCase):
             self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_PUFF))
         for monster in make_deh.MONSTERS.values():   # every monster a room can have
             first, last = monster["die"]
+            fog = []
             for n in range(first, last + 1):
                 self.assertEqual(frames[n]["Sprite number"], str(make_deh.SPR_TFOG))
+                fog.append(int(frames[n]["Sprite subnumber"]) - make_deh.BRIGHT)
+            # TFOG has frames A..J: one past J and the game quits mid-kill ("invalid sprite frame")
+            self.assertTrue(all(0 <= f <= make_deh.FOG_LAST for f in fog), (monster["name"], fog))
+            self.assertEqual(fog, sorted(fog), monster["name"])                  # it only fades
+            self.assertEqual(fog[-1], make_deh.FOG_LAST)
             self.assertEqual(frames[last]["Duration"], "-1")   # the death still ends, so the kill counts
         self.assertIn("Thing 3 (Shotgun soldier)\nExploding frame = 222", text)
         self.assertIn("Thing 12 (Imp)\nExploding frame = 457", text)

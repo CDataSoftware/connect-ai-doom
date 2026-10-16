@@ -1,8 +1,25 @@
 diff --git i/trunk/src/d_main.c w/trunk/src/d_main.c
-index 125d27b..f7e7a8d 100644
+index 125d27b..2e73fc5 100644
 --- i/trunk/src/d_main.c
 +++ w/trunk/src/d_main.c
-@@ -1239,6 +1239,10 @@ void D_DoomMain (void)
+@@ -217,6 +217,8 @@ event_t *D_PopEvent(void)
+ // D_ProcessEvents
+ // Send all the events of the given timestamp down the responder chain
+ //
++void PR_AgentNoteInput(event_t *ev);  // connect-doom (pr_process.c)
++
+ void D_ProcessEvents (void)
+ {
+     event_t*	ev;
+@@ -227,6 +229,7 @@ void D_ProcessEvents (void)
+ 	
+     while ((ev = D_PopEvent()) != NULL)
+     {
++	PR_AgentNoteInput(ev);  // connect-doom: how long since a person touched the game
+ 	if (M_Responder (ev))
+ 	    continue;               // menu ate the event
+ 	G_Responder (ev);
+@@ -1239,6 +1242,10 @@ void D_DoomMain (void)
      p = M_CheckParm ("-nopslev");
      if (p)
      {
@@ -390,7 +407,7 @@ index 89b6532..337b8e4 100644
  	}
  	break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..61e348f 100644
+index fa4fe83..7017dee 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -424,7 +441,7 @@ index fa4fe83..61e348f 100644
  }
  
  // pr_renice
-@@ -890,3 +905,419 @@ void pr_renice(int pid) {
+@@ -890,3 +905,440 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -433,11 +450,12 @@ index fa4fe83..61e348f 100644
 +// connect-doom "Claude plays": an external agent steers the player.
 +// Enabled when PSDOOM_AGENT_DIR is set. The agent writes one command line to
 +// <dir>/cmd ("<seq> MOVE x y" | "<seq> USE" | "<seq> ATTACK pid" | "<seq> TURN deg"
-+// | "<seq> KEY code" | "<seq> RESTART" | "<seq> STOP"); KEY presses a key, e.g. to screenshot the menus;
-+// RESTART starts the level over. The game writes <dir>/state.json every few tics with the
-+// player, the process monsters, the last finished command and the Options menu's two
-+// switches: Claude plays (PSDOOM_AGENT_CLAUDE sets it at launch) and auto replay
-+// (PSDOOM_AGENT_LOOP). While Claude plays is off, the commands that steer are refused.
++// | "<seq> KEY code" | "<seq> RESTART" | "<seq> OPTION n 0|1" | "<seq> STOP"); KEY presses a key,
++// e.g. to screenshot the menus; RESTART starts the level over; OPTION sets a switch. The game
++// writes <dir>/state.json every few tics with the player, the process monsters, the last
++// finished command, the Options menu's two switches (Claude plays, which PSDOOM_AGENT_CLAUDE
++// sets at launch, and auto replay, PSDOOM_AGENT_LOOP) and how long since a person last
++// touched a key or the mouse. While Claude plays is off, the commands that steer are refused.
 +
 +#include "d_event.h"
 +#include "d_player.h"
@@ -462,6 +480,18 @@ index fa4fe83..61e348f 100644
 +static int agent_x, agent_y, agent_pid, agent_deg;
 +static int agent_last_dist, agent_stuck;
 +static int agent_options[2] = {-1, -1};   // Claude plays, auto replay; -1 until read from the env
++static int agent_last_input = 0;          // gametic of a person's last key or mouse event
++#define AGENT_KEY_MARK 0x4147             // data3 of the keys KEY presses: not a person
++
++// From D_ProcessEvents: every event, so idle time counts a person's input only.
++void PR_AgentNoteInput(event_t *ev)
++{
++    if (ev->type == ev_keyup || (ev->type == ev_keydown && ev->data3 == AGENT_KEY_MARK))
++        return;
++    if (ev->type == ev_mouse && !ev->data1 && !ev->data2 && !ev->data3)
++        return;
++    agent_last_input = gametic;
++}
 +
 +static void agent_finish(const char *result);
 +
@@ -564,12 +594,12 @@ index fa4fe83..61e348f 100644
 +        return;
 +    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
 +               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
-+               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d},\n",
++               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d}, \"idle_seconds\": %d,\n",
 +            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
 +            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
 +            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
 +            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount,
-+            PR_AgentOption(0), PR_AgentOption(1));
++            PR_AgentOption(0), PR_AgentOption(1), (gametic - agent_last_input) / TICRATE);
 +    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
 +            agent_seq, agent_done_seq, agent_verb, agent_result);
 +    fprintf(f, " \"monsters\": [");
@@ -638,6 +668,13 @@ index fa4fe83..61e348f 100644
 +    {
 +        agent_finish("stopped");
 +    }
++    else if (!strcmp(agent_verb, "OPTION"))
++    {
++        // play.py's idle takeover: the same as choosing it in the Options menu
++        if (agent_x >= 0 && agent_x <= 1 && PR_AgentOption(agent_x) != !!agent_y)
++            PR_AgentToggle(agent_x);
++        agent_finish("set");
++    }
 +    else if (!PR_AgentOption(0) && strcmp(agent_verb, "KEY") && strcmp(agent_verb, "SHOT"))
 +    {
 +        agent_finish("claude plays is off");
@@ -653,7 +690,8 @@ index fa4fe83..61e348f 100644
 +        event_t ev;
 +        ev.type = ev_keydown;
 +        ev.data1 = agent_x;
-+        ev.data2 = ev.data3 = 0;
++        ev.data2 = 0;
++        ev.data3 = AGENT_KEY_MARK;
 +        D_PostEvent(&ev);
 +        ev.type = ev_keyup;
 +        D_PostEvent(&ev);

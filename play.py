@@ -5,15 +5,21 @@
                   "Claude plays" and "Auto replay" switches (see supervise())
   play.py run     start Claude Code with two MCP servers, Doom (this file) and Connect AI,
                   and stream what it does to state/play.jsonl for the side panel
+  play.py replay  the offline stand-in for `run`, with no Claude and no network: a scripted
+                  player that narrates with Claude's own lines from earlier runs (see Autopilot)
   play.py mcp     the Doom MCP server (stdio), started by Claude Code
 
 The game side is the agent channel patched into psdoom (pr_process.c): we write a
 command to state/agent/cmd and read state/agent/state.json. Tools are high level
 (go to a room, attack a monster) because Claude thinks in seconds, not tics.
 """
+import hashlib
 import json
 import os
+import random
+import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -29,6 +35,8 @@ MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
 REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
 REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
+IDLE_SECONDS = float(os.environ.get("IDLE_SECONDS", "60"))   # with auto replay: no input this long, Claude plays
+PLAYER = os.environ.get("PLAYER", "claude")                  # "replay": always the offline player
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
 
 
@@ -308,6 +316,178 @@ def run():
         signal.SIGTERM, lambda *_: (proc.terminate(), sys.exit(0))))
     if out["returncode"] and not out["finished"]:   # hitting --max-turns also exits non-zero, after a result
         event("failed", text=out["stderr"][-500:])
+    elif out["finished"]:
+        save_recording(m)
+
+
+# ---------------------------------------------------------------- offline: Claude plays, replayed
+
+def level_key(m):
+    """Which level a recording is for: the question and its rooms (a new briefing, a new key)."""
+    rooms = [(r["app"], r["title"]) for r in m["rooms"]]
+    return hashlib.sha1(json.dumps([m["question"], rooms]).encode()).hexdigest()[:12]
+
+
+def save_recording(m):
+    """Keep a finished run's feed in state/recordings/<level>/, so the offline player can narrate
+    this level in Claude's words."""
+    feed = PLAY_LOG.read_text()
+    if '"tool": "attack"' not in feed:
+        return
+    folder = STATE / "recordings" / level_key(m)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{int(time.time())}.jsonl").write_text(feed)
+
+
+def recorded_lines(m, recs):
+    """pid -> what Claude wrote just before attacking that record in an earlier real run of this
+    level: the sentences that name the record (a line can also mention the one before)."""
+    lines = {}
+    for path in sorted((STATE / "recordings" / level_key(m)).glob("*.jsonl")):
+        said = None
+        for line in path.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e["kind"] == "thought":
+                said = e["text"]
+            elif e["kind"] == "call":
+                pid = e["args"].get("pid") if e["tool"] == "attack" else None
+                label = recs.get(pid, {}).get("label")
+                if said and label:
+                    named = [t for t in re.split(r"(?<=[.!?])\s+", said) if label in t]
+                    if named:
+                        lines[pid] = " ".join(named)
+                said = None
+    return lines
+
+
+URGENT_LINES = ["{label}: {detail}. Urgent, taking it down.", "{label} is urgent ({detail}), going for it.",
+                "Next, {label}: {detail}. That one's urgent.", "{label} can't wait: {detail}."]
+OTHER_LINES = ["{label}, {detail}. Taking it down.", "{label} next ({detail}).", "Clearing {label}: {detail}.",
+               "Now {label}: {detail}."]
+AGAIN_LINES = ["Another one from {label}: {detail}.", "{label} again: {detail}.",
+               "{label} has more: {detail}."]
+
+
+class Autopilot:
+    """The offline player: the same Doom tools Claude uses, in a fixed plan (keycards, each room
+    with the urgent records first, the vault, a summary), writing the same feed a Claude run
+    writes. Each attack is narrated with Claude's own line for that record from an earlier
+    real run of this level when there is one, else a line built from the record. It never
+    calls Connect AI, so it needs no network."""
+
+    def __init__(self, game, log=None, pace=1.0, sleep=time.sleep):
+        self.game, self.log, self.pace, self.sleep = game, log or event, pace, sleep
+        self.calls = 0
+        self.rng = random.Random()
+
+    def wait(self, lo, hi):
+        self.sleep(self.rng.uniform(lo, hi) * self.pace)
+
+    def say(self, text):
+        """Stream a line into the feed a few words at a time, as Claude's text arrives."""
+        self.wait(1.2, 2.6)    # thinking
+        words = text.split(" ")
+        for i in range(0, len(words), 3):
+            self.log("text_delta", text=" ".join(words[i:i + 3]) + (" " if i + 3 < len(words) else ""))
+            self.sleep(0.06 * self.pace)
+        self.log("thought", text=text)
+
+    def use(self, tool, **args):
+        self.calls += 1
+        cid = f"replay_{self.calls}"
+        self.log("call", id=cid, server="doom", tool=tool, args=args, connection=None)
+        start = time.time()
+        out = TOOLS[tool][0](self.game, args)
+        self.log("result", id=cid, tool=tool, connection=None, error=False, rows=0, text=json.dumps(out),
+                 ms=round((time.time() - start) * 1000))
+        self.wait(0.4, 1.0)
+        return out
+
+    def line(self, pid):
+        self.turn += 1
+        if pid in self.lines:
+            return self.lines[pid]
+        r = self.recs.get(pid)
+        if not r:
+            return "Another record in the way, taking it down."
+        detail = str(r.get("detail") or "")[:80]
+        seen = self.named.get(r["label"], 0)
+        self.named[r["label"]] = seen + 1
+        lines = AGAIN_LINES if seen else URGENT_LINES if r.get("demon") else OTHER_LINES
+        return lines[self.turn % len(lines)].format(label=r["label"], detail=detail).replace(", .", ".")
+
+    def attack(self, pid):
+        self.say(self.line(pid))
+        out = self.use("attack", pid=pid)
+        if out["result"] == "killed":
+            self.killed.append(pid)
+        return out["result"]
+
+    def alive(self, room=None):
+        s = self.game.state()
+        return [mm for mm in s["monsters"] if mm["health"] > 0 and (room is None or mm["pid"] % 3 == room)]
+
+    def go(self, place, tries=4):
+        for _ in range(tries):
+            out = self.use("go_to", place=place)
+            if out["result"] == "arrived" or "red door" in out["result"]:
+                return out
+            for pid in out.get("closest_pids", [])[:3]:
+                self.attack(pid)
+        return out
+
+    def clear(self, room):
+        failed = set()
+        for n in range(60):
+            left = [mm for mm in self.alive(room) if mm["pid"] not in failed]
+            if not left:
+                return
+            if n % 5 == 4:
+                self.use("look")
+            # what Claude does: what it can see, urgent first, then the nearest
+            left.sort(key=lambda mm: (not mm["visible"], not self.recs.get(mm["pid"], {}).get("demon"),
+                                      mm["distance"]))
+            if self.attack(left[0]["pid"]) not in ("killed", "gone"):
+                failed.add(left[0]["pid"])
+
+    def play(self):
+        m = mission()
+        self.recs, started = records(), time.time()
+        self.lines, self.killed, self.named, self.turn = recorded_lines(m, self.recs), [], {}, 0
+        self.log("question", text="Claude plays (offline replay): " + m["question"])
+        self.log("session", model="offline replay", tools=["mcp__doom__attack", "mcp__doom__go_to", "mcp__doom__look"])
+        total = len(self.alive())
+        self.use("look")
+        apps = [r["app"] for r in m["rooms"]]
+        self.say(f"{len(apps)} rooms: {', '.join(apps)}. Keycards first, then the urgent records, room by room.")
+        self.go("keycards")
+        for i, r in enumerate(m["rooms"]):
+            if not self.alive(i):
+                continue
+            self.say(f"Room {i + 1}, {r['app']}: {r['title']}.")
+            self.go(f"room {i + 1}")
+            self.clear(i)
+        if m.get("denied"):
+            self.say("The rooms are done. Trying the PII vault's red door once, to see what Connect AI does.")
+            self.go("vault", tries=1)
+            self.say("Connect AI refused the request: " + m["denied"][0]["error"].splitlines()[0]
+                     + ". There's no red keycard, so the vault stays shut.")
+        urgent = sum(1 for pid in self.killed if self.recs.get(pid, {}).get("demon"))
+        summary = (f"Cleared {total - len(self.alive())} of {total} records across {', '.join(apps)}, "
+                   f"{urgent} of them urgent.")
+        if m.get("denied"):
+            summary += "\nConnect AI blocked the PII vault request, so that data never reached the game."
+        self.say(summary)
+        self.log("done", cost_usd=None, duration_ms=round((time.time() - started) * 1000), turns=self.calls,
+                 text=summary)
+
+
+def replay():
+    claude_run.EventLog(PLAY_LOG).reset()
+    Autopilot(Game()).play()
 
 
 # ---------------------------------------------------------------- the switches
@@ -324,16 +504,30 @@ def set_game(**fields):
     tmp.replace(path)
 
 
-class Supervisor:
-    """Follows the Options menu: Claude plays on starts `play.py run`, off stops it. With
-    auto replay on, a level that's clear (after REPLAY_GRACE for the vault and a summary) or
-    a run that ended starts over: every record back (a new game.json start, so the bridge
-    lists them all again), the level restarted, and a new run. One step per tick()."""
+def online():
+    """Can Claude Code reach Anthropic's API? A plain TCP connect, three seconds at most."""
+    try:
+        socket.create_connection(("api.anthropic.com", 443), timeout=3).close()
+        return True
+    except OSError:
+        return False
 
-    def __init__(self, game, start=None, clock=time.time):
-        self.game, self.clock = game, clock
-        self.start = start or (lambda: subprocess.Popen([sys.executable, str(ROOT / "play.py"), "run"]))
-        self.proc = self.mode = None
+
+class Supervisor:
+    """Follows the Options menu: Claude plays on starts a run, off stops it. A run is Claude
+    (`play.py run`) when it can be, else the offline player (`play.py replay`): with PLAYER=replay,
+    on the offline level, with no network, or for 5 minutes after a Claude run that died within
+    30 s (say, claude isn't signed in). With auto replay on, a level that's clear (after
+    REPLAY_GRACE for the vault and a summary) or a run that ended starts over: every record
+    back (a new game.json start, so the bridge lists them all again), the level restarted, and
+    a new run; and with Claude plays off, IDLE_SECONDS without a key or the mouse hands the
+    game to Claude. One step per tick()."""
+
+    def __init__(self, game, start=None, clock=time.time, online=online):
+        self.game, self.clock, self.online = game, clock, online
+        self.start = start or (lambda player: subprocess.Popen(
+            [sys.executable, str(ROOT / "play.py"), "run" if player == "claude" else "replay"]))
+        self.proc = self.mode = self.player = self.claude_failed_at = None
         self.started = self.cleared_at = self.ended_at = None
         self.seen_alive = False    # a level with no records never counts as clear
 
@@ -352,6 +546,8 @@ class Supervisor:
             self.cleared_at = None
         if self.proc and self.proc.poll() is not None:
             self.proc, self.ended_at = None, now
+            if self.player == "claude" and now - self.started < 30:
+                self.claude_failed_at, self.ended_at = now, None    # straight to the offline player
 
         if not opts.get("claude_plays"):
             if self.proc:
@@ -360,6 +556,8 @@ class Supervisor:
             if self.mode != "player":
                 set_game(mode="player")
                 self.mode = "player"
+            if opts.get("auto_replay") and s.get("idle_seconds", 0) >= IDLE_SECONDS:
+                self.game.do("OPTION", 0, 1)    # nobody's playing: Claude takes over
             return
         if opts.get("auto_replay"):
             ran_out = self.ended_at and now - self.ended_at >= self.pause()
@@ -376,10 +574,21 @@ class Supervisor:
         quick = self.started and self.ended_at and self.ended_at - self.started < 30
         return 60 if quick else REPLAY_PAUSE
 
+    def choose(self):
+        failed = self.claude_failed_at and self.clock() - self.claude_failed_at < 300
+        try:
+            offline_level = all("rows" in r for r in mission()["rooms"])   # connect_doom.is_offline
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            offline_level = False
+        if PLAYER == "replay" or failed or offline_level or not self.online():
+            return "replay"
+        return "claude"
+
     def launch(self):
-        set_game(mode="claude")
-        self.mode = "claude"
-        self.proc, self.started, self.ended_at = self.start(), self.clock(), None
+        self.player = self.choose()
+        self.mode = "claude" if self.player == "claude" else "replay"
+        set_game(mode=self.mode)
+        self.proc, self.started, self.ended_at = self.start(self.player), self.clock(), None
 
     def stop(self):
         self.proc.terminate()
@@ -411,4 +620,4 @@ def supervise():
 
 
 if __name__ == "__main__":
-    {"run": run, "mcp": serve_mcp, "loop": supervise}[sys.argv[1] if len(sys.argv) > 1 else "run"]()
+    {"run": run, "mcp": serve_mcp, "loop": supervise, "replay": replay}[sys.argv[1] if len(sys.argv) > 1 else "run"]()

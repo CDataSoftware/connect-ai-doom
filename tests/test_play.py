@@ -261,9 +261,12 @@ class SupervisorTest(StateDirTest):
         self.procs = []
         self.game = FakeGame(game_state(monsters=[monster(1002), monster(1003)]))
         self.game.do_nowait = lambda verb: self.game.commands.append((verb,))
-        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now)
+        self.net = True
+        self.players = []
+        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now, online=lambda: self.net)
 
-    def start(self):
+    def start(self, player):
+        self.players.append(player)
         self.procs.append(FakeProc())
         return self.procs[-1]
 
@@ -326,15 +329,62 @@ class SupervisorTest(StateDirTest):
         self.assertEqual(self.game.commands, [("RESTART",)])
         self.assertEqual(len(self.procs), 2)
 
-    def test_a_run_that_dies_at_once_backs_off(self):
-        self.switches(True, replay=True)
+    def test_a_claude_run_that_dies_at_once_hands_over_to_the_offline_player(self):
+        self.switches(True)
         self.tick()
         self.procs[0].returncode = 1                     # say, claude isn't signed in
+        self.tick()
+        self.assertEqual((self.players, self.mode()), (["claude", "replay"], "replay"))
+        self.procs[1].returncode = 0                     # the offline run ends; Claude is tried again later
+        self.tick(400)
+        self.switches(False)
+        self.tick()
+        self.switches(True)
+        self.tick()
+        self.assertEqual(self.players[-1], "claude")
+
+    def test_an_offline_run_that_dies_at_once_backs_off(self):
+        self.net = False
+        self.switches(True, replay=True)
+        self.tick()
+        self.procs[0].returncode = 1
         self.tick()
         self.tick(30)
         self.assertEqual(len(self.procs), 1)
         self.tick(31)
-        self.assertEqual(len(self.procs), 2)
+        self.assertEqual(self.players, ["replay", "replay"])
+
+    def test_the_offline_player_without_a_network(self):
+        self.net = False
+        self.switches(True)
+        self.tick()
+        self.assertEqual((self.players, self.mode()), (["replay"], "replay"))
+
+    def test_the_offline_player_on_the_offline_level(self):
+        (self.state / "mission.json").write_text(json.dumps(
+            {**MISSION, "rooms": [{**r, "rows": []} for r in MISSION["rooms"]]}))
+        self.switches(True)
+        self.tick()
+        self.assertEqual(self.players, ["replay"])
+
+    def test_player_replay_forces_the_offline_player(self):
+        with mock.patch.object(play, "PLAYER", "replay"):
+            self.switches(True)
+            self.tick()
+        self.assertEqual(self.players, ["replay"])
+
+    def test_idle_hands_the_game_to_claude(self):
+        self.switches(False, replay=True)
+        self.game.s["idle_seconds"] = play.IDLE_SECONDS - 1
+        self.tick()
+        self.assertEqual(self.game.commands, [])
+        self.game.s["idle_seconds"] = play.IDLE_SECONDS
+        self.tick()
+        self.assertEqual(self.game.commands, [("OPTION", 0, 1)])
+        self.switches(False)                             # without auto replay, the game waits for a person
+        self.game.commands.clear()
+        self.tick()
+        self.assertEqual(self.game.commands, [])
 
     def test_a_level_without_records_is_never_clear(self):
         self.game.s["monsters"] = []
@@ -347,6 +397,70 @@ class SupervisorTest(StateDirTest):
         self.game.state = mock.Mock(side_effect=RuntimeError("not yet"))
         self.tick()
         self.assertEqual(self.procs, [])
+
+
+class AutopilotTest(StateDirTest):
+    """play.py replay: the offline player, against a fake game where every attack kills."""
+
+    def setUp(self):
+        super().setUp()
+        self.game = FakeGame(game_state(monsters=[monster(1002, distance=500), monster(1003, distance=200)]))
+        self.feed = []
+        real_do = self.game.do
+
+        def do(verb, *args, timeout=25):
+            if verb == "ATTACK":
+                next(m for m in self.game.s["monsters"] if m["pid"] == args[0])["health"] = 0
+            return real_do(verb, *args, timeout=timeout)
+        self.game.do = do
+
+    def play(self):
+        play.Autopilot(self.game, log=lambda kind, **d: self.feed.append({"kind": kind, **d}),
+                       sleep=lambda _s: None).play()
+        return [e["text"] for e in self.feed if e["kind"] == "thought"]
+
+    def record(self, events):
+        folder = self.state / "recordings" / play.level_key(MISSION)
+        folder.mkdir(parents=True)
+        (folder / "1.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
+
+    def test_plays_the_level_and_writes_a_claude_feed(self):
+        said = self.play()
+        kinds = [e["kind"] for e in self.feed]
+        self.assertEqual(kinds[:2], ["question", "session"])
+        self.assertEqual(kinds[-1], "done")
+        self.assertIn("offline replay", self.feed[0]["text"])
+        self.assertIn("text_delta", kinds)                                   # streamed, like Claude's text
+        calls = [(e["tool"], e["args"]) for e in self.feed if e["kind"] == "call"]
+        self.assertEqual(calls[1], ("go_to", {"place": "keycards"}))
+        self.assertIn(("attack", {"pid": 1002}), calls)
+        self.assertEqual(calls[-1], ("go_to", {"place": "vault"}))
+        self.assertTrue(any("Acme Corp" in t and "rgent" in t for t in said))  # urgent: a demon
+        self.assertTrue(any("Initech" in t for t in said))
+        self.assertIn("PII detected in inbound query", said[-2])
+        self.assertTrue(said[-1].startswith("Cleared 2 of 2 records across Salesforce, Zendesk, 1 of them urgent."))
+        self.assertEqual(self.feed[-1]["turns"], len(calls))
+
+    def test_narrates_with_claudes_lines_from_a_real_run(self):
+        self.record([{"kind": "thought", "text": "Done with that. Acme Corp's $45K renewal is urgent, taking it down."},
+                     {"kind": "call", "tool": "attack", "args": {"pid": 1002}},
+                     {"kind": "thought", "text": "Looking around."},
+                     {"kind": "call", "tool": "look", "args": {}},
+                     {"kind": "call", "tool": "attack", "args": {"pid": 1003}}])   # no line right before it
+        self.assertEqual(play.recorded_lines(MISSION, play.records()),
+                         {1002: "Acme Corp's $45K renewal is urgent, taking it down."})
+        said = self.play()
+        self.assertIn("Acme Corp's $45K renewal is urgent, taking it down.", said)
+
+    def test_finished_runs_are_saved_for_the_level(self):
+        (self.state / "play.jsonl").write_text('{"kind": "call", "tool": "look"}\n')
+        play.save_recording(MISSION)                                     # nothing worth keeping
+        self.assertFalse((self.state / "recordings").exists())
+        (self.state / "play.jsonl").write_text('{"kind": "call", "tool": "attack", "args": {"pid": 1}}\n')
+        play.save_recording(MISSION)
+        saved = list((self.state / "recordings" / play.level_key(MISSION)).glob("*.jsonl"))
+        self.assertEqual(len(saved), 1)
+        self.assertNotEqual(play.level_key(MISSION), play.level_key({**MISSION, "question": "Other?"}))
 
 
 class MCPServerTest(StateDirTest):
@@ -452,6 +566,7 @@ class RunTest(StateDirTest):
         results = {e["id"]: e for e in events if e["kind"] == "result"}
         self.assertEqual((results["t1"]["text"], results["t2"]["rows"]), ('{"result": "killed"}', 2))
         self.assertEqual(events[-1]["text"], "Cleared.")
+        self.assertEqual(len(list((self.state / "recordings").glob("*/*.jsonl"))), 1)   # for the offline player
 
     def test_demo_mode_has_only_doom_tools(self):
         self.play(creds=False)
@@ -462,6 +577,7 @@ class RunTest(StateDirTest):
         events = self.play(creds=False, fail=True)
         self.assertEqual(events[-1]["kind"], "failed")
         self.assertIn("boom", events[-1]["text"])
+        self.assertFalse((self.state / "recordings").exists())
 
 
 if __name__ == "__main__":

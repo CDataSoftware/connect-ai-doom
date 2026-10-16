@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Claude plays: an optional mode where Claude drives the marine.
 
+  play.py loop    started by raid.sh with every game: follows the Options menu's
+                  "Claude plays" and "Auto replay" switches (see supervise())
   play.py run     start Claude Code with two MCP servers, Doom (this file) and Connect AI,
                   and stream what it does to state/play.jsonl for the side panel
   play.py mcp     the Doom MCP server (stdio), started by Claude Code
@@ -12,6 +14,7 @@ command to state/agent/cmd and read state/agent/state.json. Tools are high level
 import json
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -24,6 +27,8 @@ AGENT = STATE / "agent"
 PLAY_LOG = STATE / "play.jsonl"
 MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
+REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
+REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
 
 
@@ -50,7 +55,8 @@ class Game:
 
     def do(self, verb, *args, timeout=25):
         """Send one command and wait until the game reports it finished."""
-        self.seq += 1
+        # past any seq another client (say, the run before this one) already sent
+        self.seq = max(self.seq, self.state()["command"].get("seq", 0)) + 1
         tmp = AGENT / "cmd.tmp"
         tmp.write_text(f"{self.seq} {verb} {' '.join(str(int(a)) for a in args)}\n")
         tmp.replace(AGENT / "cmd")
@@ -302,5 +308,105 @@ def run():
         event("failed", text=out["stderr"][-500:])
 
 
+# ---------------------------------------------------------------- the switches
+
+def set_game(**fields):
+    """Update state/game.json, the panel's view of the game (raid.sh writes it at launch)."""
+    path = STATE / "game.json"
+    try:
+        game = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        game = {"mode": "player", "started": time.time()}
+    tmp = STATE / "game.json.tmp"
+    tmp.write_text(json.dumps({**game, **fields}) + "\n")
+    tmp.replace(path)
+
+
+class Supervisor:
+    """Follows the Options menu: Claude plays on starts `play.py run`, off stops it. With
+    auto replay on, a level that's clear (after REPLAY_GRACE for the vault and a summary) or
+    a run that ended starts over: every record back (a new game.json start, so the bridge
+    lists them all again), the level restarted, and a new run. One step per tick()."""
+
+    def __init__(self, game, start=None, clock=time.time):
+        self.game, self.clock = game, clock
+        self.start = start or (lambda: subprocess.Popen([sys.executable, str(ROOT / "play.py"), "run"]))
+        self.proc = self.mode = None
+        self.started = self.cleared_at = self.ended_at = None
+        self.seen_alive = False    # a level with no records never counts as clear
+
+    def tick(self):
+        try:
+            s = self.game.state()
+        except RuntimeError:
+            return  # the game isn't up yet
+        opts = s.get("options", {})
+        now = self.clock()
+        alive = [m for m in s["monsters"] if m["health"] > 0]
+        self.seen_alive = self.seen_alive or bool(alive)
+        if self.seen_alive and not alive:
+            self.cleared_at = self.cleared_at or now
+        else:
+            self.cleared_at = None
+        if self.proc and self.proc.poll() is not None:
+            self.proc, self.ended_at = None, now
+
+        if not opts.get("claude_plays"):
+            if self.proc:
+                self.stop()
+            self.ended_at = None
+            if self.mode != "player":
+                set_game(mode="player")
+                self.mode = "player"
+            return
+        if opts.get("auto_replay"):
+            ran_out = self.ended_at and now - self.ended_at >= self.pause()
+            won = self.cleared_at and now - self.cleared_at >= REPLAY_GRACE
+            if ran_out or won:
+                self.replay()
+                return
+        if not self.proc and not self.ended_at:
+            self.launch()
+
+    def pause(self):
+        """Wait a bit after a run before the next; much longer if it died right away (say,
+        claude isn't signed in), so a booth doesn't spin."""
+        quick = self.started and self.ended_at and self.ended_at - self.started < 30
+        return 60 if quick else REPLAY_PAUSE
+
+    def launch(self):
+        set_game(mode="claude")
+        self.mode = "claude"
+        self.proc, self.started, self.ended_at = self.start(), self.clock(), None
+
+    def stop(self):
+        self.proc.terminate()
+        try:
+            self.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+        self.proc = None
+        self.game.do_nowait("STOP")
+
+    def replay(self):
+        if self.proc:
+            self.stop()
+        set_game(started=time.time())   # the kill log starts over: the bridge lists every record
+        time.sleep(0.5)
+        self.game.do("RESTART")
+        self.cleared_at = self.ended_at = None
+        self.seen_alive = False
+        time.sleep(2)                   # the level loads and spawns the records
+        self.launch()
+
+
+def supervise():
+    sup = Supervisor(Game())
+    signal.signal(signal.SIGTERM, lambda *_: (sup.proc and sup.proc.terminate(), sys.exit(0)))
+    while True:
+        sup.tick()
+        time.sleep(0.5)
+
+
 if __name__ == "__main__":
-    {"run": run, "mcp": serve_mcp}[sys.argv[1] if len(sys.argv) > 1 else "run"]()
+    {"run": run, "mcp": serve_mcp, "loop": supervise}[sys.argv[1] if len(sys.argv) > 1 else "run"]()

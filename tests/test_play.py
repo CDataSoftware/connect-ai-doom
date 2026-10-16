@@ -224,9 +224,129 @@ class GameChannelTest(StateDirTest):
             REAL_SLEEP(0.1)
         self.assertEqual([s[0] for s in self.seen], ["ATTACK", "STOP"])
 
+    def test_seq_beats_another_clients(self):
+        """A run that starts after another sent commands must not reuse its seqs."""
+        g = play.Game()
+        (self.state / "agent/state.json").write_text(json.dumps(
+            {**game_state(done_seq=0), "command": {"seq": g.seq + 500, "done_seq": g.seq + 500, "result": "x"}}))
+        g.do("STOP", timeout=0)
+        self.assertEqual(int((self.state / "agent/cmd").read_text().split()[0]), g.seq)
+        self.assertGreater(g.seq, int(time.time()) + 500)
+
     def test_no_game_running(self):
         with self.assertRaisesRegex(RuntimeError, "isn't running in Claude-plays mode"):
             play.Game().state()
+
+
+class FakeProc:
+    def __init__(self):
+        self.returncode = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = -15
+
+    def wait(self, _timeout=None):
+        return self.returncode
+
+
+class SupervisorTest(StateDirTest):
+    """play.py loop: follows the Options menu's Claude plays and Auto replay switches."""
+
+    def setUp(self):
+        super().setUp()
+        self.now = 1000.0
+        self.procs = []
+        self.game = FakeGame(game_state(monsters=[monster(1002), monster(1003)]))
+        self.game.do_nowait = lambda verb: self.game.commands.append((verb,))
+        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now)
+
+    def start(self):
+        self.procs.append(FakeProc())
+        return self.procs[-1]
+
+    def switches(self, claude, replay=False):
+        self.game.s["options"] = {"claude_plays": int(claude), "auto_replay": int(replay)}
+
+    def tick(self, seconds=0.5):
+        self.now += seconds
+        self.sup.tick()
+
+    def mode(self):
+        return json.loads((self.state / "game.json").read_text())["mode"]
+
+    def test_switching_claude_on_and_off(self):
+        self.switches(False)
+        self.tick()
+        self.assertEqual((self.procs, self.mode()), ([], "player"))
+        self.switches(True)
+        self.tick()
+        self.tick()
+        self.assertEqual((len(self.procs), self.mode()), (1, "claude"))     # one run, not one per tick
+        self.switches(False)
+        self.tick()
+        self.assertEqual((self.procs[0].returncode, self.mode()), (-15, "player"))
+        self.assertEqual(self.game.commands, [("STOP",)])                    # the marine stops where it is
+        self.switches(True)
+        self.tick()
+        self.assertEqual(len(self.procs), 2)                                 # back on: a new run
+
+    def test_a_finished_run_waits_without_auto_replay(self):
+        self.switches(True)
+        self.tick()
+        self.procs[0].returncode = 0
+        self.tick(600)
+        self.assertEqual(len(self.procs), 1)
+        self.assertNotIn(("RESTART",), self.game.commands)
+
+    def test_auto_replay_after_the_level_is_clear(self):
+        self.switches(True, replay=True)
+        self.tick()
+        started = json.loads((self.state / "game.json").read_text())["started"]
+        for m in self.game.s["monsters"]:
+            m["health"] = 0
+        self.tick()
+        self.tick(play.REPLAY_GRACE - 1)                 # time for the vault and a summary
+        self.assertEqual((len(self.procs), self.game.commands), (1, []))
+        self.tick(2)
+        self.assertEqual(self.game.commands, [("STOP",), ("RESTART",)])
+        self.assertEqual(self.procs[0].returncode, -15)
+        self.assertEqual(len(self.procs), 2)
+        self.assertGreater(json.loads((self.state / "game.json").read_text())["started"], started)  # records back
+
+    def test_auto_replay_after_a_run_ends(self):
+        self.switches(True, replay=True)
+        self.tick()
+        self.tick(120)
+        self.procs[0].returncode = 0                     # out of turns, level not clear
+        self.tick()
+        self.tick(play.REPLAY_PAUSE)
+        self.assertEqual(self.game.commands, [("RESTART",)])
+        self.assertEqual(len(self.procs), 2)
+
+    def test_a_run_that_dies_at_once_backs_off(self):
+        self.switches(True, replay=True)
+        self.tick()
+        self.procs[0].returncode = 1                     # say, claude isn't signed in
+        self.tick()
+        self.tick(30)
+        self.assertEqual(len(self.procs), 1)
+        self.tick(31)
+        self.assertEqual(len(self.procs), 2)
+
+    def test_a_level_without_records_is_never_clear(self):
+        self.game.s["monsters"] = []
+        self.switches(True, replay=True)
+        self.tick()
+        self.tick(600)
+        self.assertEqual((len(self.procs), self.game.commands), (1, []))
+
+    def test_waits_for_the_game(self):
+        self.game.state = mock.Mock(side_effect=RuntimeError("not yet"))
+        self.tick()
+        self.assertEqual(self.procs, [])
 
 
 class MCPServerTest(StateDirTest):

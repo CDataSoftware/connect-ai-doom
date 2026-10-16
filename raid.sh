@@ -10,6 +10,10 @@
 #   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
 #   --claude-plays                Claude plays instead of you; add it to any mode above,
 #                                 e.g. ./raid.sh replay --claude-plays
+#   --loop                        auto replay: once Claude clears the level (or its run ends),
+#                                 every record comes back and Claude plays again, all day
+# Both are also switches in the game's Options menu (Esc > Options), so they can be
+# flipped without restarting.
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
 # --demo (offline), brief (brief-only).
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
@@ -22,7 +26,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS=""
+MODE=live QUESTION="" PLAYS="" LOOP=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -38,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     offline|--demo) MODE=demo; shift ;;
     replay|--again) MODE=again; shift ;;
     --claude-plays) PLAYS=1; shift ;;
+    --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     *) break ;;
@@ -206,13 +211,13 @@ export PSDOOMKILLCMD="python3 $BRIDGE kill"
 export PSDOOMRENICECMD="python3 $BRIDGE hit"
 
 rm -f state/play.jsonl  # the panel's Claude plays feed is only for this game
-if [[ -n "$PLAYS" ]]; then
-  # The agent channel patched into psdoom: Claude's commands in, game state out.
-  mkdir -p state/agent && rm -f state/agent/*
-  export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_GOD=1
-  ( /bin/sleep 4; exec python3 play.py run ) 2>>state/play.err &
-  PIDS+=($!)
-fi
+# The agent channel patched into psdoom: Claude's commands in, game state out. It's always
+# open, so Claude plays can be switched on from the Options menu; play.py loop follows the
+# menu's switches and starts or stops Claude.
+mkdir -p state/agent && rm -f state/agent/*
+export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_CLAUDE=${PLAYS:-0} PSDOOM_AGENT_LOOP=${LOOP:-0}
+python3 play.py loop 2>>state/play.err &
+PIDS+=($!)
 
 # Modern FPS controls, as in GZDoom: WASD to move, the mouse to turn, left click or Space to
 # fire, E or right click to open doors, Shift to run, P to pause; the arrows turn too. Written

@@ -236,9 +236,21 @@ class BrandingTest(unittest.TestCase):
             out[name] = (w, h, patches)
         return out
 
+    def test_options_menu_labels(self):
+        """Shaped like the stock M_MESSG: about as tall, top offset 1, red letters edged in black."""
+        lumps = self.build()
+        for name in ("M_CLAUDE", "M_AUTORP"):
+            w, h, px = make_branding.patch_pixels(lumps[name])
+            self.assertEqual(struct.unpack("<hh", lumps[name][4:8]), (0, 1), name)
+            self.assertTrue(12 <= h <= 15 and 100 < w < 200, (name, w, h))   # leaves room for ON / OFF in 320
+            colors = {self.palette[i] for i in px.values()}
+            self.assertIn((0, 0, 0), colors)
+            self.assertTrue(all(c == (0, 0, 0) or c[0] > 2 * max(c[1:]) for c in colors), colors)   # reds
+
     def test_without_mission_or_kit(self):
         lumps = self.build()
-        self.assertEqual(list(lumps), ["PNAMES", "TEXTURE1", "CAILOGO", "CAIWALLP"])   # no menu logo
+        self.assertEqual(list(lumps), ["PNAMES", "TEXTURE1", "CAILOGO", "CAIWALLP",     # no menu logo,
+                                       "M_CLAUDE", "M_AUTORP"])                         # but the switches
         tex = self.textures(lumps)
         self.assertEqual(tex["TEKWALL4"], (64, 128, ["W94_1"]))                         # IWAD textures kept
         self.assertEqual(tex["CAISIGN"], (256, 128, ["CAILOGO"]))

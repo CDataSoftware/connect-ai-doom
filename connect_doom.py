@@ -38,6 +38,7 @@ LOOKUPS = STATE / "lookups.jsonl"
 VAULT = STATE / "vault.jsonl"  # each time the red door is tried: Connect AI's live answer
 LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the crosshair
 MISSION = STATE / "mission.json"
+SAVED = STATE / "saved-records.json"  # the last live refresh, for playing a level without Wi-Fi
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 # Seconds to wait on each Connect AI call during a game. On bad conference Wi-Fi a short wait
@@ -274,23 +275,55 @@ def fetch(mission, stats=None):
     return monsters
 
 
+def mission_key(mission):
+    """Which level a set of records belongs to: its rooms' queries."""
+    rooms = [(r["connection"], r.get("query")) for r in (mission or {}).get("rooms", [])]
+    return hashlib.sha1(json.dumps(rooms).encode()).hexdigest()[:12]
+
+
+def restore_saved(mission):
+    """No Connect AI: put back the records this level's last good refresh saved. Returns
+    when they were fetched, or None if this level has none."""
+    saved = read_json(SAVED)
+    if not saved or saved.get("mission") != mission_key(mission):
+        return None
+    write_cache(saved["monsters"], "saved", saved.get("rooms"))
+    return saved["fetched_at"]
+
+
 def cmd_poll(args):
-    """Refresh the cache. `poll --demo` uses made-up data; `poll --once` exits after one fetch."""
+    """Refresh the cache. `poll --demo` uses made-up data; `poll --once` exits after one fetch,
+    and if Connect AI can't be reached, falls back to the records this level last fetched
+    (exit 3 when there are none)."""
     interval = int(os.environ.get("POLL_SECONDS", "15"))
     if "--demo" in args:
         MISSION.write_text(json.dumps(demo_mission(), indent=1))
     while True:
         started = time.time()
         now = dt.datetime.now()
+        mission = None
         try:
             mission = json.loads(MISSION.read_text())
             stats = []
             monsters = fetch(mission, stats)
+            if stats and all("error" in s for s in stats):
+                raise connect_ai_mcp.MCPError(stats[0]["error"])  # nothing answered: keep what we have
             source = "demo" if "--demo" in args else "connect-ai-mcp"
             write_cache(monsters, source, stats)
+            if source == "connect-ai-mcp" and monsters:  # the fallback for a game without Wi-Fi
+                tmp = SAVED.with_suffix(".tmp")
+                tmp.write_text(json.dumps({"mission": mission_key(mission), "fetched_at": time.time(),
+                                           "rooms": stats, "monsters": monsters}))
+                tmp.replace(SAVED)
             print(f"{now:%H:%M:%S} {source}: {len(monsters)} monsters", file=sys.stderr)
         except Exception as e:  # keep the last good cache; the game keeps running
             print(f"{now:%H:%M:%S} poll failed: {e}", file=sys.stderr)
+            if "--once" in args:
+                at = restore_saved(mission)
+                if at is None:
+                    sys.exit(3)
+                print(f"Can't reach Connect AI: playing the records saved {dt.datetime.fromtimestamp(at):%b %d %H:%M}.",
+                      file=sys.stderr)
         if "--once" in args or "--demo" in args:
             return
         time.sleep(max(1, interval - (time.time() - started)))  # a refresh every 15 s, not 15 s apart

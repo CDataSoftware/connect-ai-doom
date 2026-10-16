@@ -4,6 +4,7 @@
 #   ./raid.sh new                 ask Claude the default question (about a minute), then play
 #   ./raid.sh new -q "<question>" ask Claude your own question, then play
 #   ./raid.sh replay              play the last level again (no new Claude run)
+#   ./raid.sh booth               replay over and over: the next game starts a few seconds after one ends
 #   ./raid.sh offline             made-up data, no network
 #   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     new) MODE=live; shift ;;
     offline|--demo) MODE=demo; shift ;;
     replay|--again) MODE=again; shift ;;
+    booth) MODE=booth; shift ;;
     --claude-plays) PLAYS=1; shift ;;
     --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
@@ -48,6 +50,20 @@ while [[ $# -gt 0 ]]; do
     *) break ;;
   esac
 done
+
+if [[ "$MODE" == booth ]]; then
+  # Back-to-back replays for a booth. The screen stays awake between games; Ctrl-C in this
+  # Terminal stops it. BOOTH_PAUSE sets the seconds between games, BOOTH_GAMES a limit.
+  if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
+  games=0
+  while :; do
+    "$PWD/raid.sh" replay ${PLAYS:+--claude-plays} ${LOOP:+--loop} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
+    games=$((games + 1))
+    if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
+    echo "Next game in ${BOOTH_PAUSE:-10} seconds. Ctrl-C to stop."
+    /bin/sleep "${BOOTH_PAUSE:-10}"
+  done
+fi
 
 if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]] && [[ "$MODE" != doctor ]]; then
   echo "The game isn't built yet: run ./setup.sh first." >&2
@@ -129,7 +145,11 @@ pkill -f "$PWD/tools/stage.js" 2>/dev/null || true
 
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
-trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json' EXIT
+# An offline game sets the real level aside in mission-live.json; put it back for the next replay.
+trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json
+  if [[ -f state/mission-live.json ]]; then mv -f state/mission-live.json state/mission.json; fi' EXIT
+# Keep the screen from dimming or locking mid-game.
+if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
 PANEL_PORT=${PANEL_PORT:-8666}
 PANEL_URL="http://localhost:$PANEL_PORT"
 
@@ -189,9 +209,20 @@ fi
 case "$MODE" in
   brief) python3 brief.py ${QUESTION:+"$QUESTION"}; exit ;;
   live) python3 brief.py ${QUESTION:+"$QUESTION"} >/dev/null ;;
-  demo) python3 "$BRIDGE" poll --demo ;;
+  demo)
+    if grep -q '"query"' state/mission.json 2>/dev/null; then cp state/mission.json state/mission-live.json; fi
+    python3 "$BRIDGE" poll --demo ;;
 esac
 [[ -f state/mission.json ]] || { echo "No level yet: run ./raid.sh new first." >&2; exit 1; }
+
+# The records to start with. Without Wi-Fi, poll --once falls back to the ones this level last
+# fetched; if it never fetched any (exit 3), play offline.
+if [[ "$MODE" != demo ]] && ! python3 "$BRIDGE" poll --once; then
+  echo "Can't reach Connect AI, and this level has no saved records yet: playing offline instead." >&2
+  MODE=demo
+  cp state/mission.json state/mission-live.json
+  python3 "$BRIDGE" poll --demo
+fi
 
 # The level for this mission: map, signs, keycard messages.
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
@@ -200,7 +231,6 @@ python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --b
 python3 tools/make_deh.py state/mission.json state/level.deh
 
 if [[ "$MODE" != demo ]]; then
-  python3 "$BRIDGE" poll --once
   python3 "$BRIDGE" poll 2>>state/poll.log &
   PIDS+=($!)
 fi

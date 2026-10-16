@@ -299,7 +299,7 @@ class PollCLITest(unittest.TestCase):
             before = (Path(tmp) / "cache.json").read_text()
             (Path(tmp) / "mission.json").write_text("not json")
             r = bridge(tmp, "poll", "--once")
-            self.assertEqual(r.returncode, 0)
+            self.assertEqual(r.returncode, 3)                  # no saved records for raid.sh to fall back on
             self.assertIn("poll failed", r.stderr)
             self.assertEqual((Path(tmp) / "cache.json").read_text(), before)
 

@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -259,6 +260,54 @@ class RaidTest(unittest.TestCase):
             r = self.raid(env=env)
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse((self.state / "psdoom-args.txt").exists())
+
+    def test_no_wifi_plays_the_saved_records(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.assertEqual(self.raid("new", env=env).returncode, 0)
+            offline = {**env, "CONNECT_AI_MCP_URL": f"http://127.0.0.1:{free_port()}/mcp"}   # nothing listens
+            (self.state / "hits.jsonl").unlink()      # assert_played counts one game's hits
+            time.sleep(1.1)                           # and kills from the game's start, to the second
+            r = self.raid("replay", env=offline)
+        self.assertEqual(self.assert_played(r), 3)               # the same records as the live game
+        self.assertIn("Can't reach Connect AI: playing the records saved", r.stderr)
+        self.assertEqual(json.loads((self.state / "cache.json").read_text())["source"], "saved")
+
+    def test_no_wifi_and_nothing_saved_plays_offline_then_keeps_the_level(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.assertEqual(self.raid("new", env=env).returncode, 0)
+            (self.state / "saved-records.json").unlink()
+            (self.state / "hits.jsonl").unlink()
+            time.sleep(1.1)
+            r = self.raid("replay", env={**env, "CONNECT_AI_MCP_URL": f"http://127.0.0.1:{free_port()}/mcp"})
+        self.assertEqual(self.assert_played(r), 36)              # the made-up offline records
+        self.assertIn("playing offline instead", r.stderr)
+        self.assertIn("query", json.loads((self.state / "mission.json").read_text())["rooms"][0])
+        self.assertFalse((self.state / "mission-live.json").exists())
+
+    def test_offline_keeps_the_real_level_for_the_next_replay(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.assertEqual(self.raid("new", "-q", "Who is late?", env=env).returncode, 0)
+            (self.state / "hits.jsonl").unlink()
+            time.sleep(1.1)  # a game counts kills from its start, to the second
+            self.assertEqual(self.assert_played(self.raid("offline", env=env)), 36)
+            self.assertEqual(json.loads((self.state / "mission.json").read_text())["question"], "Who is late?")
+            (self.state / "hits.jsonl").unlink()
+            time.sleep(1.1)
+            self.assertEqual(self.assert_played(self.raid("replay", env=env)), 3)
+
+    def test_booth_plays_game_after_game(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.raid("offline", env=env)
+            time.sleep(1.1)
+            r = self.raid("booth", env={**env, "BOOTH_GAMES": "2", "BOOTH_PAUSE": "1.1"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.count("1 cleared"), 2)                    # two games, each from a full level
+        self.assertEqual(r.stdout.count("Next game in 1.1 seconds"), 1)
+
+    def test_booth_stops_when_the_game_cant_start(self):
+        r = self.raid("booth", env={**os.environ, "BOOTH_PAUSE": "0"})   # no level yet
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("booth mode stopped", r.stderr)
 
     def test_doctor_says_ready(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:

@@ -53,12 +53,14 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh replay                    # play the last level again, no new Claude run
 ./raid.sh replay --claude-plays     # watch Claude play it
 ./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
+./raid.sh booth                     # replay game after game, for a booth
 ```
 
 | Mode | Claude briefing | Game |
 |---|---|---|
 | `new` | runs one (about $0.30 of Claude usage) | yes |
 | `replay` | reuses the last | yes |
+| `booth` | reuses the last | one after another |
 | `offline` | none, made-up data | yes |
 | `brief-only` | runs one | no |
 
@@ -66,10 +68,11 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 
 **Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on.
 
-**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `replay` for each player. Every game starts with all the records back, on the same full screen. Esc → *Quit Game* → Y ends a game.
+**At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `./raid.sh booth`. Each player's game ends with Esc → *Quit Game* → Y, and the next one starts 10 seconds later with all the records back, on the same full screen (`BOOTH_PAUSE` changes the wait). Ctrl-C in the Terminal stops it. The screen stays awake while `raid.sh` runs.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
-- **If the Wi-Fi is slow**, `replay` waits at most 20 seconds per Connect AI call (`CONNECT_AI_TIMEOUT`) and then plays the records it last fetched. If it's down, use `offline`.
+- **If the Wi-Fi is slow or down**, each Connect AI call gets 20 seconds (`CONNECT_AI_TIMEOUT`). After that the game plays the records this level last fetched; if it never fetched any, it plays offline and keeps your level for the next game. Kills still count; the panel shows their live lookups as failed until the Wi-Fi is back.
+- **`offline` keeps your level.** After an offline game, `replay` plays your real level again.
 - **Between visitors**, `replay --claude-plays --loop` keeps Claude playing on its own, all day. A visitor can turn Claude plays off in the Options menu, play, and turn it back on. Each Claude run is up to 60 turns, at about $0.13 per 20.
 
 ## How it works

@@ -65,6 +65,14 @@ if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]] && [[ "$MODE" != doctor ]]; t
   echo "The game isn't built yet: run ./setup.sh first." >&2
   exit 1
 fi
+# A game built from an older patch can't draw the themed level (it runs out of visplanes and
+# quits mid-game) or give each room its monsters.
+BUILT=$(cat vendor/src/psdoom-ng/.connect-doom-patch 2>/dev/null || true)
+if [[ -n "$BUILT" && "$BUILT" != "$(shasum -a 256 patches/psdoom-ng-connect-doom.patch | cut -d' ' -f1)" ]] \
+   && [[ "$MODE" != doctor ]]; then
+  echo "The game was built from an older patch: run ./setup.sh again first." >&2
+  exit 1
+fi
 if [[ "$MODE" == live || "$MODE" == brief ]] && ! command -v claude >/dev/null; then
   echo "The briefing needs Claude Code's CLI (claude), signed in. Or play the last level: ./raid.sh replay, or play offline: ./raid.sh offline" >&2
   exit 1

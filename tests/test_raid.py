@@ -196,15 +196,15 @@ class RaidTest(unittest.TestCase):
         self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), ["1", "1512,-140"])
         self.assertRegex((self.logs / "osascript.txt").read_text(), r"\?stage=0,60,1280,960,1280,0")
 
-    def test_full_screen_layout_needs_a_current_build(self):
+    def test_an_older_build_is_refused(self):
+        """The themed level needs the patched renderer limits: an old build would crash mid-game."""
         self.built_from_this_patch()
         (self.repo / "vendor/src/psdoom-ng/.connect-doom-patch").write_text("an older patch\n")
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             r = self.raid(env={**env, "_layout": {"LAYOUT": "full"}}, panel=True)
-        self.assert_played(r)
-        self.assertIn("run ./setup.sh again for the full-screen layout", r.stderr)
-        self.assertIn("http://localhost:", (self.logs / "open.txt").read_text())   # a browser tab instead
-        self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), [])
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("built from an older patch: run ./setup.sh again first", r.stderr)
+        self.assertFalse((self.state / "psdoom-env.txt").exists())
 
     def test_again_replays_without_claude(self):
         self.raid("--demo", env=dict(os.environ))

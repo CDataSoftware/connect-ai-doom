@@ -162,12 +162,37 @@ class ToolsTest(StateDirTest):
         self.assertEqual(play.tool_go_to(g, {"place": "room 1"})["result"], "Couldn't get there (stuck).")
 
     def test_vault_shows_connect_ais_refusal(self):
-        g = FakeGame(game_state(y=-200), {("MOVE", 896, -560): "stuck"})
+        g = FakeGame(game_state(x=896, y=-470), {("MOVE", 896, -560): "stuck"})   # at the red door
         out = play.tool_go_to(g, {"place": "the vault"})
         self.assertIn("There is no red keycard", out["result"])
         self.assertIn("Request blocked: PII detected in inbound query", out["result"])
         self.assertNotIn("\nx", out["result"])
         self.assertIn(("TURN", 270), g.commands)
+
+    def test_vault_refusal_only_at_the_red_door(self):
+        """Hung up on the way there, it says so, not that Connect AI refused."""
+        g = FakeGame(game_state(x=2560, y=-200), {("MOVE", 896, -256): "stuck"})
+        self.assertEqual(play.tool_go_to(g, {"place": "vault"})["result"], "Couldn't get there (stuck).")
+
+    def test_a_blocked_move_steps_back_and_tries_again(self):
+        results = iter(["blocked", "arrived", "arrived"])
+        g = FakeGame(game_state(x=559, y=-2))           # wedged on room 1's door frame
+        g.do = lambda verb, *a, timeout=25: (g.commands.append((verb, *a)), next(results))[1]
+        self.assertEqual(play.move(g, 2560, -256), "arrived")
+        self.assertEqual(g.commands, [("MOVE", 2560, -256), ("MOVE", 559, -256), ("MOVE", 2560, -256)])
+        g = FakeGame(game_state(monsters=[monster(1002, distance=60)]), {("MOVE", 1, 2): "blocked"})
+        self.assertEqual(play.move(g, 1, 2), "blocked")  # a monster in the way: the caller says so
+        self.assertEqual(g.commands, [("MOVE", 1, 2)])
+
+    def test_attack_goes_in_through_the_door(self):
+        far = {**monster(1002, visible=False), "x": 512, "y": 500}               # in room 1, out of sight
+        g = FakeGame(game_state(x=2560, y=-256, keys=("yellow",), monsters=[far]))
+        play.tool_attack(g, {"pid": 1002})
+        self.assertIn(("USE",), g.commands)                                      # room 1's door
+        self.assertEqual(g.commands[-1], ("ATTACK", 1002))
+        g = FakeGame(game_state(x=512, y=300, monsters=[far]))                  # already in its room
+        play.tool_attack(g, {"pid": 1002})
+        self.assertEqual(g.commands, [("ATTACK", 1002)])
 
     def test_no_vault_without_a_refusal(self):
         (self.state / "mission.json").write_text(json.dumps({**MISSION, "denied": []}))
@@ -342,6 +367,38 @@ class SupervisorTest(StateDirTest):
         self.switches(True)
         self.tick()
         self.assertEqual(self.players[-1], "claude")
+
+    def test_a_claude_run_that_fails_mid_game_hands_over_without_auto_replay(self):
+        self.switches(True)
+        self.tick()
+        self.tick(300)
+        self.procs[0].returncode = 2                     # play.py run: claude exited with an error
+        self.tick()
+        self.assertEqual(self.players, ["claude", "replay"])
+        self.assertNotIn(("RESTART",), self.game.commands)  # it carries on from where the marine stands
+
+    def test_losing_the_network_mid_run_swaps_claude_out(self):
+        self.switches(True)
+        self.tick()
+        self.tick(60)
+        self.net = False
+        self.tick(10)                                    # offline: noticed
+        self.tick(10)
+        self.assertEqual(len(self.procs), 1)             # a blip is fine
+        self.tick(10)                                    # 20 s without a network
+        self.assertEqual(self.procs[0].returncode, -15)
+        self.assertEqual((self.players, self.mode()), (["claude", "replay"], "replay"))
+
+    def test_a_network_blip_keeps_claude(self):
+        self.switches(True)
+        self.tick()
+        self.tick(60)
+        self.net = False
+        self.tick(10)
+        self.net = True
+        self.tick(10)
+        self.tick(30)
+        self.assertEqual(self.players, ["claude"])
 
     def test_an_offline_run_that_dies_at_once_backs_off(self):
         self.net = False
@@ -531,7 +588,7 @@ class RunTest(StateDirTest):
             env["FAKE_CLAUDE_FAIL"] = "1"
         r = subprocess.run([sys.executable, str(ROOT / "play.py"), "run"], env=env, capture_output=True, text=True,
                            timeout=60)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.returncode, 2 if fail else 0, r.stderr)    # 2: the supervisor swaps Claude out
         self.call = json.loads((self.state / "call.json").read_text())
         self.config = json.loads((self.state / "play-mcp.json").read_text())
         return [json.loads(line) for line in (self.state / "play.jsonl").read_text().splitlines()]

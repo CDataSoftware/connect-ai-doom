@@ -401,6 +401,33 @@ class SupervisorTest(StateDirTest):
         self.assertEqual(self.game.commands, [("RESTART",)])
         self.assertEqual(len(self.procs), 2)
 
+    def test_auto_replay_after_a_person_dies(self):
+        """A person killed with auto replay on: the level restarts by itself, and Claude stays off."""
+        self.switches(False, replay=True)
+        self.game.s["player"]["health"] = 0
+        self.tick()
+        self.tick(play.DEATH_PAUSE - 1)
+        self.assertEqual(self.game.commands, [])
+        self.tick(1)
+        self.assertEqual(self.game.commands, [("RESTART",)])
+        self.assertEqual((self.procs, self.mode()), ([], "player"))
+
+    def test_without_auto_replay_a_death_waits(self):
+        self.switches(False)
+        self.game.s["player"]["health"] = 0
+        self.tick(600)
+        self.assertEqual(self.game.commands, [])
+
+    def test_auto_replay_after_a_person_clears_the_level(self):
+        self.switches(False, replay=True)
+        self.tick()
+        for m in self.game.s["monsters"]:
+            m["health"] = 0
+        self.tick()
+        self.tick(play.REPLAY_GRACE + 1)
+        self.assertEqual(self.game.commands, [("RESTART",)])
+        self.assertEqual(self.procs, [])
+
     def test_a_claude_run_that_dies_at_once_hands_over_to_the_offline_player(self):
         self.switches(True)
         self.tick()

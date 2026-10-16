@@ -129,7 +129,7 @@ class RaidTest(unittest.TestCase):
         self.assertFalse((self.logs / "security.txt").exists(), "demo never looks up a token")
         self.assertIn("CONNECT AI: PII DETECTED IN INBOUND QUERY", (self.state / "level.deh").read_text())
         # the agent channel is always open, so Claude plays can be switched on from the Options menu
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 0 0 0 1 1\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 1 1\n")   # auto replay on by default
 
     def test_claude_plays_on_a_loop(self):
         r = self.raid("offline", "--claude-plays", "--loop", env=dict(os.environ))
@@ -142,7 +142,7 @@ class RaidTest(unittest.TestCase):
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 0 0 1 1 1\n")   # loops too
 
     def test_claude_plays_once_with_no_loop(self):
-        """Claude playing turns auto replay on (a cleared level starts over); --no-loop plays it once."""
+        """Auto replay is on by default (a cleared level or a death starts over); --no-loop plays it once."""
         r = self.raid("offline", "--claude-plays", "--no-loop", env=dict(os.environ))
         self.assert_played(r)
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 0 0 0 1 1\n")
@@ -150,12 +150,12 @@ class RaidTest(unittest.TestCase):
     def test_god_mode_and_saved_data_flags(self):
         r = self.raid("offline", "--god-mode", "--saved-data", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 1 1 0 1 1\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 1 1 0 1 1\n")
 
     def test_music_and_sound_effects_flags(self):
         r = self.raid("offline", "--no-music", "--no-sound-effects", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 0 0 0 0 0\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 0 0\n")
 
     def test_a_booth_keeps_the_menus_switches(self):
         """Booth games each start psdoom again: the switches staff set in the Options menu
@@ -169,7 +169,7 @@ class RaidTest(unittest.TestCase):
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 1 0 1 0 1\n")
         r = self.raid("offline", env=dict(os.environ))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 0 0 0 1 1\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 1 1\n")   # auto replay on
         self.assertFalse(options.exists())
 
     def test_live_run_with_panel(self):

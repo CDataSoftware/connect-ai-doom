@@ -67,18 +67,18 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 | `offline` | none, sample data | yes |
 | `brief-only` | runs one | no |
 
-The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the panel ends the game; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, walk into a door to open it (or press E), Shift to run, P to pause.
+The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the game or the panel ends it at once; `LAYOUT=off` plays in a normal window instead. The game plays on the easiest skill: you take half damage and pick-ups give twice the ammo. A record only wakes when you come within 384 units in sight or shoot it, so you clear a room a few at a time. **Controls:** WASD to move, the mouse to turn, click or Space to fire, walk into a door to open it (or press E), Shift to run, P to pause.
 
 **Switch things mid-game** in the Options menu (Esc → Options):
 
 - *Claude plays* hands the marine to Claude or takes it back.
-- *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. With it on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
+- *Auto replay* (on by default) restarts the level with every record back once it's clear, a few seconds after you die, or when Claude's run ends, then lets Claude play again if it was playing. With it on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
 - *God mode*: players can't die, so nobody's turn ends early.
 - *Saved data* plays the level's last saved records and calls Connect AI for nothing: no refresh, no live read on a kill, no live check at the red door. For when the Wi-Fi is up but slow.
 - *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
 - *Music* plays Freedoom's soundtrack, and *Sound effects* the gunfire, doors and monsters. Turning either off keeps its level on the Sound Volume sliders for when it's back on.
 
-Each is off unless its flag turned it on: `--claude-plays` (which turns *Auto replay* on too, unless `--no-loop`), `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
+Each is off unless its flag turned it on: `--claude-plays`, `--loop` (*Auto replay*, on anyway unless `--no-loop`), `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 

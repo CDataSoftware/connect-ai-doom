@@ -35,6 +35,7 @@ MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
 REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
 REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
+DEATH_PAUSE = float(os.environ.get("DEATH_PAUSE", "3"))      # with auto replay: from a person's death to the restart
 OFFLINE_AFTER = float(os.environ.get("OFFLINE_AFTER", "20"))  # seconds without a network before Claude is swapped out
 IDLE_SECONDS = float(os.environ.get("IDLE_SECONDS", "60"))   # with auto replay: no input this long, Claude plays
 PLAYER = os.environ.get("PLAYER", "claude")                  # "replay": always the offline player
@@ -594,7 +595,8 @@ class Supervisor:
     with an error or within 30 s, say because claude isn't signed in, or the network was gone for
     OFFLINE_AFTER seconds mid-run): the offline player then carries on from where the marine
     stands, auto replay or not. With auto replay on, a level that's clear (after
-    REPLAY_GRACE for the vault and a summary) or a run that ended starts over: every record
+    REPLAY_GRACE for the vault and a summary), a run that ended, or a player who died (after
+    DEATH_PAUSE; a person's game too, cleared or lost) starts over: every record
     back (a new game.json start, so the bridge lists them all again), the level restarted, and
     a new run; and with Claude plays off, IDLE_SECONDS without a key or the mouse hands the
     game to Claude. The menu's offline Claude switch (or PLAYER=replay) always picks the offline
@@ -606,7 +608,7 @@ class Supervisor:
         self.start = start or (lambda player: subprocess.Popen(
             [sys.executable, str(ROOT / "play.py"), "run" if player == "claude" else "replay"]))
         self.proc = self.mode = self.player = self.claude_failed_at = None
-        self.started = self.cleared_at = self.ended_at = self.offline_since = None
+        self.started = self.cleared_at = self.ended_at = self.offline_since = self.died_at = None
         self.checked = 0           # when the network was last checked during a Claude run
         self.seen_alive = False    # a level with no records never counts as clear
         self.opts = {}
@@ -643,6 +645,12 @@ class Supervisor:
                 self.stop()
                 self.claude_failed_at, self.offline_since = now, None
 
+        dead = s.get("player", {}).get("health", 1) <= 0
+        self.died_at = (self.died_at or now) if dead else None
+        if opts.get("auto_replay") and self.died_at and now - self.died_at >= DEATH_PAUSE:
+            self.replay()                      # killed: straight back to the start
+            return
+
         if not opts.get("claude_plays"):
             if self.proc:
                 self.stop()
@@ -650,8 +658,11 @@ class Supervisor:
             if self.mode != "player":
                 set_game(mode="player")
                 self.mode = "player"
-            if opts.get("auto_replay") and s.get("idle_seconds", 0) >= IDLE_SECONDS:
-                self.game.do("OPTION", 0, 1)    # nobody's playing: Claude takes over
+            if opts.get("auto_replay"):
+                if self.cleared_at and now - self.cleared_at >= REPLAY_GRACE:
+                    self.replay()               # a person cleared the level
+                elif s.get("idle_seconds", 0) >= IDLE_SECONDS:
+                    self.game.do("OPTION", 0, 1)    # nobody's playing: Claude takes over
             return
         if opts.get("auto_replay"):
             ran_out = self.ended_at and now - self.ended_at >= self.pause()
@@ -699,10 +710,11 @@ class Supervisor:
         set_game(started=time.time())   # the kill log starts over: the bridge lists every record
         time.sleep(0.5)
         self.game.do("RESTART")
-        self.cleared_at = self.ended_at = None
+        self.cleared_at = self.ended_at = self.died_at = None
         self.seen_alive = False
         time.sleep(2)                   # the level loads and spawns the records
-        self.launch()
+        if self.opts.get("claude_plays"):
+            self.launch()
 
 
 def supervise():

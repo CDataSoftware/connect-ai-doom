@@ -47,7 +47,7 @@ def main(out, brand):
         game = subprocess.Popen(
             [str(PSDOOM), "-iwad", str(ROOT / "wads/freedoom2.wad"), "-file", str(ROOT / "state/level.wad"),
              str(brand), "-deh", str(ROOT / "state/level.deh"), "-nopslev", "-psallusers", "-warp", "1",
-             "-skill", "3", "-nosound", "-nomusic"], cwd=tmp, env=env,  # SHOT saves into cwd
+             "-skill", "1", "-nosound", "-nomusic"], cwd=tmp, env=env,  # SHOT saves into cwd
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             g = play.Game()

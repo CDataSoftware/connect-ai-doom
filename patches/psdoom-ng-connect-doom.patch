@@ -105,7 +105,7 @@ index afe3974..d987c9a 100644
      HUlib_drawIText(&w_chat);
      if (automapactive)
 diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
-index 15e4a6b..ba0a40f 100644
+index 15e4a6b..9d6a644 100644
 --- i/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
 @@ -50,9 +50,84 @@
@@ -233,7 +233,39 @@ index 15e4a6b..ba0a40f 100644
  }
  
  static void LoadDiskImage(void)
-@@ -879,6 +980,7 @@ void I_FinishUpdate (void)
+@@ -607,9 +708,9 @@ void I_GetEvent(void)
+                 break;
+ 
+             case SDL_QUIT:
+-                // bring up the "quit doom?" prompt
+-                S_StartSound(NULL,sfx_swtchn);
+-                M_QuitDOOM(0);
++                // connect-doom: Cmd-Q (or closing the window) quits at once, no
++                // "quit doom?" prompt; the menu's Quit Game still asks
++                I_Quit();
+                 break;
+ 
+             case SDL_ACTIVEEVENT:
+@@ -729,12 +830,18 @@ static void UpdateGrab(void)
+     }
+     else if (grab && !currently_grabbed)
+     {
++        // connect-doom: hide the cursor for real, not just with a blank one: sdl12-compat (the
++        // SDL 1.2 on current Macs) turns a hidden, grabbed cursor into relative mouse mode.
++        // Otherwise the game warps the pointer to the middle every tic, and macOS drops the
++        // mouse's movement for a moment after each warp: a trackpad barely turns the view.
+         SDL_SetCursor(cursors[0]);
++        SDL_ShowCursor(SDL_DISABLE);
+         SDL_WM_GrabInput(SDL_GRAB_ON);
+     }
+     else if (!grab && currently_grabbed)
+     {
+         SDL_SetCursor(cursors[1]);
++        SDL_ShowCursor(SDL_ENABLE);
+         SDL_WM_GrabInput(SDL_GRAB_OFF);
+     }
+ 
+@@ -879,6 +986,7 @@ void I_FinishUpdate (void)
      }
  
      UpdateGrab();
@@ -241,7 +273,7 @@ index 15e4a6b..ba0a40f 100644
  
      // Don't update the screen if the window isn't visible.
      // Not doing this breaks under Windows when we alt-tab away 
-@@ -1674,15 +1776,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1674,15 +1782,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
      {
          flags |= SDL_FULLSCREEN;
      }
@@ -263,7 +295,7 @@ index 15e4a6b..ba0a40f 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
-@@ -1693,6 +1797,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1693,6 +1803,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
                  w, h, screen_bpp, SDL_GetError());
      }
  
@@ -276,7 +308,7 @@ index 15e4a6b..ba0a40f 100644
      // Blank out the full screen area in case there is any junk in
      // the borders that won't otherwise be overwritten.
  
-@@ -1799,6 +1909,7 @@ void I_InitGraphics(void)
+@@ -1799,6 +1915,7 @@ void I_InitGraphics(void)
      // Check for command-line video-related parameters.
  
      CheckCommandLine();
@@ -490,6 +522,45 @@ index 89b6532..337b8e4 100644
  	    return;
  	}
  	break;
+diff --git i/trunk/src/p_enemy.c w/trunk/src/p_enemy.c
+index 760bbbc..709579e 100644
+--- i/trunk/src/p_enemy.c
++++ w/trunk/src/p_enemy.c
+@@ -607,6 +607,34 @@ void A_Look (mobj_t* actor)
+     mobj_t*	targ;
+ 	
+     actor->threshold = 0;	// any shot will wake up
++
++    // connect-doom: a record (a data monster) ignores noise and wakes only when a player
++    // comes within PSDOOM_WAKE units (default 384) and in sight, or shoots it, so a room is
++    // fought a few records at a time instead of all at once.
++    if (actor->m_pid)
++    {
++	static int	wake = -1;
++	int		i;
++
++	if (wake < 0)
++	    wake = getenv("PSDOOM_WAKE") ? atoi(getenv("PSDOOM_WAKE")) : 384;
++	if (wake > 30000)
++	    wake = 30000;			// in fixed point, more overflows
++	for (i = 0; i < MAXPLAYERS; i++)
++	{
++	    mobj_t	*mo = players[i].mo;
++
++	    if (playeringame[i] && mo && mo->health > 0
++		&& P_AproxDistance (mo->x - actor->x, mo->y - actor->y) < wake * FRACUNIT
++		&& P_CheckSight (actor, mo))
++	    {
++		actor->target = mo;
++		goto seeyou;
++	    }
++	}
++	return;
++    }
++
+     targ = actor->subsector->sector->soundtarget;
+ 
+     if (targ
 diff --git i/trunk/src/p_lights.c w/trunk/src/p_lights.c
 index 5ea0390..12b0604 100644
 --- i/trunk/src/p_lights.c
@@ -659,7 +730,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..d73675d 100644
+index fa4fe83..a31bbc8 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -764,7 +835,7 @@ index fa4fe83..d73675d 100644
  }
  
  // pr_renice
-@@ -890,3 +939,459 @@ void pr_renice(int pid) {
+@@ -890,3 +939,460 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -813,7 +884,7 @@ index fa4fe83..d73675d 100644
 +static const int agent_option_default[AGENT_NOPTIONS] = {0, 0, 0, 0, 0, 1, 1};   // music and sound: on
 +static const char *agent_option_msg[AGENT_NOPTIONS][2] = {
 +    {"CLAUDE PLAYS OFF: YOUR TURN", "CLAUDE PLAYS: CLAUDE TAKES OVER"},
-+    {"AUTO REPLAY OFF", "AUTO REPLAY ON: THE LEVEL RESTARTS ONCE CLEARED"},
++    {"AUTO REPLAY OFF", "AUTO REPLAY ON: RESTARTS WHEN CLEARED OR YOU DIE"},
 +    {"GOD MODE OFF", "GOD MODE ON: PLAYERS CAN'T DIE"},
 +    {"SAVED DATA OFF: LIVE FROM CONNECT AI", "SAVED DATA ON: NO CONNECT AI CALLS, THE LAST SAVED RECORDS"},
 +    {"OFFLINE CLAUDE OFF: CLAUDE PLAYS LIVE", "OFFLINE CLAUDE ON: A SCRIPTED PLAYER, NO AI TOKENS"},
@@ -1017,7 +1088,8 @@ index fa4fe83..d73675d 100644
 +            PR_AgentToggle(agent_x);
 +        agent_finish("set");
 +    }
-+    else if (!PR_AgentOption(0) && strcmp(agent_verb, "KEY") && strcmp(agent_verb, "SHOT"))
++    else if (!PR_AgentOption(0) && strcmp(agent_verb, "KEY") && strcmp(agent_verb, "SHOT")
++             && strcmp(agent_verb, "RESTART"))    // auto replay restarts a person's game too
 +    {
 +        agent_finish("claude plays is off");
 +    }

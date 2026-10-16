@@ -11,10 +11,11 @@
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
 #   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
 #   --claude-plays                Claude plays instead of you; add it to any mode above,
-#                                 e.g. ./raid.sh replay --claude-plays. It turns auto replay on too.
-#   --loop                        auto replay: once Claude clears the level (or its run ends),
-#                                 every record comes back and Claude plays again, all day
-#   --no-loop                     Claude plays the level once and stops there
+#                                 e.g. ./raid.sh replay --claude-plays
+#   --loop                        auto replay (on unless --no-loop): once the level is clear, you
+#                                 die, or Claude's run ends, every record comes back and the game
+#                                 starts over, all day
+#   --no-loop                     auto replay off: play the level once and stop there
 #   --offline-plays               Claude plays offline: a scripted player that narrates with
 #                                 Claude's lines from earlier runs, no network, no AI tokens. Claude
 #                                 plays also falls back to it when Claude can't run (no network,
@@ -68,8 +69,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Claude playing means auto replay too, unless --no-loop: a cleared level starts over, not sits there.
-if [[ -n "$PLAYS" && -z "$LOOP" ]]; then LOOP=1; fi
+# Auto replay is on unless --no-loop: a cleared level or a death starts over, not sits there.
+if [[ -z "$LOOP" ]]; then LOOP=1; fi
 [[ "$LOOP" == 0 ]] && LOOP=""
 
 # booth loops the last level, or offline with sample data; it never runs a new briefing.
@@ -134,7 +135,7 @@ if [[ -n "$BOOTH" ]]; then
   export CONNECT_DOOM_BOOTH=1
   games=0
   while :; do
-    "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} ${LOOP:+--loop} ${GOD:+--god-mode} ${SAVED:+--saved-data} \
+    "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} "$([[ -n "$LOOP" ]] && echo --loop || echo --no-loop)" ${GOD:+--god-mode} ${SAVED:+--saved-data} \
       ${NOMUSIC:+--no-music} ${NOSFX:+--no-sound-effects} \
       ${OFFLINE:+--offline-plays} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
     games=$((games + 1))
@@ -357,7 +358,8 @@ mouse_sensitivity 6
 CFG
 # The mouse turns but doesn't walk; its right button opens doors. While Claude plays (the
 # Options menu switch), the game leaves the mouse free for clicking through Claude's feed.
-printf 'novert 1\ngrabmouse 1\nmouseb_use 1\n' > state/controls-extra.cfg
+# show_endoom 0: Cmd-Q quits at once, with no ENDOOM text screen waiting for a key.
+printf 'novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\n' > state/controls-extra.cfg
 
 GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
 printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
@@ -371,7 +373,7 @@ fi
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user
 "$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
-  -nopslev -psallusers -warp 1 -skill 3 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
+  -nopslev -psallusers -warp 1 -skill 1 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
   >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
 
 python3 "$BRIDGE" score

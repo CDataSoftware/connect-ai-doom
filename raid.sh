@@ -193,6 +193,7 @@ open_panel() {
   if [[ -n "$STAGE" ]]; then
     osascript -l JavaScript "$PWD/tools/stage.js" "$PANEL_URL/?stage=$GX,$GY,$GW,$GH,$STAGE_W,$ST" >/dev/null 2>&1 &
     PIDS+=($!)
+    export PSDOOM_STAGE_PID=$!   # the game floats while it or the stage is in front
     return
   fi
   open "$PANEL_URL"
@@ -270,12 +271,18 @@ mouseb_strafe -1
 mouseb_forward -1
 mouse_sensitivity 6
 CFG
-# The mouse turns but doesn't walk; its right button opens doors. When Claude plays, the game
-# leaves the mouse free, so people can click through Claude's feed on the panel.
-printf 'novert 1\ngrabmouse %s\nmouseb_use 1\n' "$([[ -n "$PLAYS" ]] && echo 0 || echo 1)" > state/controls-extra.cfg
+# The mouse turns but doesn't walk; its right button opens doors. While Claude plays (the
+# Options menu switch), the game leaves the mouse free for clicking through Claude's feed.
+printf 'novert 1\ngrabmouse 1\nmouseb_use 1\n' > state/controls-extra.cfg
 
 GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
 printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
+
+# Cmd-Q on the stage ends the raid. psdoom ignores SIGTERM, so it gets SIGKILL.
+if [[ -n "${PSDOOM_STAGE_PID:-}" ]]; then
+  ( while kill -0 "$PSDOOM_STAGE_PID" 2>/dev/null; do /bin/sleep 1; done; pkill -9 -P $$ -x psdoom || true ) &
+  PIDS+=($!)
+fi
 
 # -nopslev: spawn monsters into the three arenas of the level
 # -psallusers: don't filter monsters by Unix user

@@ -64,10 +64,10 @@ index afe3974..d987c9a 100644
      HUlib_drawIText(&w_chat);
      if (automapactive)
 diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
-index 15e4a6b..ae6ece2 100644
+index 15e4a6b..ba0a40f 100644
 --- i/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
-@@ -50,9 +50,47 @@
+@@ -50,9 +50,84 @@
  #include "w_wad.h"
  #include "z_zone.h"
  
@@ -80,42 +80,91 @@ index 15e4a6b..ae6ece2 100644
  #define LOADING_DISK_H 16
  
 +// connect-doom: with PSDOOM_FRAMELESS set the window has no title bar, and
-+// on macOS it floats above other windows and the menu bar and the Dock hide
-+// while the game is in front. raid.sh's full-screen layout places the
-+// window inside a page (tools/stage.js) that draws the rest of the screen;
-+// floating keeps the game on top when that page is clicked.
++// on macOS the menu bar and the Dock hide while the game is in front.
++// raid.sh's full-screen layout places the window inside a page
++// (tools/stage.js, process PSDOOM_STAGE_PID) that draws the rest of the
++// screen. The window floats while the game or that page is in front, so
++// clicking the page keeps the game on top; switching to any other app puts
++// it back among normal windows.
 +
 +static int frameless = 0;
++static int floating = -1;   // the window level last set: 1 floating, 0 normal
++
++int PR_AgentOption(int option);   // pr_process.c: 0 is "Claude plays"
++
++#ifdef __APPLE__
++#define MSG(type, ...) ((type) objc_msgSend)
++
++static id SharedApp(void)
++{
++    return MSG(id (*)(id, SEL))((id) objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
++}
++#endif
++
++static void SetFloating(int on)
++{
++#ifdef __APPLE__
++    id windows = MSG(id (*)(id, SEL))(SharedApp(), sel_registerName("windows"));
++    unsigned long i, n;
++
++    n = MSG(unsigned long (*)(id, SEL))(windows, sel_registerName("count"));
++
++    for (i = 0; i < n; ++i)
++    {
++        id window = MSG(id (*)(id, SEL, unsigned long))(windows, sel_registerName("objectAtIndex:"), i);
++
++        // NSFloatingWindowLevel or NSNormalWindowLevel
++        MSG(void (*)(id, SEL, long))(window, sel_registerName("setLevel:"), on ? 3 : 0);
++    }
++#endif
++    floating = on;
++}
 +
 +static void HideMenuBar(void)
 +{
 +#ifdef __APPLE__
-+    id app = ((id (*)(id, SEL)) objc_msgSend)((id) objc_getClass("NSApplication"),
-+                                              sel_registerName("sharedApplication"));
-+    id windows = ((id (*)(id, SEL)) objc_msgSend)(app, sel_registerName("windows"));
-+    unsigned long i, n;
-+
-+    n = ((unsigned long (*)(id, SEL)) objc_msgSend)(windows, sel_registerName("count"));
-+
-+    for (i = 0; i < n; ++i)
-+    {
-+        id window = ((id (*)(id, SEL, unsigned long)) objc_msgSend)(
-+            windows, sel_registerName("objectAtIndex:"), i);
-+
-+        // NSFloatingWindowLevel
-+        ((void (*)(id, SEL, long)) objc_msgSend)(window, sel_registerName("setLevel:"), 3);
-+    }
-+
 +    // NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar
-+    ((void (*)(id, SEL, unsigned long)) objc_msgSend)(
-+        app, sel_registerName("setPresentationOptions:"), (1 << 1) | (1 << 3));
++    MSG(void (*)(id, SEL, unsigned long))(SharedApp(), sel_registerName("setPresentationOptions:"),
++                                          (1 << 1) | (1 << 3));
++#endif
++}
++
++// Is the stage page the app in front?
++static int StageInFront(void)
++{
++#ifdef __APPLE__
++    const char *stage = getenv("PSDOOM_STAGE_PID");
++    id workspace, front;
++
++    if (stage == NULL)
++        return 0;
++
++    workspace = MSG(id (*)(id, SEL))((id) objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
++    front = MSG(id (*)(id, SEL))(workspace, sel_registerName("frontmostApplication"));
++
++    return front != NULL
++        && MSG(int (*)(id, SEL))(front, sel_registerName("processIdentifier")) == atoi(stage);
++#else
++    return 0;
 +#endif
 +}
 +
  // Non aspect ratio-corrected modes (direct multiples of 320x200)
  
  static screen_mode_t *screen_modes[] = {
-@@ -274,6 +312,11 @@ static void UpdateFocus(void)
+@@ -210,6 +285,11 @@ static boolean MouseShouldBeGrabbed()
+     if (!window_focused)
+         return false;
+ 
++    // connect-doom: while Claude plays, leave the mouse free for the panel
++
++    if (PR_AgentOption(0))
++        return false;
++
+     // always grab the mouse when full screen (dont want to 
+     // see the mouse pointer)
+ 
+@@ -274,6 +354,27 @@ static void UpdateFocus(void)
      // Should the screen be grabbed?
  
      screenvisible = (state & SDL_APPACTIVE) != 0;
@@ -123,11 +172,35 @@ index 15e4a6b..ae6ece2 100644
 +    if (frameless && window_focused)
 +    {
 +        HideMenuBar();
++        SetFloating(1);
 +    }
++}
++
++// connect-doom: while the game isn't in front, float only if the stage is
++// (checked a few times a second; focus events don't say which app took over).
++static void UpdateFloating(void)
++{
++    static Uint32 next_check = 0;
++
++    if (!frameless || window_focused || SDL_GetTicks() < next_check)
++        return;
++
++    next_check = SDL_GetTicks() + 300;
++
++    if (StageInFront() != floating)
++        SetFloating(!floating);
  }
  
  static void LoadDiskImage(void)
-@@ -1674,15 +1717,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -879,6 +980,7 @@ void I_FinishUpdate (void)
+     }
+ 
+     UpdateGrab();
++    UpdateFloating();
+ 
+     // Don't update the screen if the window isn't visible.
+     // Not doing this breaks under Windows when we alt-tab away 
+@@ -1674,15 +1776,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
      {
          flags |= SDL_FULLSCREEN;
      }
@@ -149,19 +222,20 @@ index 15e4a6b..ae6ece2 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
-@@ -1693,6 +1738,11 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1693,6 +1797,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
                  w, h, screen_bpp, SDL_GetError());
      }
  
 +    if (frameless)
 +    {
 +        HideMenuBar();
++        SetFloating(1);
 +    }
 +
      // Blank out the full screen area in case there is any junk in
      // the borders that won't otherwise be overwritten.
  
-@@ -1799,6 +1849,7 @@ void I_InitGraphics(void)
+@@ -1799,6 +1909,7 @@ void I_InitGraphics(void)
      // Check for command-line video-related parameters.
  
      CheckCommandLine();

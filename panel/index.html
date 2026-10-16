@@ -767,14 +767,19 @@ function vaultRequest(v) {
   return esc(q) + (params ? ` <span style="opacity:.8">(${esc(params)})</span>` : "");
 }
 
+// replay: the offline player (play.py replay), narrating with Claude's lines from earlier runs
+const claudePlays = game => game?.mode === "claude" || game?.mode === "replay";
+const modeText = game => ({claude: "CLAUDE IS PLAYING · LIVE", replay: "CLAUDE PLAYS · OFFLINE REPLAY"})[game.mode]
+  || "YOU'RE PLAYING · LIVE";
+
 function renderGame(s) {
   const game = s.game;
   document.body.classList.toggle("in-game", !!game);
   $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
   if (!game) return;
-  $("now-mode").textContent = game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE";
-  $("now-keys").hidden = game.mode === "claude";
-  if (!lastEventKey) setHTML($("now-big"), `<div class="hint">${game.mode === "claude"
+  $("now-mode").textContent = modeText(game);
+  $("now-keys").hidden = claudePlays(game);
+  if (!lastEventKey) setHTML($("now-big"), `<div class="hint">${claudePlays(game)
     ? "Claude grabs the keycards, then clears the rooms. Every kill shows up here."
     : "Grab the keycards in the lobby, then clear the rooms. Every kill shows up here."}</div>`);
 
@@ -854,14 +859,14 @@ function renderStage(s, events) {
   setText($("stage-q"), q);
   setText($("stage-ask"), q);
   const briefed = events.some(e => e.kind === "mission");
-  setText($("stage-mode"), game ? (game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE")
+  setText($("stage-mode"), game ? modeText(game)
     : briefed ? "LEVEL READY" : "CLAUDE IS BRIEFING · LIVE");
   const calls = events.filter(e => e.kind === "call").length;
   setText($("stage-progress"), briefed ? `Level built from ${(m?.rooms || []).length} apps. Loading the game...`
     : calls ? `${calls} call${calls === 1 ? "" : "s"} through Connect AI so far` : "");
   // Under the game: Claude's latest line as it plays, or the controls when you play.
   let say = "";
-  if (game?.mode === "claude") {
+  if (claudePlays(game)) {
     const line = playFeed.liveText.trim() || playFeed.lastThought;
     if (line) say = `<span class="tag">CLAUDE</span><span class="txt">${esc(line)}</span>`;
   } else if (game)
@@ -882,7 +887,7 @@ async function tick() {
     feed.apply(events);
     renderMission(s.mission, events, s.rooms_live);
     const play = s.play_events || [];
-    $("play").hidden = !play.length || s.game?.mode !== "claude";
+    $("play").hidden = !play.length || !claudePlays(s.game);
     if (play.length) playFeed.apply(play);
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);

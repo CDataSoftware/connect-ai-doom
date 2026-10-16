@@ -14,8 +14,12 @@
 #                                 e.g. ./raid.sh replay --claude-plays
 #   --loop                        auto replay: once Claude clears the level (or its run ends),
 #                                 every record comes back and Claude plays again, all day
-# Both are also switches in the game's Options menu (Esc > Options), so they can be
-# flipped without restarting.
+#   --offline-plays               Claude plays offline: a scripted player that narrates with
+#                                 Claude's lines from earlier runs, no network. Claude plays also
+#                                 falls back to it when Claude can't run (no network, signed out).
+# Both switches are also in the game's Options menu (Esc > Options), so they can be
+# flipped without restarting; with auto replay on, a minute without a key or the mouse
+# hands the game to Claude (IDLE_SECONDS).
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
 # --demo (offline), brief (brief-only).
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
@@ -45,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     replay|--again) MODE=again; shift ;;
     booth) BOOTH=1; shift ;;
     --claude-plays) PLAYS=1; shift ;;
+    --offline-plays) PLAYS=1; export PLAYER=replay; shift ;;   # booth's games inherit PLAYER
     --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;

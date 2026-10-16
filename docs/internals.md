@@ -34,6 +34,8 @@ raid.sh
 | `POLL_SECONDS`, `MAX_PER_ROOM` | The refresh interval (15) and the most monsters per room (20). |
 | `BRIEF_MODEL`, `PLAY_MODEL`, `PLAY_MAX_TURNS` | The Claude model for the briefing and for Claude plays (sonnet), and Claude plays' turn limit (60). |
 | `REPLAY_GRACE`, `REPLAY_PAUSE` | Auto replay: how long Claude gets after the last kill for the vault and a summary (45 s), and the pause after a run ends before the level restarts (6 s). |
+| `IDLE_SECONDS` | With auto replay on and Claude plays off: how long without a key or the mouse before Claude takes over (60). |
+| `PLAYER=replay` | Claude plays always uses the offline player (`--offline-plays` sets it). |
 | `QUESTION` | The default question for `./raid.sh new`. |
 
 The old mode names still work: `--again` (replay), `--demo` (offline) and `brief` (brief-only).
@@ -47,7 +49,7 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
 - `claude_run.py`: runs Claude Code headless (`claude -p`, stream-json) for `brief.py` and `play.py`: the read-only Connect AI MCP server config, and the event log the panel reads.
 - `connect_doom.py`: the psdoom bridge (`list`, `kill`, `hit`), the poller, the live `lookup` and `vault` checks, `score`/`reset`, and the panel server.
-- `play.py`: Claude plays: a Doom MCP server (`look`, `go_to`, `attack`) over the agent channel, the `claude -p` run that uses it, and `play.py loop`, which follows the Options menu's switches.
+- `play.py`: Claude plays: a Doom MCP server (`look`, `go_to`, `attack`) over the agent channel, the `claude -p` run that uses it, `play.py replay`, the offline player, and `play.py loop`, which follows the Options menu's switches.
 - `tools/make_arena.py`: draws the level on a 16-unit grid of rectangles (rooms, hall, lobby, doors, sign alcoves, vault, window) and derives every wall from where the cells differ; `zdbsp` builds the nodes.
 - `tools/make_branding.py`: brand gray walls with an Agility yellow trim, the per-run signs, the vault's masked walls, the Connect AI logo on the Esc menu, the pause screen and the HUD corner, the CData logotype on the arena signs and the pause screen, and the Options menu's *Claude plays* and *Auto replay* labels. The logos it needs from the CData brand kit are in `assets/brand/`.
 - `tools/make_deh.py`: a DeHackEd patch that rewrites the keycard messages; `# *allow-long-strings*` lets Chocolate Doom take strings longer than the originals.
@@ -70,14 +72,16 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 - The red door: using a red keycard door without the key also runs `PSDOOMVAULTCMD` in the background (at most every 2 seconds), which `raid.sh` points at `connect_doom.py vault`.
 - A small Connect AI logo (`CAICORNR` from `state/brand.wad`) in the view's top-right corner.
 - P pauses as well as Pause (Mac keyboards have no Pause key); the pause screen is `M_PAUSE` from `state/brand.wad`.
-- The agent channel for Claude plays (below).
+- The agent channel for Claude plays (below), and how long since a person last pressed a key or moved the mouse.
 - Two Options menu rows, *Claude plays* and *Auto replay*, in place of *End Game* (a booth visitor would land on the title screen; F7 still ends the game) and *Graphic Detail* (F5 still switches it).
 
 ## Claude plays: the agent channel
 
-With `PSDOOM_AGENT_DIR` set, psdoom reads one command per line from `<dir>/cmd` (`MOVE x y`, `USE`, `TURN deg`, `ATTACK pid`, `KEY code`, `SHOT`, `RESTART`, `STOP`; `KEY` presses a key, which `tools/screenshots.py` uses to open the menus and pause; `RESTART` starts the level over) and writes the player, every data monster, the last finished command and the Options menu's two switches to `<dir>/state.json`. `play.py`'s tools turn those into routes through the hall and doors. Claude plays in god mode with a full chaingun, because it thinks in seconds, not tics.
+With `PSDOOM_AGENT_DIR` set, psdoom reads one command per line from `<dir>/cmd` (`MOVE x y`, `USE`, `TURN deg`, `ATTACK pid`, `KEY code`, `SHOT`, `RESTART`, `OPTION n 0|1`, `STOP`; `KEY` presses a key, which `tools/screenshots.py` uses to open the menus and pause; `RESTART` starts the level over; `OPTION` sets a switch) and writes the player, every data monster, the last finished command, the Options menu's two switches and `idle_seconds` (since a person's last key or mouse event; `KEY` presses don't count) to `<dir>/state.json`. `play.py`'s tools turn those into routes through the hall and doors. Claude plays in god mode with a full chaingun, because it thinks in seconds, not tics.
 
-`raid.sh` always opens the channel and starts `play.py loop`; `--claude-plays` and `--loop` set the switches' starting values (`PSDOOM_AGENT_CLAUDE`, `PSDOOM_AGENT_LOOP`). While *Claude plays* is off the game refuses the commands that steer, and the god mode goes. The loop watches `state.json`: *Claude plays* on starts `play.py run`, off stops it and hands the marine back where it stands. With *Auto replay* on, once the level is clear (after `REPLAY_GRACE`) or the run ends (after `REPLAY_PAUSE`; 60 s if it died within 30 s, say because `claude` isn't signed in), it moves `state/game.json`'s `started` to now, so the bridge lists every record again, sends `RESTART`, and starts a new run. `PLAY_MODEL` (default sonnet) and `PLAY_MAX_TURNS` (default 60) tune it; a 20-turn run costs about $0.13.
+`raid.sh` always opens the channel and starts `play.py loop`; `--claude-plays` and `--loop` set the switches' starting values (`PSDOOM_AGENT_CLAUDE`, `PSDOOM_AGENT_LOOP`). While *Claude plays* is off the game refuses the commands that steer, and the god mode goes. The loop watches `state.json`: *Claude plays* on starts a run, off stops it and hands the marine back where it stands. A run is `play.py run` (Claude) unless `PLAYER=replay`, the level is the offline one, `api.anthropic.com` can't be reached, or a Claude run died within 30 s in the last 5 minutes (say, `claude` isn't signed in): then it's `play.py replay`, and `game.json`'s mode is `replay`, which the panel labels. With *Auto replay* on, once the level is clear (after `REPLAY_GRACE`) or the run ends (after `REPLAY_PAUSE`; 60 s if an offline run died within 30 s), it moves `state/game.json`'s `started` to now, so the bridge lists every record again, sends `RESTART`, and starts a new run; and with *Claude plays* off, `IDLE_SECONDS` without input sends `OPTION 0 1`.
+
+`play.py replay` (`Autopilot`) calls the Doom tools directly in a fixed plan and logs the same events `claude_run.run` logs, with the text streamed a few words at a time. Each finished Claude run's `play.jsonl` is kept in `state/recordings/<level>/`, the level being a hash of the question and its rooms; for each record, the sentences naming it in the line Claude wrote just before attacking it become the offline player's line for that record. It never calls Connect AI. `PLAY_MODEL` (default sonnet) and `PLAY_MAX_TURNS` (default 60) tune it; a 20-turn run costs about $0.13.
 
 `SHOT` saves the frame as `DOOMnn.pcx`, so the mode also runs headless with `SDL_VIDEODRIVER=dummy`, which is how it's tested.
 

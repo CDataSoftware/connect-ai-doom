@@ -18,7 +18,7 @@ from helpers import PAT, ROOT, USER, FakeMCP, fake_claude_env, free_port, tiny_i
 FAKE_PSDOOM = r'''#!/bin/bash
 set -euo pipefail
 printf '%s\n' "$@" > state/psdoom-args.txt
-echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-}" > state/psdoom-agent.txt
+echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-} ${PLAYER:-claude}" > state/psdoom-agent.txt
 echo "${PSDOOM_FRAMELESS:-} ${SDL_VIDEO_WINDOW_POS:-}" > state/psdoom-env.txt
 echo "${PSDOOM_STAGE_PID:-}" > state/psdoom-stage.txt
 for f in state/level.wad state/brand.wad state/level.deh wads/freedoom2.wad; do [[ -s $f ]] || exit 9; done
@@ -126,12 +126,17 @@ class RaidTest(unittest.TestCase):
         self.assertFalse((self.logs / "security.txt").exists(), "demo never looks up a token")
         self.assertIn("CONNECT AI: PII DETECTED IN INBOUND QUERY", (self.state / "level.deh").read_text())
         # the agent channel is always open, so Claude plays can be switched on from the Options menu
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 claude\n")
 
     def test_claude_plays_on_a_loop(self):
         r = self.raid("offline", "--claude-plays", "--loop", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 claude\n")
+
+    def test_offline_plays(self):
+        r = self.raid("offline", "--offline-plays", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 replay\n")
 
     def test_live_run_with_panel(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:

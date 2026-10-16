@@ -55,6 +55,7 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
 ./raid.sh booth                     # replay game after game, for a booth
 ./raid.sh booth offline             # the same with made-up data, no account needed
+./raid.sh offline --offline-plays   # Claude plays offline: no network at all
 ```
 
 | Mode | Claude briefing | Game |
@@ -67,14 +68,16 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 
 The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the panel ends the game; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, E to open doors, Shift to run, P to pause.
 
-**Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on.
+**Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on. With *Auto replay* on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
+
+**Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 
 **At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `./raid.sh booth`. Each player's game ends with Esc → *Quit Game* → Y, and the next one starts 10 seconds later with all the records back, on the same full screen (`BOOTH_PAUSE` changes the wait). Ctrl-C in the Terminal stops it. The screen stays awake while `raid.sh` runs. On a Mac with no Connect AI account, or no level yet, `booth` plays offline with made-up data; `./raid.sh booth offline` does that on purpose.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
 - **If the Wi-Fi is slow or down**, each Connect AI call gets 20 seconds (`CONNECT_AI_TIMEOUT`). After that the game plays the records this level last fetched; if it never fetched any, it plays offline and keeps your level for the next game. Kills still count; the panel shows their live lookups as failed until the Wi-Fi is back.
 - **`offline` keeps your level.** After an offline game, `replay` plays your real level again.
-- **Between visitors**, `replay --claude-plays --loop` keeps Claude playing on its own, all day. A visitor can turn Claude plays off in the Options menu, play, and turn it back on. Each Claude run is up to 60 turns, at about $0.13 per 20.
+- **Between visitors**, `./raid.sh booth --claude-plays --loop` keeps Claude playing on its own, all day, and starts the game again if it quits or crashes. A visitor can turn Claude plays off in the Options menu and play; a minute after they walk away, Claude takes over again. If the network drops, the offline player carries on. Each Claude run is up to 60 turns, at about $0.13 per 20. A crash can leave a macOS "quit unexpectedly" alert on screen to click away.
 
 ## How it works
 

@@ -34,9 +34,12 @@ echo "game over"
 FAKE_ZDBSP = '#!/bin/bash\n[[ $1 == -o ]] && cp "$3" "$2"\n'
 FAKE_OPEN = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/open.txt"\n'
 # The screen query answers like a 14" MacBook Pro: 1512x982 with a 32 px notch strip. Other calls
-# (the stage) are logged.
+# (the stage) are logged, and stay up like the real stage until raid.sh kills it: raid.sh ends the
+# game when the stage quits.
 FAKE_OSASCRIPT = r'''#!/bin/bash
-if [[ "$*" == *NSScreen* ]]; then echo "${FAKE_SCREEN:-0 0 1512 982 32}"; else printf '%s\n' "$*" >> "$FAKE_LOG_DIR/osascript.txt"; fi
+if [[ "$*" == *NSScreen* ]]; then echo "${FAKE_SCREEN:-0 0 1512 982 32}"; exit; fi
+printf '%s\n' "$*" >> "$FAKE_LOG_DIR/osascript.txt"
+exec /bin/sleep 120
 '''
 FAKE_SECURITY = r'''#!/bin/bash
 # a one-item Keychain in $FAKE_LOG_DIR/keychain

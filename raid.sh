@@ -5,6 +5,7 @@
 #   ./raid.sh new -q "<question>" ask Claude your own question, then play
 #   ./raid.sh replay              play the last level again (no new Claude run)
 #   ./raid.sh booth               replay over and over: the next game starts a few seconds after one ends
+#   ./raid.sh booth offline       the same with made-up data; booth plays offline anyway without a token
 #   ./raid.sh offline             made-up data, no network
 #   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
@@ -27,7 +28,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS="" LOOP=""
+MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -42,7 +43,7 @@ while [[ $# -gt 0 ]]; do
     new) MODE=live; shift ;;
     offline|--demo) MODE=demo; shift ;;
     replay|--again) MODE=again; shift ;;
-    booth) MODE=booth; shift ;;
+    booth) BOOTH=1; shift ;;
     --claude-plays) PLAYS=1; shift ;;
     --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
@@ -51,19 +52,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$MODE" == booth ]]; then
-  # Back-to-back replays for a booth. The screen stays awake between games; Ctrl-C in this
-  # Terminal stops it. BOOTH_PAUSE sets the seconds between games, BOOTH_GAMES a limit.
-  if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
-  games=0
-  while :; do
-    "$PWD/raid.sh" replay ${PLAYS:+--claude-plays} ${LOOP:+--loop} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
-    games=$((games + 1))
-    if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
-    echo "Next game in ${BOOTH_PAUSE:-10} seconds. Ctrl-C to stop."
-    /bin/sleep "${BOOTH_PAUSE:-10}"
-  done
-fi
+# booth loops the last level, or offline with made-up data; it never runs a new briefing.
+if [[ -n "$BOOTH" && "$MODE" != demo ]]; then MODE=again; fi
 
 if [[ ! -x "$PSDOOM" || ! -f wads/freedoom2.wad ]] && [[ "$MODE" != doctor ]]; then
   echo "The game isn't built yet: run ./setup.sh first." >&2
@@ -89,7 +79,10 @@ if [[ "$MODE" != demo ]]; then
     security add-generic-password -U -s connect-doom -a "$CONNECT_AI_USER" \
       -l "Connect AI PAT (connect-doom)" -w "$CONNECT_AI_PAT"
   fi
-  if [[ -z "${CONNECT_AI_PAT:-}" && "$MODE" != doctor ]]; then
+  if [[ -z "${CONNECT_AI_PAT:-}" && -n "$BOOTH" ]]; then
+    echo "No Connect AI account on this Mac, so booth mode plays offline, with made-up data." >&2
+    MODE=demo
+  elif [[ -z "${CONNECT_AI_PAT:-}" && "$MODE" != doctor ]]; then
     echo "No Connect AI token: run ./raid.sh login (or set CONNECT_AI_USER and CONNECT_AI_PAT)." >&2
     echo "To play offline with made-up data: ./raid.sh offline" >&2
     exit 1
@@ -97,8 +90,29 @@ if [[ "$MODE" != demo ]]; then
   export CONNECT_AI_USER CONNECT_AI_PAT
 fi
 
+if [[ -n "$BOOTH" ]]; then
+  # Back-to-back games for a booth. The screen stays awake between games; Ctrl-C in this
+  # Terminal stops it. BOOTH_PAUSE sets the seconds between games, BOOTH_GAMES a limit.
+  # Without Connect AI a replay falls back to saved records or offline by itself (see below).
+  if [[ "$MODE" == again && ! -f state/mission.json ]]; then
+    echo "No level on this Mac yet (./raid.sh new makes one), so booth mode plays offline, with made-up data." >&2
+    MODE=demo
+  fi
+  GAME=replay; [[ "$MODE" == demo ]] && GAME=offline
+  if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
+  games=0
+  while :; do
+    "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} ${LOOP:+--loop} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
+    games=$((games + 1))
+    if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
+    echo "Next game in ${BOOTH_PAUSE:-10} seconds. Ctrl-C to stop."
+    /bin/sleep "${BOOTH_PAUSE:-10}"
+  done
+fi
+
 if [[ "$MODE" == doctor ]]; then
   # One line per check; an x line says what to run. Exits 1 if anything needed to play is missing.
+  # Without a token only offline play is checked: offline and booth work without one.
   BAD=0
   ok() { echo "  ✓ $*"; }
   no() { echo "  ✗ $*"; BAD=1; }
@@ -111,19 +125,30 @@ if [[ "$MODE" == doctor ]]; then
   if python3 -c 'import PIL' 2>/dev/null; then ok "Pillow"; else no "Pillow is missing: run ./setup.sh"; fi
   if command -v claude >/dev/null; then ok "Claude Code CLI, for ./raid.sh new"
   else note "no Claude Code CLI: replay and offline work, new needs it"; fi
+  ANSWERS=""
   if [[ -n "${CONNECT_AI_PAT:-}" ]]; then
     ok "Connect AI token for ${CONNECT_AI_USER:-?}"
     if n=$(python3 -c 'import connect_ai_mcp as c; print(len(c.Client(timeout=15).connections()))' 2>&1); then
-      ok "Connect AI answers: $n connections"
+      ok "Connect AI answers: $n connections"; ANSWERS=1
     else
       no "Connect AI didn't answer (${n##*$'\n'}). Check the Wi-Fi and the token, or play ./raid.sh offline"
     fi
   else
-    no "no Connect AI token: run ./raid.sh login (./raid.sh offline works without one)"
+    note "no Connect AI token: ./raid.sh offline and ./raid.sh booth play made-up data; ./raid.sh login for yours"
   fi
   if [[ -f state/mission.json ]]; then
     ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"
-  else note "no level yet: run ./raid.sh new once, then replay plays it"; fi
+    if [[ -n "$ANSWERS" ]] && grep -q '"query"' state/mission.json; then
+      echo "  … running this level's queries (up to ${CONNECT_AI_TIMEOUT:-20} s each)"
+      while IFS=$'\t' read -r status text; do
+        case "$status" in
+          ok) ok "$text" ;;
+          error) no "$text" ;;
+          *) note "$text" ;;
+        esac
+      done < <(python3 "$BRIDGE" check 2>/dev/null || true)
+    fi
+  elif [[ -n "${CONNECT_AI_PAT:-}" ]]; then note "no level yet: run ./raid.sh new once, then replay plays it"; fi
   if [[ "$(cat vendor/src/psdoom-ng/.connect-doom-patch 2>/dev/null)" == "$(shasum -a 256 patches/psdoom-ng-connect-doom.patch | cut -d' ' -f1)" ]]
   then ok "the game build is current, for the full-screen layout"
   else no "the game was built from an older patch: run ./setup.sh again"; fi
@@ -135,7 +160,8 @@ if [[ "$MODE" == doctor ]]; then
     Math.round(v.size.width) + "x" + Math.round(v.size.height)' 2>/dev/null || true)
   [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the main screen"
   if ((BAD)); then echo "Not ready: fix the ✗ lines."; exit 1; fi
-  echo "Ready: ./raid.sh replay plays the last level, ./raid.sh new makes a fresh one."
+  if [[ -n "${CONNECT_AI_PAT:-}" ]]; then echo "Ready: ./raid.sh booth plays the last level game after game, ./raid.sh new makes a fresh one."
+  else echo "Ready to play offline: ./raid.sh booth plays made-up data game after game."; fi
   exit
 fi
 

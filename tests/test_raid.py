@@ -18,7 +18,7 @@ from helpers import PAT, ROOT, USER, FakeMCP, fake_claude_env, free_port, tiny_i
 FAKE_PSDOOM = r'''#!/bin/bash
 set -euo pipefail
 printf '%s\n' "$@" > state/psdoom-args.txt
-echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-} ${PLAYER:-claude}" > state/psdoom-agent.txt
+echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-} ${PSDOOM_OPT_GOD:-} ${PSDOOM_OPT_SAVED:-} ${PSDOOM_OPT_OFFLINE:-}" > state/psdoom-agent.txt
 echo "${PSDOOM_FRAMELESS:-} ${SDL_VIDEO_WINDOW_POS:-}" > state/psdoom-env.txt
 echo "${PSDOOM_STAGE_PID:-}" > state/psdoom-stage.txt
 for f in state/level.wad state/brand.wad state/level.deh wads/freedoom2.wad; do [[ -s $f ]] || exit 9; done
@@ -129,17 +129,37 @@ class RaidTest(unittest.TestCase):
         self.assertFalse((self.logs / "security.txt").exists(), "demo never looks up a token")
         self.assertIn("CONNECT AI: PII DETECTED IN INBOUND QUERY", (self.state / "level.deh").read_text())
         # the agent channel is always open, so Claude plays can be switched on from the Options menu
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 claude\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 0 0 0\n")
 
     def test_claude_plays_on_a_loop(self):
         r = self.raid("offline", "--claude-plays", "--loop", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 claude\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 0 0 0\n")
 
     def test_offline_plays(self):
         r = self.raid("offline", "--offline-plays", env=dict(os.environ))
         self.assert_played(r)
-        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 replay\n")
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 0 0 1\n")
+
+    def test_god_mode_and_saved_data_flags(self):
+        r = self.raid("offline", "--god-mode", "--saved-data", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 1 1 0\n")
+
+    def test_a_booth_keeps_the_menus_switches(self):
+        """Booth games each start psdoom again: the switches staff set in the Options menu
+        (play.py saves them in state/options.json) carry over; a game outside a booth starts fresh."""
+        options = self.state / "options.json"
+        self.state.mkdir(exist_ok=True)
+        options.write_text(json.dumps({"claude_plays": 1, "auto_replay": 0, "god_mode": 1, "saved_data": 0,
+                                       "offline_claude": 1}))
+        r = self.raid("offline", env={**os.environ, "CONNECT_DOOM_BOOTH": "1"})
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 1 0 1\n")
+        r = self.raid("offline", env=dict(os.environ))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 0 0 0 0\n")
+        self.assertFalse(options.exists())
 
     def test_live_run_with_panel(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:

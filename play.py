@@ -533,6 +533,14 @@ def set_game(**fields):
     tmp.replace(path)
 
 
+def save_options(opts):
+    """Keep the menu's switches in state/options.json for the next game of a booth session
+    (raid.sh reads them)."""
+    tmp = STATE / "options.json.tmp"
+    tmp.write_text(json.dumps(opts) + "\n")
+    tmp.replace(STATE / "options.json")
+
+
 def online():
     """Can Claude Code reach Anthropic's API? A plain TCP connect, three seconds at most."""
     try:
@@ -552,7 +560,9 @@ class Supervisor:
     REPLAY_GRACE for the vault and a summary) or a run that ended starts over: every record
     back (a new game.json start, so the bridge lists them all again), the level restarted, and
     a new run; and with Claude plays off, IDLE_SECONDS without a key or the mouse hands the
-    game to Claude. One step per tick()."""
+    game to Claude. The menu's offline Claude switch (or PLAYER=replay) always picks the offline
+    player, and flipping it mid-run swaps the player where the marine stands. The switches are
+    saved for a booth's next game. One step per tick()."""
 
     def __init__(self, game, start=None, clock=time.time, online=online):
         self.game, self.clock, self.online = game, clock, online
@@ -562,6 +572,7 @@ class Supervisor:
         self.started = self.cleared_at = self.ended_at = self.offline_since = None
         self.checked = 0           # when the network was last checked during a Claude run
         self.seen_alive = False    # a level with no records never counts as clear
+        self.opts = {}
 
     def tick(self):
         try:
@@ -569,6 +580,12 @@ class Supervisor:
         except RuntimeError:
             return  # the game isn't up yet
         opts = s.get("options", {})
+        if opts != self.opts:
+            save_options(opts)
+            if self.proc and opts.get("offline_claude") != self.opts.get("offline_claude"):
+                self.stop()            # the offline Claude switch: swap players where the marine stands
+                self.ended_at = None
+            self.opts = dict(opts)
         now = self.clock()
         alive = [m for m in s["monsters"] if m["health"] > 0]
         self.seen_alive = self.seen_alive or bool(alive)
@@ -620,7 +637,7 @@ class Supervisor:
             offline_level = all("rows" in r for r in mission()["rooms"])   # connect_doom.is_offline
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             offline_level = False
-        if PLAYER == "replay" or failed or offline_level or not self.online():
+        if PLAYER == "replay" or self.opts.get("offline_claude") or failed or offline_level or not self.online():
             return "replay"
         return "claude"
 

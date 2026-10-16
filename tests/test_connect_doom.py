@@ -304,6 +304,35 @@ class PollCLITest(unittest.TestCase):
             self.assertEqual(entry["request"], request)
             self.assertGreaterEqual(entry["ms"], 0)
 
+    def test_saved_data_switch_asks_connect_ai_nothing(self):
+        """The Options menu's saved data switch: the level's last saved records, and no Connect AI
+        call for the refresh, a kill's live read or the red door (the MCP URL here goes nowhere)."""
+        with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
+            mission = {"rooms": [{"connection": "Zendesk1", "app": "Zendesk", "query": query("Zendesk1")}],
+                       "denied": [{"connection": "PII", "tool": "queryData", "request": {"query": "SELECT 1"},
+                                   "error": "old"}]}
+            (Path(tmp) / "mission.json").write_text(json.dumps(mission))
+            live = {"CONNECT_AI_MCP_URL": mcp.url, "CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}
+            self.assertEqual(bridge(tmp, "poll", "--once", env=live).returncode, 0)   # saves the records
+            (Path(tmp) / "agent").mkdir()
+            (Path(tmp) / "agent" / "state.json").write_text(json.dumps({"options": {"saved_data": 1}}))
+            dead = {**live, "CONNECT_AI_MCP_URL": "http://127.0.0.1:9/mcp"}
+            r = bridge(tmp, "poll", "--once", env=dead)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("saved data: the records from", r.stderr)
+            self.assertNotIn("poll failed", r.stderr)
+            self.assertEqual(json.loads((Path(tmp) / "cache.json").read_text())["source"], "saved-data")
+            pid = bridge(tmp, "list").stdout.split()[1]
+            bridge(tmp, "kill", pid, env=dead)
+            bridge(tmp, "vault", env=dead)
+            time.sleep(0.5)
+            self.assertFalse((Path(tmp) / "lookups.jsonl").exists())
+            self.assertFalse((Path(tmp) / "vault.jsonl").exists())
+            # before the game is up, a booth's saved switches decide
+            (Path(tmp) / "agent" / "state.json").unlink()
+            (Path(tmp) / "options.json").write_text(json.dumps({"saved_data": 0}))
+            self.assertIn("connect-ai-mcp", bridge(tmp, "poll", "--once", env=live).stderr)
+
     def test_poll_times_each_room(self):
         with tempfile.TemporaryDirectory() as tmp, FakeMCP() as mcp:
             rooms = [{"connection": "Zendesk1", "app": "Zendesk", "query": query("Zendesk1")},

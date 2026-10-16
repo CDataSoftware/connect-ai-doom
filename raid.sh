@@ -15,11 +15,14 @@
 #   --loop                        auto replay: once Claude clears the level (or its run ends),
 #                                 every record comes back and Claude plays again, all day
 #   --offline-plays               Claude plays offline: a scripted player that narrates with
-#                                 Claude's lines from earlier runs, no network. Claude plays also
-#                                 falls back to it when Claude can't run (no network, signed out).
-# Both switches are also in the game's Options menu (Esc > Options), so they can be
-# flipped without restarting; with auto replay on, a minute without a key or the mouse
-# hands the game to Claude (IDLE_SECONDS).
+#                                 Claude's lines from earlier runs, no network, no AI tokens. Claude
+#                                 plays also falls back to it when Claude can't run (no network,
+#                                 signed out).
+#   --god-mode                    players can't die
+#   --saved-data                  play the level's last saved records; nothing asks Connect AI
+# All five switches are also in the game's Options menu (Esc > Options), so they can be
+# flipped without restarting, and a booth keeps them from one game to the next; with auto
+# replay on, a minute without a key or the mouse hands the game to Claude (IDLE_SECONDS).
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
 # --demo (offline), brief (brief-only).
 # The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
@@ -33,7 +36,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH=""
+MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -50,7 +53,9 @@ while [[ $# -gt 0 ]]; do
     replay|--again) MODE=again; shift ;;
     booth) BOOTH=1; shift ;;
     --claude-plays) PLAYS=1; shift ;;
-    --offline-plays) PLAYS=1; export PLAYER=replay; shift ;;   # booth's games inherit PLAYER
+    --offline-plays) PLAYS=1 OFFLINE=1; shift ;;
+    --god-mode) GOD=1; shift ;;
+    --saved-data) SAVED=1; shift ;;
     --loop|--auto-replay) LOOP=1; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
@@ -114,15 +119,32 @@ if [[ -n "$BOOTH" ]]; then
   fi
   GAME=replay; [[ "$MODE" == demo ]] && GAME=offline
   if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
+  # The Options menu's switches carry over from game to game (play.py keeps them in
+  # state/options.json); a new booth session starts from the flags.
+  rm -f state/options.json
+  export CONNECT_DOOM_BOOTH=1
   games=0
   while :; do
-    "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} ${LOOP:+--loop} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
+    "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} ${LOOP:+--loop} ${GOD:+--god-mode} ${SAVED:+--saved-data} \
+      ${OFFLINE:+--offline-plays} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
     games=$((games + 1))
     if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
     echo "Next game in ${BOOTH_PAUSE:-10} seconds. Ctrl-C to stop."
     /bin/sleep "${BOOTH_PAUSE:-10}"
   done
 fi
+
+# The Options menu's switches: the flags, or in a booth the last game's (state/options.json).
+if [[ -z "${CONNECT_DOOM_BOOTH:-}" ]]; then
+  rm -f state/options.json
+elif [[ -f state/options.json ]]; then
+  read -r PLAYS LOOP GOD SAVED OFFLINE < <(python3 -c 'import json
+o = json.load(open("state/options.json"))
+print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mode", "saved_data", "offline_claude")])' \
+    2>/dev/null || true)
+  for v in PLAYS LOOP GOD SAVED OFFLINE; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
+fi
+export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
 
 if [[ "$MODE" == doctor ]]; then
   # One line per check; an x line says what to run. Exits 1 if anything needed to play is missing.

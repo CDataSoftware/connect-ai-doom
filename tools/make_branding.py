@@ -11,7 +11,8 @@
   M_DOOM   the menu logo becomes the Connect AI logo.
   M_PAUSE  the pause screen: the Connect AI logo, a ×, DOOM, then the CData logotype.
   CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
-  M_CLAUDE, M_AUTORP  the Options menu's "Claude plays:" and "Auto replay:" rows, in
+  M_CLAUDE, M_AUTORP, M_GODMOD, M_SAVED, M_OFFAI  the Options menu's switches ("Claude
+           plays:", "Auto replay:", "God mode:", "Saved data:", "Offline Claude:"), in
            the stock labels' red shading.
 
 With --mission (state/mission.json from brief.py) it also draws the run's signs:
@@ -41,6 +42,9 @@ FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
 MENU_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"  # closest to Freedoom's menu font
 # The stock menu labels' reds, row by row from the top (sampled from M_MESSG).
 MENU_REDS = [167, 255, 255, 239, 215, 199, 179, 167, 155, 139, 127, 115, 103, 79, 67]
+# The Options menu's switches (psdoom's PR_AgentOption order), each label drawn like the stock ones.
+MENU_SWITCHES = [("M_CLAUDE", "CLAUDE PLAYS:"), ("M_AUTORP", "AUTO REPLAY:"), ("M_GODMOD", "GOD MODE:"),
+                 ("M_SAVED", "SAVED DATA:"), ("M_OFFAI", "OFFLINE CLAUDE:")]
 LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds
 CDATA = "cdata.png"      # the brand kit's cdata-logotype-clarity.png
 
@@ -308,8 +312,7 @@ def build(iwad, kit, out, mission=None):
         out_lumps.append(("M_PAUSE", to_patch(pause, palette, left=(pause.width - 68) // 2)))
         out_lumps.append(("CAICORNR", to_patch(corner_image(kit), palette)))
     # The menu draws labels at the item's position minus the patch offsets; top=1 as stock.
-    out_lumps += [("M_CLAUDE", to_patch(menu_label("CLAUDE PLAYS:"), palette, top=1)),
-                  ("M_AUTORP", to_patch(menu_label("AUTO REPLAY:"), palette, top=1))]
+    out_lumps += [(lump, to_patch(menu_label(text), palette, top=1)) for lump, text in MENU_SWITCHES]
     out_lumps += [(f"P{n[3:]}"[:8], to_patch(img, palette)) for n, img in extra]
     data, directory, pos = b"", b"", 12
     for name, blob in out_lumps:

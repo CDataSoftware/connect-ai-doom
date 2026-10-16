@@ -154,6 +154,12 @@ class PanelTest(unittest.TestCase):
                           game={"mode": "player", "started": 0})
         self.assertIn("Saved Oct 15, 15:35: Connect AI isn't answering", ids["rooms-live"]["html"])
         self.assertNotIn("Live:", ids["rooms-live"]["html"])
+        # the Options menu's saved data switch: by choice, so no error styling
+        ids = self.render(rooms_live=rooms, records={"source": "saved-data", "fetched_at": fetched},
+                          game={"mode": "player", "started": 0})
+        self.assertIn('<div class="live">Saved data (Options menu): the records from Oct 15, 15:35',
+                      ids["rooms-live"]["html"])
+        self.assertNotIn("Live:", ids["rooms-live"]["html"])
 
     def test_all_rooms_clear(self):
         kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "", "writable": True,

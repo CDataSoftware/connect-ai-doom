@@ -323,6 +323,28 @@ class SupervisorTest(StateDirTest):
         self.tick()
         self.assertEqual(len(self.procs), 2)                                 # back on: a new run
 
+    def test_offline_claude_switch(self):
+        """The menu's offline Claude switch: the scripted player (no AI tokens), swapped in mid-run."""
+        self.switches(True)
+        self.tick()
+        self.assertEqual(self.players, ["claude"])
+        self.game.s["options"]["offline_claude"] = 1
+        self.tick()
+        self.assertEqual(self.procs[0].returncode, -15)                      # Claude's run stops
+        self.tick()
+        self.assertEqual((self.players, self.mode()), (["claude", "replay"], "replay"))
+        self.game.s["options"]["offline_claude"] = 0
+        self.tick()
+        self.tick()
+        self.assertEqual(self.players, ["claude", "replay", "claude"])      # and back to Claude
+
+    def test_switches_are_saved_for_the_next_booth_game(self):
+        self.switches(True, replay=True)
+        self.game.s["options"]["god_mode"] = 1
+        self.tick()
+        saved = json.loads((self.state / "options.json").read_text())
+        self.assertEqual(saved, {"claude_plays": 1, "auto_replay": 1, "god_mode": 1})
+
     def test_a_finished_run_waits_without_auto_replay(self):
         self.switches(True)
         self.tick()

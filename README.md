@@ -56,7 +56,8 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 ./raid.sh replay --claude-plays --loop   # Claude plays it again and again, all day
 ./raid.sh booth                     # replay game after game, for a booth
 ./raid.sh booth offline             # the same with made-up data, no account needed
-./raid.sh offline --offline-plays   # Claude plays offline: no network at all
+./raid.sh offline --offline-plays   # Claude plays offline: no network at all, no AI tokens
+./raid.sh booth --god-mode --saved-data   # nobody dies, and nothing asks Connect AI
 ```
 
 | Mode | Claude briefing | Game |
@@ -69,7 +70,15 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 
 The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the panel ends the game; `LAYOUT=off` plays in a normal window instead. **Controls:** WASD to move, the mouse to turn, click or Space to fire, walk into a door to open it (or press E), Shift to run, P to pause.
 
-**Switch who plays mid-game** in the Options menu (Esc → Options): *Claude plays* hands the marine to Claude or takes it back, and *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. Both are off unless `--claude-plays` or `--loop` turned them on. With *Auto replay* on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
+**Switch things mid-game** in the Options menu (Esc → Options):
+
+- *Claude plays* hands the marine to Claude or takes it back.
+- *Auto replay* restarts the level with every record back once Claude clears it (or its run ends), then lets Claude play again. With it on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
+- *God mode*: players can't die, so nobody's turn ends early.
+- *Saved data* plays the level's last saved records and calls Connect AI for nothing: no refresh, no live read on a kill, no live check at the red door. For when the Wi-Fi is up but slow.
+- *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
+
+Each is off unless its flag turned it on: `--claude-plays`, `--loop`, `--god-mode`, `--saved-data`, `--offline-plays`. In a booth, the switches carry over from one game to the next.
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 

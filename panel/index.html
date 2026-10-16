@@ -773,8 +773,11 @@ function gameEvents(s) {
 
 // A room's last refresh through Connect AI (the poller re-runs its query every 15 s).
 function refreshed(r, records) {
+  const when = () => new Date(records.fetched_at * 1000).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false});
   if (records?.source === "saved")   // Connect AI didn't answer at launch: the level's last good records
-    return `<div class="live err">Saved ${new Date(records.fetched_at * 1000).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false})}: Connect AI isn't answering</div>`;
+    return `<div class="live err">Saved ${when()}: Connect AI isn't answering</div>`;
+  if (records?.source === "saved-data")   // the Options menu's saved data switch: Connect AI isn't asked
+    return `<div class="live">Saved data (Options menu): the records from ${when()}</div>`;
   if (!r) return "";
   if (r.error) return `<div class="live err">Refresh failed: ${esc(r.error)}</div>`;
   const ago = Math.max(0, Math.round(Date.now() / 1000 - r.at));

@@ -261,47 +261,63 @@ index 15e4a6b..ba0a40f 100644
      // Set up title and icon.  Windows cares about the ordering; this
      // has to be done before the call to SDL_SetVideoMode.
 diff --git i/trunk/src/m_menu.c w/trunk/src/m_menu.c
-index 7144f71..638828f 100644
+index 7144f71..ce2c8bf 100644
 --- i/trunk/src/m_menu.c
 +++ w/trunk/src/m_menu.c
-@@ -220,6 +220,10 @@ void M_ReadThis2(int choice);
+@@ -220,6 +220,13 @@ void M_ReadThis2(int choice);
  void M_QuitDOOM(int choice);
  
  void M_ChangeMessages(int choice);
 +void M_ChangeClaudePlays(int choice);
 +void M_ChangeAutoReplay(int choice);
++void M_ChangeGodMode(int choice);
++void M_ChangeSavedData(int choice);
++void M_ChangeOfflineClaude(int choice);
 +int PR_AgentOption(int option);       // connect-doom (pr_process.c)
 +void PR_AgentToggle(int option);
  void M_ChangeSensitivity(int choice);
  void M_SfxVol(int choice);
  void M_MusicVol(int choice);
-@@ -366,9 +370,11 @@ menu_t  NewDef =
+@@ -366,24 +373,27 @@ menu_t  NewDef =
  //
  enum
  {
 -    endgame,
-+    claudeplays,  // connect-doom: Claude plays, and auto replay, switched in game
-+    autoreplay,
-+    // connect-doom: no End Game row (a booth visitor would land on the title screen; F7
-+    // still ends the game) and no Graphic Detail row (F5 still switches it), so it fits
-     messages,
+-    messages,
 -    detail,
-     scrnsize,
-     option_empty1,
+-    scrnsize,
+-    option_empty1,
++    claudeplays,  // connect-doom: the booth's switches, in PR_AgentOption's order
++    autoreplay,
++    godmode,
++    saveddata,
++    offlineclaude,
++    // connect-doom: no End Game row (a booth visitor would land on the title screen; F7
++    // still ends the game), no Graphic Detail row (F5 still switches it), no Messages row
++    // (F8 still switches them) and no Screen Size row (- and + still resize), so it fits
      mousesens,
-@@ -379,9 +385,9 @@ enum
+-    option_empty2,
++    option_empty1,
+     soundvol,
+     opt_end
+ } options_e;
  
  menuitem_t OptionsMenu[]=
  {
 -    {1,"M_ENDGAM",	M_EndGame,'e'},
+-    {1,"M_MESSG",	M_ChangeMessages,'m'},
+-    {1,"M_DETAIL",	M_ChangeDetail,'g'},
+-    {2,"M_SCRNSZ",	M_SizeDisplay,'s'},
+-    {-1,"",0,'\0'},
 +    {1,"M_CLAUDE",	M_ChangeClaudePlays,'c'},
 +    {1,"M_AUTORP",	M_ChangeAutoReplay,'a'},
-     {1,"M_MESSG",	M_ChangeMessages,'m'},
--    {1,"M_DETAIL",	M_ChangeDetail,'g'},
-     {2,"M_SCRNSZ",	M_SizeDisplay,'s'},
-     {-1,"",0,'\0'},
++    {1,"M_GODMOD",	M_ChangeGodMode,'g'},
++    {1,"M_SAVED",	M_ChangeSavedData,'d'},
++    {1,"M_OFFAI",	M_ChangeOfflineClaude,'o'},
      {2,"M_MSENS",	M_ChangeSensitivity,'m'},
-@@ -1011,16 +1017,26 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
+     {-1,"",0,'\0'},
+     {1,"M_SVOL",	M_Sound,'s'}
+@@ -1011,21 +1021,24 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
  
  void M_DrawOptions(void)
  {
@@ -313,12 +329,11 @@ index 7144f71..638828f 100644
 -		       W_CacheLumpName(DEH_String(detailNames[detailLevel]),
 -			               PU_CACHE));
 -
-     V_DrawPatchDirect (OptionsDef.x + 120,OptionsDef.y+LINEHEIGHT*messages,0,
- 		       W_CacheLumpName(DEH_String(msgNames[showMessages]),
- 				       PU_CACHE));
- 
-+    // connect-doom: ON / OFF just right of the "Claude plays:" and "Auto replay:" labels
-+    for (i = claudeplays; i <= autoreplay; i++)
+-    V_DrawPatchDirect (OptionsDef.x + 120,OptionsDef.y+LINEHEIGHT*messages,0,
+-		       W_CacheLumpName(DEH_String(msgNames[showMessages]),
+-				       PU_CACHE));
++    // connect-doom: ON / OFF just right of each switch's label
++    for (i = claudeplays; i <= offlineclaude; i++)
 +    {
 +        patch_t *label, *onoff;
 +        if (!OptionsMenu[i].name[0])
@@ -328,11 +343,16 @@ index 7144f71..638828f 100644
 +        V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
 +                           OptionsDef.y+LINEHEIGHT*i,0,onoff);
 +    }
-+
+ 
      M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(mousesens+1),
  		 10,mouseSensitivity);
- 	
-@@ -1053,6 +1069,18 @@ void M_ChangeMessages(int choice)
+-	
+-    M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
+-		 9,screenSize);
+ }
+ 
+ void M_Options(int choice)
+@@ -1053,6 +1066,33 @@ void M_ChangeMessages(int choice)
  }
  
  
@@ -347,11 +367,26 @@ index 7144f71..638828f 100644
 +    PR_AgentToggle(1);
 +}
 +
++void M_ChangeGodMode(int choice)
++{
++    PR_AgentToggle(2);
++}
++
++void M_ChangeSavedData(int choice)
++{
++    PR_AgentToggle(3);
++}
++
++void M_ChangeOfflineClaude(int choice)
++{
++    PR_AgentToggle(4);
++}
++
 +
  //
  // M_EndGame
  //
-@@ -2009,6 +2037,8 @@ void M_Ticker (void)
+@@ -2009,6 +2049,8 @@ void M_Ticker (void)
  //
  void M_Init (void)
  {
@@ -360,12 +395,12 @@ index 7144f71..638828f 100644
      currentMenu = &MainDef;
      menuactive = 0;
      itemOn = currentMenu->lastOn;
-@@ -2020,6 +2050,16 @@ void M_Init (void)
+@@ -2020,6 +2062,16 @@ void M_Init (void)
      messageLastMenuActive = menuactive;
      quickSaveSlot = -1;
  
-+    // connect-doom: the Claude rows' labels come from state/brand.wad; without it, blank rows
-+    for (i = claudeplays; i <= autoreplay; i++)
++    // connect-doom: the switches' labels come from state/brand.wad; without it, blank rows
++    for (i = claudeplays; i <= offlineclaude; i++)
 +    {
 +        if (W_CheckNumForName(OptionsMenu[i].name) < 0)
 +        {
@@ -484,7 +519,7 @@ index fb45bdc..2d3ab84 100644
  	    }
  	    else if (mo->flags & MF_MISSILE)
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..ac67a68 100644
+index fa4fe83..095ebf8 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -579,7 +614,7 @@ index fa4fe83..ac67a68 100644
  }
  
  // pr_renice
-@@ -890,3 +938,440 @@ void pr_renice(int pid) {
+@@ -890,3 +938,451 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -617,7 +652,19 @@ index fa4fe83..ac67a68 100644
 +static char agent_verb[16] = "", agent_result[64] = "idle";
 +static int agent_x, agent_y, agent_pid, agent_deg;
 +static int agent_last_dist, agent_stuck;
-+static int agent_options[2] = {-1, -1};   // Claude plays, auto replay; -1 until read from the env
++// The Options menu's switches, -1 until read from the env: Claude plays, auto replay, god mode
++// (for people; Claude always has it), saved data (the bridge stops asking Connect AI) and offline
++// Claude (play.py's scripted player instead of Claude: no AI tokens).
++#define AGENT_NOPTIONS 5
++static int agent_options[AGENT_NOPTIONS] = {-1, -1, -1, -1, -1};
++static const char *agent_option_env[AGENT_NOPTIONS] = {
++    "PSDOOM_AGENT_CLAUDE", "PSDOOM_AGENT_LOOP", "PSDOOM_OPT_GOD", "PSDOOM_OPT_SAVED", "PSDOOM_OPT_OFFLINE"};
++static const char *agent_option_msg[AGENT_NOPTIONS][2] = {
++    {"CLAUDE PLAYS OFF: YOUR TURN", "CLAUDE PLAYS: CLAUDE TAKES OVER"},
++    {"AUTO REPLAY OFF", "AUTO REPLAY ON: THE LEVEL RESTARTS ONCE CLEARED"},
++    {"GOD MODE OFF", "GOD MODE ON: PLAYERS CAN'T DIE"},
++    {"SAVED DATA OFF: LIVE FROM CONNECT AI", "SAVED DATA ON: NO CONNECT AI CALLS, THE LAST SAVED RECORDS"},
++    {"OFFLINE CLAUDE OFF: CLAUDE PLAYS LIVE", "OFFLINE CLAUDE ON: A SCRIPTED PLAYER, NO AI TOKENS"}};
 +static int agent_last_input = 0;          // gametic of a person's last key or mouse event
 +#define AGENT_KEY_MARK 0x4147             // data3 of the keys KEY presses: not a person
 +
@@ -635,34 +682,29 @@ index fa4fe83..ac67a68 100644
 +
 +int PR_AgentOption(int option)
 +{
++    if (option < 0 || option >= AGENT_NOPTIONS)
++        return 0;
 +    if (agent_options[option] < 0)
 +    {
-+        const char *v = getenv(option == 0 ? "PSDOOM_AGENT_CLAUDE" : "PSDOOM_AGENT_LOOP");
++        const char *v = getenv(agent_option_env[option]);
 +        agent_options[option] = v != NULL && v[0] && strcmp(v, "0") != 0;
 +    }
 +    return agent_options[option];
 +}
 +
-+// From the Options menu. play.py's supervisor watches state.json and starts or stops Claude.
++// From the Options menu. play.py's supervisor watches state.json and starts or stops Claude,
++// and the bridge follows the saved data switch.
 +void PR_AgentToggle(int option)
 +{
 +    player_t *p = &players[consoleplayer];
++    if (option < 0 || option >= AGENT_NOPTIONS)
++        return;
 +    agent_options[option] = !PR_AgentOption(option);
-+    if (option == 0)
-+    {
-+        p->message = agent_options[0] ? "CLAUDE PLAYS: CLAUDE TAKES OVER" : "CLAUDE PLAYS OFF: YOUR TURN";
-+        if (!agent_options[0])
-+        {
-+            p->cheats &= ~CF_GODMODE;
-+            if (agent_verb[0])
-+                agent_finish("stopped");
-+        }
-+    }
-+    else
-+    {
-+        p->message = agent_options[1] ? "AUTO REPLAY ON: THE LEVEL RESTARTS ONCE CLEARED"
-+                                      : "AUTO REPLAY OFF";
-+    }
++    p->message = agent_option_msg[option][agent_options[option]];
++    if ((option == 0 || option == 2) && !PR_AgentOption(0) && !PR_AgentOption(2))
++        p->cheats &= ~CF_GODMODE;      // nobody's god mode any more
++    if (option == 0 && !agent_options[0] && agent_verb[0])
++        agent_finish("stopped");
 +}
 +
 +static void agent_finish(const char *result)
@@ -732,12 +774,14 @@ index fa4fe83..ac67a68 100644
 +        return;
 +    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
 +               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
-+               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d}, \"idle_seconds\": %d,\n",
++               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d, \"god_mode\": %d, "
++               "\"saved_data\": %d, \"offline_claude\": %d}, \"idle_seconds\": %d,\n",
 +            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
 +            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
 +            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
 +            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount,
-+            PR_AgentOption(0), PR_AgentOption(1), (gametic - agent_last_input) / TICRATE);
++            PR_AgentOption(0), PR_AgentOption(1), PR_AgentOption(2), PR_AgentOption(3),
++            PR_AgentOption(4), (gametic - agent_last_input) / TICRATE);
 +    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
 +            agent_seq, agent_done_seq, agent_verb, agent_result);
 +    fprintf(f, " \"monsters\": [");
@@ -791,6 +835,8 @@ index fa4fe83..ac67a68 100644
 +        if (p->readyweapon != wp_chaingun && p->pendingweapon == wp_nochange)
 +            p->pendingweapon = wp_chaingun;
 +    }
++    else if (PR_AgentOption(2))
++        p->cheats |= CF_GODMODE;       // the Options menu's god mode: people can't die
 +
 +    ++agent_clock;
 +    if (agent_clock % 4 == 0)
@@ -809,7 +855,7 @@ index fa4fe83..ac67a68 100644
 +    else if (!strcmp(agent_verb, "OPTION"))
 +    {
 +        // play.py's idle takeover: the same as choosing it in the Options menu
-+        if (agent_x >= 0 && agent_x <= 1 && PR_AgentOption(agent_x) != !!agent_y)
++        if (agent_x >= 0 && agent_x < AGENT_NOPTIONS && PR_AgentOption(agent_x) != !!agent_y)
 +            PR_AgentToggle(agent_x);
 +        agent_finish("set");
 +    }

@@ -99,16 +99,27 @@ def demo_mission():
             "masked": [], "calls": []}
 
 
+def saved_data():
+    """The Options menu's saved data switch: play the last saved records and call Connect AI for
+    nothing. From the running game (agent/state.json), else the booth session's last switches
+    (options.json, before the game is up), else the launch flag."""
+    for path in (STATE / "agent" / "state.json", STATE / "options.json"):
+        opts = read_json(path)
+        if opts is not None:
+            return bool(opts.get("options", opts).get("saved_data"))
+    return os.environ.get("PSDOOM_OPT_SAVED", "0") not in ("", "0")
+
+
 def is_offline(mission):
     """The offline mission (poll --demo) carries made-up rows; a live one has queries."""
     return bool(mission and mission.get("rooms")) and all("rows" in r for r in mission["rooms"])
 
 
-def write_cache(monsters, source, rooms=None):
+def write_cache(monsters, source, rooms=None, fetched_at=None):
     """rooms: each room's last refresh through Connect AI ({connection, ms, rows, error})."""
     STATE.mkdir(parents=True, exist_ok=True)
     tmp = CACHE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"source": source, "fetched_at": time.time(), "rooms": rooms or [],
+    tmp.write_text(json.dumps({"source": source, "fetched_at": fetched_at or time.time(), "rooms": rooms or [],
                                "monsters": monsters}, indent=1))
     tmp.replace(CACHE)  # atomic, so `list` never reads a half-written file
     tmp = LABELS.with_suffix(".tmp")
@@ -183,7 +194,7 @@ def cmd_kill(args):
     print(f"\n  KILL  {m['app']}  {m['label']}  ({m['detail']})  {m['id']}  [{record['mode']}]\n",
           file=sys.stderr)
     mission = read_json(MISSION)
-    if mission and not is_offline(mission) and os.environ.get("CONNECT_AI_PAT"):
+    if mission and not is_offline(mission) and os.environ.get("CONNECT_AI_PAT") and not saved_data():
         # offline there is no Connect AI to ask; and the game must not wait on the network
         subprocess.Popen([sys.executable, __file__, "lookup", m["id"]], start_new_session=True,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -233,7 +244,7 @@ def cmd_vault(_):
     live, and log what it says now (the side panel shows it)."""
     mission = read_json(MISSION) or {}
     d = next((d for d in mission.get("denied", []) if d.get("request")), None)
-    if not d:  # offline missions have no real request to send
+    if not d or saved_data():  # offline missions have no real request to send; saved data asks nothing
         return
     entry = {"connection": d["connection"], "tool": d["tool"], "request": d["request"]}
     start = time.time()
@@ -284,13 +295,14 @@ def mission_key(mission):
     return hashlib.sha1(json.dumps(rooms).encode()).hexdigest()[:12]
 
 
-def restore_saved(mission):
+def restore_saved(mission, source="saved"):
     """No Connect AI: put back the records this level's last good refresh saved. Returns
-    when they were fetched, or None if this level has none."""
+    when they were fetched, or None if this level has none. source "saved-data" is the
+    Options menu's saved data switch rather than Connect AI not answering."""
     saved = read_json(SAVED)
     if not saved or saved.get("mission") != mission_key(mission):
         return None
-    write_cache(saved["monsters"], "saved", saved.get("rooms"))
+    write_cache(saved["monsters"], source, saved.get("rooms"), fetched_at=saved["fetched_at"])
     return saved["fetched_at"]
 
 
@@ -307,6 +319,17 @@ def cmd_poll(args):
         mission = None
         try:
             mission = json.loads(MISSION.read_text())
+            if "--demo" not in args and not is_offline(mission) and saved_data():
+                at = restore_saved(mission, "saved-data")
+                if at is not None:   # the menu's saved data switch: Connect AI isn't asked
+                    print(f"{now:%H:%M:%S} saved data: the records from {dt.datetime.fromtimestamp(at):%b %d %H:%M}",
+                          file=sys.stderr)
+                    if "--once" in args:
+                        return
+                    time.sleep(interval)
+                    continue
+                print(f"{now:%H:%M:%S} saved data is on, but this level has no saved records: asking Connect AI",
+                      file=sys.stderr)
             stats = []
             monsters = fetch(mission, stats)
             if stats and all("error" in s for s in stats):

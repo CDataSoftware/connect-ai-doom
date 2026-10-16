@@ -29,7 +29,8 @@ raid.sh
 | `GEOMETRY=WxH` | The game window's size; psdoom snaps it to its own screen modes. |
 | `NO_PANEL=1` | No side panel. |
 | `PANEL_PORT` | The panel's port (default 8666). |
-| `CONNECT_AI_TIMEOUT` | Seconds the bridge waits on each Connect AI call during a game (20); after that it keeps the last records. |
+| `CONNECT_AI_TIMEOUT` | Seconds the bridge gives each Connect AI call during a game, start to finish (20). Each live refresh is saved in `state/saved-records.json`, and a game that starts without Connect AI plays those. |
+| `BOOTH_PAUSE`, `BOOTH_GAMES` | `booth` mode: seconds between games (10), and a number of games to stop after (none). |
 | `POLL_SECONDS`, `MAX_PER_ROOM` | The refresh interval (15) and the most monsters per room (20). |
 | `BRIEF_MODEL`, `PLAY_MODEL`, `PLAY_MAX_TURNS` | The Claude model for the briefing and for Claude plays (sonnet), and Claude plays' turn limit (60). |
 | `REPLAY_GRACE`, `REPLAY_PAUSE` | Auto replay: how long Claude gets after the last kill for the vault and a summary (45 s), and the pause after a run ends before the level restarts (6 s). |

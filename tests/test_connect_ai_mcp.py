@@ -1,6 +1,9 @@
 """connect_ai_mcp.py: the MCP client, against a fake Connect AI MCP server."""
 import base64
+import http.server
 import os
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -81,6 +84,36 @@ class HTTPErrorTest(unittest.TestCase):
         with FakeMCP() as mcp, mock.patch.dict(os.environ, {**CREDS, "CONNECT_AI_PAT": "wrong"}):
             with self.assertRaisesRegex(connect_ai_mcp.MCPError, "HTTP 401: bad credentials"):
                 connect_ai_mcp.Client(mcp.url)
+
+
+class SlowAnswerTest(unittest.TestCase):
+    def test_keepalives_dont_stretch_the_timeout(self):
+        """While a query runs, Connect AI sends ': keepalive' lines; each read succeeds, so only
+        a deadline on the whole call stops a game from waiting on a query that never ends."""
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                try:
+                    for _ in range(50):
+                        self.wfile.write(b": keepalive\n\n")
+                        self.wfile.flush()
+                        time.sleep(0.1)
+                except OSError:
+                    pass  # the client gave up
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        start = time.monotonic()
+        with mock.patch.dict(os.environ, CREDS), self.assertRaisesRegex(TimeoutError, "in 0.5 s"):
+            connect_ai_mcp.Client(f"http://127.0.0.1:{server.server_port}/mcp", timeout=0.5)
+        self.assertLess(time.monotonic() - start, 2)
 
 
 if __name__ == "__main__":

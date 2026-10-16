@@ -9,6 +9,7 @@ import io
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -44,10 +45,18 @@ class Client:
         if self.session:
             headers["Mcp-Session-Id"] = self.session
         req = urllib.request.Request(self.url, json.dumps(body).encode(), headers)
+        # urlopen's timeout is per read, so a reply that keeps trickling in could take forever:
+        # the whole call gets `timeout` seconds too.
+        deadline = time.monotonic() + self.timeout
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 self.session = resp.headers.get("Mcp-Session-Id") or self.session
-                raw = resp.read().decode()
+                chunks = []
+                while chunk := resp.read1(65536):
+                    chunks.append(chunk)
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"Connect AI didn't finish answering in {self.timeout:g} s")
+                raw = b"".join(chunks).decode()
         except urllib.error.HTTPError as e:
             with e:
                 raise MCPError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}")

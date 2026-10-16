@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="favicon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
   :root {
     /* CData Connect AI */
@@ -20,14 +20,17 @@
     /* keycards */
     --key-blue: #3D6BFF; --key-yellow: #FFE500; --key-red: #FF3B2F;
     --ok: #3DDC84;
+    --gray-7: #777577; --gray-9: #46454A; --gray-10: #2D2D33;
+    /* type: Doom's pixels for the game bits, the CData brand faces (DM Sans, DM Mono) for the rest */
     --pixel: "Press Start 2P", monospace;
     --digits: "VT323", monospace;
-    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --sans: "DM Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; color: var(--clarity); font: 15px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    margin: 0; color: var(--clarity); font: 15px/1.45 var(--sans);
     background:
       repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 64px),
       repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 64px),
@@ -35,7 +38,31 @@
   }
 
   /* ---------- header: Doom title, Connect AI colors ---------- */
-  header { position: relative; padding: 18px 20px 16px; background: linear-gradient(180deg, #0E0E14, var(--depth)); }
+  header { position: relative; padding: 16px 20px 16px; background: linear-gradient(180deg, #0B1530, var(--depth) 85%); }
+  /* the CData eyebrow: logotype, a neutral rule, DM Mono caps (the brand's co-branding rule) */
+  .eyebrow { display: flex; align-items: center; gap: 10px; font: 500 11px/1 var(--mono); letter-spacing: 1.5px;
+             text-transform: uppercase; color: var(--balance); }
+  .eyebrow img { height: 13px; display: block; }
+  .eyebrow .rule { width: 1px; height: 14px; background: var(--gray-7); }
+  /* CData's text-highlight brackets: [live] */
+  .hl { position: relative; padding: 0 .3em; white-space: nowrap; }
+  .hl::before, .hl::after { content: ""; position: absolute; top: .08em; bottom: .02em; width: .24em;
+                            border: 2px solid var(--agility); }
+  .hl::before { left: 0; border-right: 0; border-radius: .22em 0 0 .22em; }
+  .hl::after { right: 0; border-left: 0; border-radius: 0 .22em .22em 0; }
+  /* CData's composition frame: rounded Agility brackets on the four corners of a box */
+  .frame { position: relative; }
+  .frame::before {
+    content: ""; position: absolute; inset: var(--frame-out, -6px); pointer-events: none;
+    border: 3px solid var(--agility); border-radius: 14px;
+    --arm: var(--frame-arm, 40px);
+    -webkit-mask: linear-gradient(90deg, #000 var(--arm), transparent var(--arm) calc(100% - var(--arm)), #000 calc(100% - var(--arm))),
+                  linear-gradient(180deg, #000 var(--arm), transparent var(--arm) calc(100% - var(--arm)), #000 calc(100% - var(--arm)));
+    -webkit-mask-composite: source-in;
+            mask: linear-gradient(90deg, #000 var(--arm), transparent var(--arm) calc(100% - var(--arm)), #000 calc(100% - var(--arm))),
+                  linear-gradient(180deg, #000 var(--arm), transparent var(--arm) calc(100% - var(--arm)), #000 calc(100% - var(--arm)));
+            mask-composite: intersect;
+  }
   header::after {  /* hazard stripe: Doom's caution tape in Agility yellow */
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
     background: repeating-linear-gradient(-45deg, var(--agility) 0 12px, var(--depth) 12px 24px);
@@ -199,12 +226,12 @@
   #events { display: grid; gap: 4px; }
   .ev { display: grid; grid-template-columns: 64px 62px 1fr; gap: 8px; align-items: baseline; padding: 7px 10px; border-radius: 3px; background: var(--depth-2); }
   .ev.new { animation: in .25s ease-out; }
-  .read { font: 12.5px/1.45 var(--mono); color: #8FD3FF; margin-top: 4px; }
-  .read .tag { font: 8px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
-  .read.wait { color: var(--balance); }
-  .read.wait .tag::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
-  .read.err { color: #FFB4AC; }
-  .now .read { font-size: 14px; margin-top: 6px; }
+  .lread { font: 12.5px/1.45 var(--mono); color: #8FD3FF; margin-top: 4px; }
+  .lread .tag { font: 8px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
+  .lread.wait { color: var(--balance); }
+  .lread.wait .tag::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
+  .lread.err { color: #FFB4AC; }
+  .now .lread { font-size: 14px; margin-top: 6px; }
   .ev .t { font: 12px var(--mono); color: var(--balance); }
   .ev .k { font: 8px/1.8 var(--pixel); color: var(--doom-red); }
   .ev.hit { background: transparent; padding-top: 3px; padding-bottom: 3px; }
@@ -260,16 +287,119 @@
   .how li b { display: block; font: 9px/1.6 var(--pixel); color: var(--agility); margin-bottom: 3px; }
   .how li b::before { content: counter(step) ". "; color: var(--doom-red); }
   @media (max-width: 520px) { .how { grid-template-columns: 1fr; } }
+  /* each tool call's signature under its plain-words line */
+  .sig { display: block; margin-top: 2px; font: 11.5px/1.35 var(--mono); color: #9A9DA3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sig .srv { color: var(--agility); }
+  h2 .meta-r { margin-left: auto; font: 11px/1 var(--mono); letter-spacing: 0; color: var(--balance); }
+  .item.reasoning .what { color: #B9C6FF; font-style: italic; }
+
+  /* ---------- full screen (?stage=gx,gy,gw,gh,split,top from raid.sh) ----------
+     The left part is the stage: the game's borderless window sits on .screen, with
+     branded bars above and below it. The panel fills the rest. */
+  body.stage { height: 100vh; overflow: hidden; display: grid; grid-template-columns: var(--split) minmax(0, 1fr); }
+  body.stage header, body.stage footer, body.stage .legend-wrap, body.stage .now .keys { display: none !important; }
+  #stage[hidden] { display: none; }
+  #stage { position: relative; height: 100vh; overflow: hidden; border-right: 1px solid var(--line);
+           background: radial-gradient(ellipse 90% 45% at 50% 110%, rgba(0,38,96,.75), transparent 70%),
+                       radial-gradient(ellipse 90% 40% at 50% -10%, rgba(0,38,96,.45), transparent 70%), #09090D; }
+  #stage .bar { position: absolute; left: 0; right: 0; display: flex; padding: 0 32px; }
+  #stage .bar.top { top: var(--top); height: calc(var(--gy) - var(--top)); align-items: center; justify-content: space-between; gap: 16px; }
+  #stage .bar.bottom { top: calc(var(--gy) + var(--gh)); bottom: 0; flex-direction: column; justify-content: center; gap: 7px; }
+  .lockup { display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .lockup .cdata { height: 22px; display: block; }
+  .lockup .rule { width: 1px; height: 34px; background: var(--gray-7); }
+  .lockup .cailogo { height: 32px; display: block; }
+  .lockup .x { color: var(--balance); font: 22px/1 var(--mono); }
+  .lockup .doom { font: 22px/1 var(--pixel); color: var(--doom-red); letter-spacing: 2px; text-shadow: 0 3px 0 var(--doom-red-dim), 0 5px 0 #000; }
+  .lockup .cai { font: 14px/1 var(--pixel); color: var(--agility); }
+  .chip { flex: none; display: flex; align-items: center; gap: 8px; font: 9px/1 var(--pixel); color: var(--agility);
+          background: var(--depth-2); border: 1px solid var(--line); border-radius: 999px; padding: 9px 13px; }
+  .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--doom-red); animation: pulse 1s infinite; }
+  #stage .screen { position: absolute; left: var(--gx); top: var(--gy); width: var(--gw); height: var(--gh);
+                   background: #000; --frame-out: -12px; --frame-arm: 64px; display: flex; align-items: center; justify-content: center; }
+  .splash { width: min(84%, 760px); display: grid; gap: 20px; }
+  .splash .headline { font: 500 clamp(24px, 3.4vw, 38px)/1.2 var(--sans); letter-spacing: -.01em; }
+  .splash .ask { font-size: 19px; font-weight: 600; border-left: 4px solid var(--agility); padding: 2px 0 2px 14px; color: #E5E2DA; }
+  .splash .ask:empty, .splash .progress:empty { display: none; }
+  .splash .progress { font: 14px/1.4 var(--mono); color: var(--ok); }
+  .splash .how { margin: 0; }
+  #stage .bar.bottom .line { display: flex; gap: 12px; align-items: baseline; min-width: 0; }
+  #stage .bar.bottom .tag { flex: none; font: 8px/1.6 var(--pixel); color: var(--agility); }
+  #stage .bar.bottom .q { font: 600 17px/1.3 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stage .bar.bottom .say { font-size: 16px; line-height: 1.35; color: #E5E2DA; }
+  #stage .bar.bottom .say:empty { display: none; }
+  #stage .bar.bottom .say .tag { color: #8FA8FF; }
+  #stage .bar.bottom .say .txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #stage .bar.bottom .say b { font: 8px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; margin: 0 4px 0 10px; }
+  #stage .bar.bottom .say b:first-of-type { margin-left: 0; }
+  #stage .bar.bottom .fine { font: 12px/1.4 var(--mono); color: var(--balance); }
+
+  body.stage #side { height: 100vh; overflow-y: auto; padding-top: var(--top); }
+  body.stage main { max-width: none; padding: 12px 14px 18px; gap: 14px; }
+  body.stage .stat .num { font-size: 38px; }
+  body.stage .stat.model .num { font-size: 17px; line-height: 2.3; }
+  body.stage .now { position: static; margin: 0; border: 1px solid var(--line); border-bottom: 3px solid var(--doom-red); border-radius: 4px; padding: 10px 12px 12px; box-shadow: none; }
+  body.stage .now .who { font-size: 19px; }
+  body.stage #rooms-live { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 6px; }
+  body.stage .rl { padding: 7px 8px; gap: 4px; }
+  body.stage .rl .app { font-size: 15px; }
+  body.stage .rl .num { font-size: 24px; }
+  body.stage .rl .sub { font-size: 11.5px; }
+  body.stage .rl .live { font-size: 11px; }
+  /* the vault: one short row under the rooms, so Claude's feed keeps the height */
+  body.stage .rl.vault { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
+  body.stage .rl.vault .app { font-size: 14px; flex: none; }
+  body.stage .rl.vault .why { display: none; }
+  /* in game the panel stops scrolling: the feeds share the height and scroll inside */
+  body.stage.in-game #side { display: flex; flex-direction: column; overflow: hidden; }
+  body.stage.in-game main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  body.stage.in-game main > section { flex: none; min-height: 0; }
+  body.stage.in-game main > .grow:not([hidden]) { flex: 2 1 0; display: flex; flex-direction: column; }
+  body.stage.in-game main > .grow.big { flex-grow: 3; }
+  body.stage.in-game .grow > .feed, body.stage.in-game .grow > #events { flex: 1; min-height: 0; max-height: none; overflow-y: auto; align-content: start; }
 </style>
 </head>
 <body>
+<div id="stage" hidden>
+  <div class="bar top">
+    <div class="lockup">
+      <img class="cdata" src="brand/cdata.svg" alt="CData"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CDATA'}))">
+      <span class="rule"></span>
+      <img class="cailogo" src="brand/connect-ai.svg" alt="Connect AI"
+           onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CONNECT AI'}))">
+      <span class="x">×</span><span class="doom">DOOM</span>
+    </div>
+    <div class="chip" id="stage-mode">CLAUDE IS BRIEFING · LIVE</div>
+  </div>
+  <div class="screen frame" id="stage-screen">
+    <div class="splash">
+      <div class="eyebrow"><span>Claude</span><span class="rule"></span><span>Connect AI MCP server</span><span class="rule"></span><span>live data</span></div>
+      <div class="headline" id="stage-headline">Claude is building a Doom level from your <span class="hl">live</span> business data</div>
+      <div class="ask" id="stage-ask"></div>
+      <div class="progress" id="stage-progress"></div>
+      <ol class="how">
+        <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
+        <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent.</li>
+        <li><b>Try the red door</b>It guards data Connect AI blocked. There is no key.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="bar bottom">
+    <div class="line"><span class="tag">THE ASK</span><span class="q" id="stage-q"></span></div>
+    <div class="line say" id="stage-say"></div>
+    <div class="fine">Every monster is a <span class="hl">live</span> record, read through the CData Connect AI MCP server. Nothing is written to your apps.</div>
+  </div>
+</div>
+<div id="side">
 <header>
+  <div class="eyebrow"><img src="brand/cdata.svg" alt="CData" onerror="this.remove()"><span class="rule"></span><span>Connect AI MCP server · live demo</span></div>
   <h1>
     <a class="logo" href="https://www.cdata.com/ai/" target="_blank" rel="noopener"><img src="brand/connect-ai.svg" alt="Connect AI"
        onerror="this.replaceWith(Object.assign(document.createElement('span'), {className: 'cai', textContent: 'CONNECT AI'}))"></a>
     <span class="x">×</span><span class="doom">DOOM</span>
   </h1>
-  <div class="sub">A Doom level built from your live business data. Every monster is a real record Claude found through the Connect AI MCP server.</div>
+  <div class="sub">A Doom level built from your <span class="hl">live</span> business data. Every monster is a real record Claude found through the Connect AI MCP server.</div>
   <ol class="how">
     <li><b>Grab your keys</b>Keycards are your permissions: blue reads an app, yellow reads and writes.</li>
     <li><b>Clear the rooms</b>Each room is an app, each monster a record. Pink demons are urgent. A kill reads that record live through Connect AI.</li>
@@ -290,9 +420,9 @@
     <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>E</b> open doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
-  <section class="ingame"><h2>WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
-  <section id="play" hidden><h2>CLAUDE PLAYS</h2><div class="feed" id="playfeed"></div></section>
-  <section>
+  <section id="play" class="grow big" hidden><h2>CLAUDE'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
+  <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
+  <section class="legend-wrap">
     <details class="legend" id="legend" open>
       <summary>WHAT YOU'RE LOOKING AT</summary>
       <div class="tiles">
@@ -308,7 +438,7 @@
     </details>
   </section>
   <section class="brief"><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
-  <section class="brief"><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
+  <section class="brief grow"><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
   <section class="brief"><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
   <section class="brief"><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
 </main>
@@ -328,6 +458,7 @@
     <div class="fine">Every monster is a live record read through the Connect AI MCP server. Game: psdoom-ng with Freedoom assets.</div>
   </div>
 </footer>
+</div>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
@@ -366,6 +497,15 @@ function describe(c) {
     case "queryData": return `Read data from ${app}`;
     default: return `${esc(c.tool)} ${app}`;
   }
+}
+
+// The call itself, under the plain words: doom.go_to(place: "room 1"). Long values (SQL) show as their name only.
+function signature(c) {
+  const args = Object.entries(c.args || {}).map(([k, v]) => {
+    const s = typeof v === "string" ? JSON.stringify(v) : JSON.stringify(v ?? null);
+    return s.length <= 28 ? `${k}: ${s}` : k;
+  });
+  return `<span class="sig"><span class="srv">${c.server === "doom" ? "doom" : "connect_ai"}</span>.${esc(c.tool)}(${esc(args.join(", "))})</span>`;
 }
 
 function status(c) {
@@ -468,6 +608,7 @@ class Feed {
   constructor(el, emptyText) { this.el = el; this.emptyText = emptyText; this.reset(); }
   reset() {
     this.seen = 0; this.calls = new Map(); this.liveEl = null; this.liveText = ""; this.model = null; this.steps = 0;
+    this.lastThought = "";
     this.el.innerHTML = `<div class="empty">${this.emptyText}</div>`;
   }
   add(node) {
@@ -490,14 +631,14 @@ class Feed {
   drawCall(c) {
     const [cls, res] = status(c);
     const isDoom = c.server === "doom";
-    if (!c.el) c.el = this.item("", isDoom ? "DOOM" : "CONNECT AI", isDoom ? "doom" : "", describe(c), "", "");
+    if (!c.el) c.el = this.item("", isDoom ? "DOOM" : "CONNECT AI", isDoom ? "doom" : "", describe(c) + signature(c), "", "");
     const open = c.el.classList.contains("open");
     c.el.className = `item ${cls}${open ? " open" : ""}`;
     c.el.querySelector(".res").innerHTML = `${res} <span class="chev">&#9654;</span>`;
-    c.el.querySelector(".what").innerHTML = describe(c);  // Doom steps name their target once the result is in
+    c.el.querySelector(".what").innerHTML = describe(c) + signature(c);  // Doom steps name their target once the result is in
     c.el.querySelector(".detail").innerHTML = detail(c, this.model);
   }
-  live(text) {
+  live(text, who = "CLAUDE IS THINKING") {
     this.liveText += text;
     const plan = /^\s*(\{|```)/.test(this.liveText);
     if (!this.liveEl) {
@@ -506,7 +647,7 @@ class Feed {
       this.add(this.liveEl);
     }
     const shown = plan ? "Drawing up the level plan..." : this.liveText;
-    this.liveEl.innerHTML = `<span class="who">CLAUDE IS THINKING</span>${esc(shown)}<span class="caret"></span>`;
+    this.liveEl.innerHTML = `<span class="who">${who}</span>${esc(shown)}<span class="caret"></span>`;
   }
   endLive() { if (this.liveEl) this.liveEl.remove(); this.liveEl = null; this.liveText = ""; }
   apply(events) {
@@ -514,9 +655,16 @@ class Feed {
     for (const e of events.slice(this.seen)) {
       if (e.kind === "session") this.model = e.model;
       else if (e.kind === "text_delta") this.live(e.text);
-      else if (e.kind === "thought") {
+      else if (e.kind === "reasoning_delta") this.live(e.text, "CLAUDE IS REASONING");
+      else if (e.kind === "reasoning") {
         this.endLive();
         const t = e.text.trim();
+        if (t) this.item("reasoning", "REASONS", "claude", esc(t.length > 160 ? t.slice(0, 157) + "..." : t), "",
+          `<pre class="code">${esc(t)}</pre>`);
+      } else if (e.kind === "thought") {
+        this.endLive();
+        const t = e.text.trim();
+        if (t && !/^(\{|```)/.test(t)) this.lastThought = t;
         if (/^(\{|```)/.test(t)) this.item("thought", "CLAUDE", "claude", "Wrote the level plan for the map builder", "", `<pre class="code">${esc(t)}</pre>`);
         else if (t) this.item("thought", "CLAUDE", "claude", esc(t.length > 160 ? t.slice(0, 157) + "..." : t), "",
           `<dl class="kv"><dt>MODEL</dt><dd>${esc(this.model || "unknown")}</dd></dl><pre class="code">${esc(t)}</pre>`);
@@ -549,7 +697,8 @@ function renderMission(m, events) {
   $("s-blocked").textContent = events.filter(e => e.kind === "result" && e.error && BLOCKED.test(e.text || "")).length;
   const touched = new Set(events.filter(e => e.kind === "call" && e.connection).map(e => e.connection));
   $("s-apps").textContent = done && m ? m.rooms.length : touched.size;
-  if (feed.model) $("s-model").textContent = feed.model.replace(/^claude-/, "").toUpperCase();
+  const model = feed.model || playFeed.model;    // offline there's no briefing, only Claude playing
+  if (model) $("s-model").textContent = model.replace(/^claude-/, "").toUpperCase();
   if (!done || !m) return;
   const meta = feed.doneMeta;
   $("answer").innerHTML = `${esc(m.answer || "")}${meta ? `<div class="meta">${meta.turns ?? "?"} turns, ${((meta.duration_ms || 0) / 1000).toFixed(0)} s${meta.cost_usd != null ? `, $${meta.cost_usd.toFixed(2)}` : ""}</div>` : ""}`;
@@ -567,14 +716,14 @@ function renderMission(m, events) {
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
 function liveRead(k, demo) {
-  if (demo) return `<div class="read"><span class="tag">OFFLINE DATA</span>Made-up record: nothing to read live</div>`;
+  if (demo) return `<div class="lread"><span class="tag">OFFLINE DATA</span>Made-up record: nothing to read live</div>`;
   const l = k.lookup;
-  if (!l && Date.now() / 1000 - k.at > 60) return `<div class="read err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
-  if (!l) return `<div class="read wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;
+  if (!l && Date.now() / 1000 - k.at > 60) return `<div class="lread err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
+  if (!l) return `<div class="lread wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;
   const took = `${(l.ms / 1000).toFixed(1)} s`;
-  if (l.error) return `<div class="read err"><span class="tag">CONNECT AI</span>Live read failed after ${took}: ${esc(l.error)}</div>`;
-  if (!l.row) return `<div class="read"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: no longer returned by the room's query</div>`;
-  return `<div class="read"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: still there, ${esc(l.row.detail)}</div>`;
+  if (l.error) return `<div class="lread err"><span class="tag">CONNECT AI</span>Live read failed after ${took}: ${esc(l.error)}</div>`;
+  if (!l.row) return `<div class="lread"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: no longer returned by the room's query</div>`;
+  return `<div class="lread"><span class="tag">CONNECT AI</span>Read live from ${esc(k.app)} in ${took}: still there, ${esc(l.row.detail)}</div>`;
 }
 let lastEventKey = null;
 let seenEvents = null;  // events already on screen; only newer ones animate in
@@ -618,6 +767,9 @@ function renderGame(s) {
   if (!game) return;
   $("now-mode").textContent = game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE";
   $("now-keys").hidden = game.mode === "claude";
+  if (!lastEventKey) setHTML($("now-big"), `<div class="hint">${game.mode === "claude"
+    ? "Claude grabs the keycards, then clears the rooms. Every kill shows up here."
+    : "Grab the keycards in the lobby, then clear the rooms. Every kill shows up here."}</div>`);
 
   const m = s.mission || {};
   const cards = (s.rooms_live || []).map((r, i) => {
@@ -633,7 +785,7 @@ function renderGame(s) {
   const tries = s.vault || [];
   for (const d of m.denied || [])
     cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
-      <div class="app">PII vault</div><div class="sub">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
+      <div class="app">PII vault</div><div class="sub why">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
       <div class="sub">${tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
   setHTML($("rooms-live"), cards.join(""));
 
@@ -676,6 +828,40 @@ function renderGame(s) {
   if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
 }
 
+// ---------- the full-screen stage (raid.sh's default layout) ----------
+// ?stage=gx,gy,gw,gh,split,top: the game window's box, where the panel starts, and the notch strip.
+const STAGE = (params.get("stage") || "").split(",").map(Number);
+const STAGED = STAGE.length === 6 && STAGE.every(Number.isFinite);
+if (STAGED) {
+  const css = document.documentElement.style;
+  ["--gx", "--gy", "--gw", "--gh", "--split", "--top"].forEach((k, i) => css.setProperty(k, `${STAGE[i]}px`));
+  document.body.classList.add("stage");
+  $("stage").hidden = false;
+}
+
+function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+function renderStage(s, events) {
+  const game = s.game, m = s.mission;
+  const q = (m && m.question) || (events.find(e => e.kind === "question") || {}).text || "";
+  setText($("stage-q"), q);
+  setText($("stage-ask"), q);
+  const briefed = events.some(e => e.kind === "mission");
+  setText($("stage-mode"), game ? (game.mode === "claude" ? "CLAUDE IS PLAYING · LIVE" : "YOU'RE PLAYING · LIVE")
+    : briefed ? "LEVEL READY" : "CLAUDE IS BRIEFING · LIVE");
+  const calls = events.filter(e => e.kind === "call").length;
+  setText($("stage-progress"), briefed ? `Level built from ${(m?.rooms || []).length} apps. Loading the game...`
+    : calls ? `${calls} call${calls === 1 ? "" : "s"} through Connect AI so far` : "");
+  // Under the game: Claude's latest line as it plays, or the controls when you play.
+  let say = "";
+  if (game?.mode === "claude") {
+    const line = playFeed.liveText.trim() || playFeed.lastThought;
+    if (line) say = `<span class="tag">CLAUDE</span><span class="txt">${esc(line)}</span>`;
+  } else if (game)
+    say = `<span class="tag">CONTROLS</span><span><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>E</b> doors <b>Shift</b> run <b>P</b> pause</span>`;
+  setHTML($("stage-say"), say);
+}
+
 try {
   const lg = $("legend");
   if (localStorage.getItem("legend") === "closed") lg.open = false;
@@ -691,7 +877,9 @@ async function tick() {
     const play = s.play_events || [];
     $("play").hidden = !play.length || s.game?.mode !== "claude";
     if (play.length) playFeed.apply(play);
+    setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
+    if (STAGED) renderStage(s, events);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }
 }
 tick();

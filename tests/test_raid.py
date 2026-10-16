@@ -3,6 +3,7 @@
 The fake psdoom calls the bridge exactly as the real one does (list, then kill and hit
 a monster) and checks that the level files it was given exist.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ FAKE_PSDOOM = r'''#!/bin/bash
 set -euo pipefail
 printf '%s\n' "$@" > state/psdoom-args.txt
 echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-}" > state/psdoom-agent.txt
+echo "${PSDOOM_FRAMELESS:-} ${SDL_VIDEO_WINDOW_POS:-}" > state/psdoom-env.txt
 for f in state/level.wad state/brand.wad state/level.deh wads/freedoom2.wad; do [[ -s $f ]] || exit 9; done
 $PSDOOMPSCMD > state/psdoom-list.txt
 pid=$(head -1 state/psdoom-list.txt | cut -d' ' -f2)
@@ -29,9 +31,10 @@ echo "game over"
 '''
 FAKE_ZDBSP = '#!/bin/bash\n[[ $1 == -o ]] && cp "$3" "$2"\n'
 FAKE_OPEN = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/open.txt"\n'
-# The screen query answers like a 1453x949 usable area under a 33 px menu bar; Chrome calls are logged.
+# The screen query answers like a 14" MacBook Pro: 1512x982 with a 32 px notch strip. Other calls
+# (the stage) are logged.
 FAKE_OSASCRIPT = r'''#!/bin/bash
-if [[ "$*" == *NSScreen* ]]; then echo "0 33 1453 949"; else printf '%s\n' "$*" >> "$FAKE_LOG_DIR/osascript.txt"; fi
+if [[ "$*" == *NSScreen* ]]; then echo "${FAKE_SCREEN:-0 0 1512 982 32}"; else printf '%s\n' "$*" >> "$FAKE_LOG_DIR/osascript.txt"; fi
 '''
 FAKE_SECURITY = r'''#!/bin/bash
 # a one-item Keychain in $FAKE_LOG_DIR/keychain
@@ -147,18 +150,49 @@ class RaidTest(unittest.TestCase):
         cache = json.loads((self.state / "cache.json").read_text())
         self.assertEqual(cache["source"], "connect-ai-mcp")
 
-    def test_side_by_side_layout(self):
+    def built_from_this_patch(self):
+        """What setup.sh leaves: the patch, and the checksum of the one the game was built from."""
+        (self.repo / "patches").mkdir()
+        patch = shutil.copy2(ROOT / "patches/psdoom-ng-connect-doom.patch", self.repo / "patches")
+        (self.repo / "vendor/src/psdoom-ng/.connect-doom-patch").write_text(
+            hashlib.sha256(Path(patch).read_bytes()).hexdigest() + "\n")
+
+    def test_full_screen_layout(self):
+        self.built_from_this_patch()
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
-            chrome = self.base / "Chrome.app"
-            chrome.mkdir()
-            r = self.raid(env={**env, "_layout": {"LAYOUT": "side", "CHROME_APP": str(chrome)}}, panel=True)
+            r = self.raid(env={**env, "_layout": {"LAYOUT": "full"}}, panel=True)
         self.assert_played(r)
         args = (self.state / "psdoom-args.txt").read_text().split("\n")
-        self.assertEqual(args[args.index("-geometry") + 1], "960x720")     # psdoom's biggest mode that fits
-        chrome_call = (self.logs / "osascript.txt").read_text()
-        self.assertIn("set bounds of w to {960, 33, 1453, 982}", chrome_call)  # the rest of the width
-        self.assertIn("http://localhost:", chrome_call)
-        self.assertFalse((self.logs / "open.txt").exists(), "the panel opens in its own window, not a tab")
+        # 2/3 of a 1512 px screen is 1008; 960x720 is psdoom's biggest mode that fits it and the bars
+        self.assertEqual(args[args.index("-geometry") + 1], "960x720")
+        # centered in the stage, below the 32 px notch strip: borderless, at (24, 32 + (950 - 720) / 2)
+        self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), ["1", "24,147"])
+        stage = (self.logs / "osascript.txt").read_text()
+        self.assertIn("tools/stage.js", stage)
+        self.assertRegex(stage, r"http://localhost:\d+/\?stage=24,147,960,720,1008,32")
+        self.assertFalse((self.logs / "open.txt").exists(), "the panel is on the stage, not in a tab")
+
+    def test_full_screen_layout_on_a_second_display(self):
+        self.built_from_this_patch()
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            # a 1920x1080 display to the right of the laptop and 200 px higher, no notch
+            r = self.raid(env={**env, "_layout": {"LAYOUT": "full", "FAKE_SCREEN": "1512 -200 1920 1080 0"}},
+                          panel=True)
+        self.assert_played(r)
+        args = (self.state / "psdoom-args.txt").read_text().split("\n")
+        self.assertEqual(args[args.index("-geometry") + 1], "1280x960")
+        self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), ["1", "1512,-140"])
+        self.assertRegex((self.logs / "osascript.txt").read_text(), r"\?stage=0,60,1280,960,1280,0")
+
+    def test_full_screen_layout_needs_a_current_build(self):
+        self.built_from_this_patch()
+        (self.repo / "vendor/src/psdoom-ng/.connect-doom-patch").write_text("an older patch\n")
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            r = self.raid(env={**env, "_layout": {"LAYOUT": "full"}}, panel=True)
+        self.assert_played(r)
+        self.assertIn("run ./setup.sh again for the full-screen layout", r.stderr)
+        self.assertIn("http://localhost:", (self.logs / "open.txt").read_text())   # a browser tab instead
+        self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), [])
 
     def test_again_replays_without_claude(self):
         self.raid("--demo", env=dict(os.environ))

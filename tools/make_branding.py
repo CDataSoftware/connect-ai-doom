@@ -2,14 +2,14 @@
 """Build state/brand.wad: light Connect AI branding, from the logos in assets/brand.
 
   CAISIGN  256x128 wall texture: the stock TEKWALL4 tech wall with a
-           Connect AI sign (logo on a Depth plate) baked in, for the 128-tall
+           Connect AI sign (logo and CData logotype on a Depth plate) baked in, for the 128-tall
            alcove in each arena's far wall (vanilla tiles walls every 128px).
            One patch, not a composite: vanilla caps composites at 64 KB.
   CAIWALL  128x128: TEKWALL4 recolored into the brand grays (Depth up to
            Gray 5) with a thin Agility yellow trim on the bottom rows. On the
            256-tall arena walls it tiles twice: trim at the floor and mid-wall.
   M_DOOM   the menu logo becomes the Connect AI logo.
-  M_PAUSE  the pause screen: the Connect AI logo, a ×, then DOOM.
+  M_PAUSE  the pause screen: the Connect AI logo, a ×, DOOM, then the CData logotype.
   CAICORNR a small Connect AI logo psdoom draws in the view's top-right corner.
   M_CLAUDE, M_AUTORP  the Options menu's "Claude plays:" and "Auto replay:" rows, in
            the stock labels' red shading.
@@ -42,6 +42,7 @@ MENU_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"  # closest to F
 # The stock menu labels' reds, row by row from the top (sampled from M_MESSG).
 MENU_REDS = [167, 255, 255, 239, 215, 199, 179, 167, 155, 139, 127, 115, 103, 79, 67]
 LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds
+CDATA = "cdata.png"      # the brand kit's cdata-logotype-clarity.png
 
 
 def read_wad(path):
@@ -107,17 +108,28 @@ def patch_pixels(lump):
     return w, h, px
 
 
-def logo_image(kit, width):
-    logo = Image.open(Path(kit) / LOGO).convert("RGBA")
+def logo_image(kit, width, name=LOGO):
+    logo = Image.open(Path(kit) / name).convert("RGBA")
     return logo.resize((width, round(logo.height * width / logo.width)), Image.LANCZOS)
 
 
+def with_cdata(kit, img, width, gap):
+    """img with the CData logotype centered under it, if the kit has it."""
+    if not (Path(kit) / CDATA).exists():
+        return img
+    cdata = logo_image(kit, width, CDATA)
+    out = Image.new("RGBA", (img.width, img.height + cdata.height + gap), DEPTH + (255,))
+    out.alpha_composite(img, (0, 0))
+    out.alpha_composite(cdata, ((img.width - cdata.width) // 2, img.height + gap // 2))
+    return out
+
+
 def sign_image(kit):
-    """Connect AI logo on a Depth plate."""
-    logo = logo_image(kit, 224)
-    plate = Image.new("RGBA", (256, logo.height + 20), DEPTH + (255,))
-    plate.alpha_composite(logo, (16, 10))
-    return plate
+    """Connect AI logo on a Depth plate, the CData logotype under it."""
+    logo = logo_image(kit, 208)
+    plate = Image.new("RGBA", (256, logo.height + 16), DEPTH + (255,))
+    plate.alpha_composite(logo, (24, 10))
+    return with_cdata(kit, plate, 84, 16)
 
 
 def menu_image(kit):
@@ -136,7 +148,7 @@ def pause_image(kit):
     d = ImageDraw.Draw(img)
     d.text((100, logo.height + 26), "×", font=font(26), fill=CLARITY, anchor="mm")
     d.text((100, logo.height + 66), "DOOM", font=font(52), fill=DOOM_RED, anchor="mm")
-    return img
+    return with_cdata(kit, img, 64, 12)
 
 
 def corner_image(kit):

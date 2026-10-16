@@ -268,8 +268,10 @@ The level: a lobby with keycards, a hall, and one room per app behind a keycard 
 Pink demons (urgent: true) matter most. Clear the urgent records first, then whatever is left.
 
 Use the doom tools: look, go_to, attack. Pick up the keycards first. Then go room by room.
-Before each attack, write ONE short line, as if narrating a stream, naming the record and why
-it matters (for example: "Desert Power's renewal ticket is urgent, taking it down."). After a few
+People watch your feed live next to the game. Before EVERY tool call, write ONE short line, as if
+narrating a stream, saying what you're doing and why. Before an attack, name the record and why it
+matters (for example: "Desert Power's renewal ticket is urgent, taking it down."); before a move,
+say where and why (for example: "Salesforce is cleared, heading to Zendesk next."). After a few
 kills in a room, you may use the Connect AI tools once to check something related in another app.
 {vault}
 Keep going until the rooms are clear or you run out of turns. End with a two-line summary."""

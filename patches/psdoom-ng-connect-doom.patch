@@ -64,10 +64,77 @@ index afe3974..d987c9a 100644
      HUlib_drawIText(&w_chat);
      if (automapactive)
 diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
-index 15e4a6b..1fb7e65 100644
+index 15e4a6b..ae6ece2 100644
 --- i/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
-@@ -1677,12 +1677,10 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -50,9 +50,47 @@
+ #include "w_wad.h"
+ #include "z_zone.h"
+ 
++#ifdef __APPLE__
++#include <objc/runtime.h>
++#include <objc/message.h>
++#endif
++
+ #define LOADING_DISK_W 16
+ #define LOADING_DISK_H 16
+ 
++// connect-doom: with PSDOOM_FRAMELESS set the window has no title bar, and
++// on macOS it floats above other windows and the menu bar and the Dock hide
++// while the game is in front. raid.sh's full-screen layout places the
++// window inside a page (tools/stage.js) that draws the rest of the screen;
++// floating keeps the game on top when that page is clicked.
++
++static int frameless = 0;
++
++static void HideMenuBar(void)
++{
++#ifdef __APPLE__
++    id app = ((id (*)(id, SEL)) objc_msgSend)((id) objc_getClass("NSApplication"),
++                                              sel_registerName("sharedApplication"));
++    id windows = ((id (*)(id, SEL)) objc_msgSend)(app, sel_registerName("windows"));
++    unsigned long i, n;
++
++    n = ((unsigned long (*)(id, SEL)) objc_msgSend)(windows, sel_registerName("count"));
++
++    for (i = 0; i < n; ++i)
++    {
++        id window = ((id (*)(id, SEL, unsigned long)) objc_msgSend)(
++            windows, sel_registerName("objectAtIndex:"), i);
++
++        // NSFloatingWindowLevel
++        ((void (*)(id, SEL, long)) objc_msgSend)(window, sel_registerName("setLevel:"), 3);
++    }
++
++    // NSApplicationPresentationHideDock | NSApplicationPresentationHideMenuBar
++    ((void (*)(id, SEL, unsigned long)) objc_msgSend)(
++        app, sel_registerName("setPresentationOptions:"), (1 << 1) | (1 << 3));
++#endif
++}
++
+ // Non aspect ratio-corrected modes (direct multiples of 320x200)
+ 
+ static screen_mode_t *screen_modes[] = {
+@@ -274,6 +312,11 @@ static void UpdateFocus(void)
+     // Should the screen be grabbed?
+ 
+     screenvisible = (state & SDL_APPACTIVE) != 0;
++
++    if (frameless && window_focused)
++    {
++        HideMenuBar();
++    }
+ }
+ 
+ static void LoadDiskImage(void)
+@@ -1674,15 +1717,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+     {
+         flags |= SDL_FULLSCREEN;
+     }
++    else if (frameless)
++    {
++        flags |= SDL_NOFRAME;
++    }
      else
      {
          // In windowed mode, the window can be resized while the game is
@@ -82,6 +149,26 @@ index 15e4a6b..1fb7e65 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
+@@ -1693,6 +1738,11 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+                 w, h, screen_bpp, SDL_GetError());
+     }
+ 
++    if (frameless)
++    {
++        HideMenuBar();
++    }
++
+     // Blank out the full screen area in case there is any junk in
+     // the borders that won't otherwise be overwritten.
+ 
+@@ -1799,6 +1849,7 @@ void I_InitGraphics(void)
+     // Check for command-line video-related parameters.
+ 
+     CheckCommandLine();
++    frameless = getenv("PSDOOM_FRAMELESS") != NULL;
+ 
+     // Set up title and icon.  Windows cares about the ordering; this
+     // has to be done before the call to SDL_SetVideoMode.
 diff --git i/trunk/src/m_menu.c w/trunk/src/m_menu.c
 index 7144f71..638828f 100644
 --- i/trunk/src/m_menu.c

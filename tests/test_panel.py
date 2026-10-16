@@ -1,6 +1,7 @@
 """panel/index.html: the side panel's script, rendered in Node from a real brief.py run's state."""
 import datetime
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -32,15 +33,16 @@ class PanelTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def render(self, expr=None, **state):
+    def render(self, expr=None, search="", **state):
         state = {"events": self.events, "play_events": [], "mission": self.mission, "kills": [], "standing": 0,
                  **state}
         path = Path(self.tmp.name) / "panel-state.json"
         path.write_text(json.dumps(state))
         r = subprocess.run([NODE, str(HARNESS), str(ROOT / "panel/index.html"), str(path), *([expr] if expr else [])],
-                           capture_output=True, text=True, timeout=30)
+                           capture_output=True, text=True, timeout=30, env={**os.environ, "PANEL_SEARCH": search})
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)
+        self.css = out["css"]
         return (out["ids"], out.get("value")) if expr else out["ids"]
 
     def test_statusbar_and_mission(self):
@@ -170,6 +172,52 @@ class PanelTest(unittest.TestCase):
         item = ids["playfeed"]["children"][0]
         self.assertIn("Headed to <b>Acme</b>", item["html"])
         self.assertIn("DOOM", item["html"])
+
+    def test_play_feed_shows_each_call_and_decision(self):
+        play = [{"kind": "session", "model": "claude-sonnet-5-5"},
+                {"kind": "thought", "text": "Acme's renewal is urgent, taking it down."},
+                {"kind": "call", "id": "p1", "server": "doom", "tool": "attack", "args": {"pid": 42}},
+                {"kind": "call", "id": "p2", "server": "connectai", "tool": "queryData",
+                 "args": {"query": "SELECT Id, Name FROM [Salesforce].[Account] WHERE Id = @id"}},
+                {"kind": "reasoning", "text": "The vault comes last."},
+                {"kind": "text_delta", "text": "Heading to <Zendesk>"}]
+        ids = self.render(play_events=play, game={"mode": "claude", "started": 0})
+        items = ids["playfeed"]["children"]
+        self.assertIn("CLAUDE IS THINKING", items[0]["html"])           # live text stays on top
+        self.assertIn("Heading to &lt;Zendesk&gt;", items[0]["html"])
+        html = "".join(i["html"] + i["subs"].get(".what", "") for i in items)
+        self.assertIn('<span class="srv">doom</span>.attack(pid: 42)', html)
+        self.assertIn('<span class="srv">connect_ai</span>.queryData(query)', html)   # SQL is too long to inline
+        self.assertIn("REASONS", html)
+        self.assertIn("Acme&#39;s renewal".replace("&#39;", "'"), html)
+        self.assertEqual(ids["play-meta"]["text"], "2 tool calls · sonnet-5-5")
+
+    def test_full_screen_stage(self):
+        search = "?stage=24,147,960,720,1008,32"
+        ids = self.render(search=search, events=[e for e in self.events if e["kind"] != "mission"], mission=None)
+        self.assertIn("stage", ids["body"]["className"])
+        self.assertFalse(ids["stage"]["hidden"])
+        self.assertEqual(self.css, {"--gx": "24px", "--gy": "147px", "--gw": "960px", "--gh": "720px",
+                                    "--split": "1008px", "--top": "32px"})
+        self.assertEqual(ids["stage-mode"]["text"], "CLAUDE IS BRIEFING · LIVE")
+        self.assertEqual(ids["stage-q"]["text"], "Who is <at risk>?")
+        self.assertRegex(ids["stage-progress"]["text"], r"^\d+ calls through Connect AI so far$")
+        self.assertEqual(ids["stage-say"]["html"], "")
+
+        ids = self.render(search=search, game={"mode": "player", "started": 0})
+        self.assertEqual(ids["stage-mode"]["text"], "YOU'RE PLAYING · LIVE")
+        self.assertIn("<b>WASD</b> move", ids["stage-say"]["html"])     # the controls, under the game
+
+        play = [{"kind": "thought", "text": "Initech is <urgent>, taking it down."},
+                {"kind": "call", "id": "p1", "server": "doom", "tool": "attack", "args": {"pid": 7}}]
+        ids = self.render(search=search, play_events=play, game={"mode": "claude", "started": 0})
+        self.assertEqual(ids["stage-mode"]["text"], "CLAUDE IS PLAYING · LIVE")
+        self.assertIn("Initech is &lt;urgent&gt;, taking it down.", ids["stage-say"]["html"])  # Claude's latest line
+
+    def test_no_stage_without_the_layout(self):
+        ids = self.render()
+        self.assertNotIn("stage", ids["body"]["className"])
+        self.assertEqual(self.css, {})
 
     def test_empty_state(self):
         ids = self.render(events=[], mission=None)

@@ -85,7 +85,7 @@ class PatchTest(unittest.TestCase):
 class RepoTest(unittest.TestCase):
     def test_brand_assets_are_in_the_repo(self):
         """Self-contained: the logos the game and panel use come from assets/brand, not a local kit."""
-        for name in ("connect-ai.png", "connect-ai.svg", "cdata.svg"):
+        for name in ("connect-ai.png", "connect-ai.svg", "cdata.svg", "cdata.png"):
             self.assertTrue((ROOT / "assets/brand" / name).stat().st_size > 500, name)
         for script in ("raid.sh", "setup.sh"):
             self.assertNotIn("BRANDKIT", (ROOT / script).read_text(), script)

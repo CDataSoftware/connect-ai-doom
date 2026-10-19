@@ -3,8 +3,8 @@
 
   make_deh.py <mission.json> <out.deh> [--no-gore]
 
-The red door's message is the refusal Connect AI actually returned in this run. The rooms' big
-monsters (tools/themes.py) get about a pink demon's hit points. With --no-gore
+The red door's message is the refusal Connect AI actually returned in this run. Every record
+monster (tools/themes.py) gets about half Doom's hit points, the big ones 100. With --no-gore
 (raid.sh passes it for NOGORE=1), hits throw bullet puffs instead of blood, and a killed record
 vanishes in green teleport fog instead of dying on the floor.
 """
@@ -70,7 +70,7 @@ def patch(mission, gore=True):
     out = "Patch File for DeHackEd v3.0\n# *allow-long-strings*\nDoom version = 19\nPatch format = 6\n\n"
     for old, new in swaps:
         out += f"Text {len(old)} {len(new)}\n{old}{new}\n\n"
-    for m in MONSTERS.values():     # the big monsters, about as tough as a pink demon
+    for m in MONSTERS.values():     # easier than Doom's, so a visitor with a pistol clears a room
         if "health" in m:
             out += f"Thing {m['deh']} ({m['name']})\nHit points = {m['health']}\n\n"
     if not gore:

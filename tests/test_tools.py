@@ -283,7 +283,8 @@ class DehTest(unittest.TestCase):
         self.assertTrue(text.startswith("Patch File for DeHackEd v3.0\n# *allow-long-strings*\n"))
         blocks = text.split("\n\n")[1:-1]
         things = [b for b in blocks if b.startswith("Thing ")]
-        self.assertIn("Thing 18 (Hell knight)\nHit points = 200", things)   # big monsters, demon-tough
+        self.assertIn("Thing 18 (Hell knight)\nHit points = 100", things)   # every record monster, easier than Doom's
+        self.assertIn("Thing 12 (Imp)\nHit points = 30", things)
         self.assertEqual(len(things), sum("health" in m for m in make_deh.MONSTERS.values()))
         blocks = [b for b in blocks if b not in things]
         self.assertEqual(len(blocks), 5)

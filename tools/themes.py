@@ -15,30 +15,30 @@ import sys
 
 # Doom 2 monsters psdoom can spawn as records. `thing` is the doomednum (PSDOOM_MONSTERS),
 # `deh` the DeHackEd thing number, `die`/`xdie` the frame ranges of its deaths (NOGORE fogs them),
-# `sprite` the panel's picture (tools/make_sprites.py). `health` (tools/make_deh.py) brings the big
-# ones down to about a pink demon's 150, so a room of urgent records clears as fast as it always
-# did, and a booth visitor isn't facing a room of full-strength hell knights.
+# `sprite` the panel's picture (tools/make_sprites.py). `health` (tools/make_deh.py) is about half
+# Doom's, and the big ones are cut further to 100, so a booth visitor with a pistol clears a room
+# in a few minutes instead of facing a room of full-strength hell knights.
 MONSTERS = {
     "zombie":      {"name": "Zombie", "thing": 3004, "deh": 2, "sprite": "POSSA1",
-                    "die": (189, 193), "xdie": (194, 202)},
+                    "die": (189, 193), "xdie": (194, 202), "health": 10},
     "soldier":     {"name": "Shotgun soldier", "thing": 9, "deh": 3, "sprite": "SPOSA1",
-                    "die": (222, 226), "xdie": (227, 235)},
+                    "die": (222, 226), "xdie": (227, 235), "health": 15},
     "chaingunner": {"name": "Chaingunner", "thing": 65, "deh": 11, "sprite": "CPOSA1",
-                    "die": (422, 428), "xdie": (429, 434)},
+                    "die": (422, 428), "xdie": (429, 434), "health": 35},
     "imp":         {"name": "Imp", "thing": 3001, "deh": 12, "sprite": "TROOA1",
-                    "die": (457, 461), "xdie": (462, 469)},
+                    "die": (457, 461), "xdie": (462, 469), "health": 30},
     "demon":       {"name": "Pink demon", "thing": 3002, "deh": 13, "sprite": "SARGA1",
-                    "die": (490, 495)},
+                    "die": (490, 495), "health": 75},
     "caco":        {"name": "Cacodemon", "thing": 3005, "deh": 15, "sprite": "HEADA1",
-                    "die": (510, 515), "health": 200},
+                    "die": (510, 515), "health": 100},
     "knight":      {"name": "Hell knight", "thing": 69, "deh": 18, "sprite": "BOS2A1",
-                    "die": (571, 577), "health": 200},
+                    "die": (571, 577), "health": 100},
     "baron":       {"name": "Baron", "thing": 3003, "deh": 16, "sprite": "BOSSA1",
-                    "die": (542, 548), "health": 200},
+                    "die": (542, 548), "health": 100},
     "revenant":    {"name": "Revenant", "thing": 66, "deh": 6, "sprite": "SKELA1D1",
-                    "die": (345, 350), "health": 150},
+                    "die": (345, 350), "health": 100},
     "mancubus":    {"name": "Mancubus", "thing": 67, "deh": 9, "sprite": "FATTA1",
-                    "die": (388, 397), "health": 200},
+                    "die": (388, 397), "health": 100},
 }
 RECORDS = ("zombie", "soldier", "chaingunner", "imp")
 URGENT = ("demon", "caco", "knight", "baron", "revenant", "mancubus")

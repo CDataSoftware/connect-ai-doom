@@ -75,7 +75,7 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 
 - *Claude plays* hands the marine to Claude or takes it back.
 - *Auto replay* (on by default) restarts the level with every record back once it's clear, a few seconds after you die, or when Claude's run ends, then lets Claude play again if it was playing. With it on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
-- *God mode*: players can't die, so nobody's turn ends early.
+- *God mode*: players can't die and never run out of ammo, so nobody's turn ends early.
 - *Saved data* plays the level's last saved records and calls Connect AI for nothing: no refresh, no live read on a kill, no live check at the red door. For when the Wi-Fi is up but slow.
 - *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
 - *Music* plays Freedoom's soundtrack, and *Sound effects* the gunfire, doors and monsters. Turning either off keeps its level on the Sound Volume sliders for when it's back on.

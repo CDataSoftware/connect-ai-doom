@@ -760,7 +760,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..d6bf76e 100644
+index fa4fe83..28172a1 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -865,7 +865,7 @@ index fa4fe83..d6bf76e 100644
  }
  
  // pr_renice
-@@ -890,3 +939,462 @@ void pr_renice(int pid) {
+@@ -890,3 +939,468 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -915,7 +915,7 @@ index fa4fe83..d6bf76e 100644
 +static const char *agent_option_msg[AGENT_NOPTIONS][2] = {
 +    {"CLAUDE PLAYS OFF: YOUR TURN", "CLAUDE PLAYS: CLAUDE TAKES OVER"},
 +    {"AUTO REPLAY OFF", "AUTO REPLAY ON: RESTARTS WHEN CLEARED OR YOU DIE"},
-+    {"GOD MODE OFF", "GOD MODE ON: PLAYERS CAN'T DIE"},
++    {"GOD MODE OFF", "GOD MODE ON: NO DYING, ENDLESS AMMO"},
 +    {"SAVED DATA OFF: LIVE FROM CONNECT AI", "SAVED DATA ON: NO CONNECT AI CALLS, THE LAST SAVED RECORDS"},
 +    {"OFFLINE CLAUDE OFF: CLAUDE PLAYS LIVE", "OFFLINE CLAUDE ON: A SCRIPTED PLAYER, NO AI TOKENS"},
 +    {"MUSIC OFF", "MUSIC ON"},
@@ -1095,7 +1095,13 @@ index fa4fe83..d6bf76e 100644
 +            p->pendingweapon = wp_chaingun;
 +    }
 +    else if (PR_AgentOption(2))
-+        p->cheats |= CF_GODMODE;       // the Options menu's god mode: people can't die
++    {
++        // The Options menu's god mode: people can't die, and never run out of ammo.
++        int i;
++        p->cheats |= CF_GODMODE;
++        for (i = 0; i < NUMAMMO; i++)
++            p->ammo[i] = p->maxammo[i];
++    }
 +
 +    ++agent_clock;
 +    if (agent_clock % 4 == 0)

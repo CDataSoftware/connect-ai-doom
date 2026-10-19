@@ -5,7 +5,7 @@
 
 **But can it run Connect AI?** Ask Claude a business question, and Claude answers it through the [CData Connect AI](https://www.cdata.com/ai/) MCP server. A Doom level is built from what it finds, and every monster in it is a live record from your apps.
 
-![Claude playing a level built from live Connect AI data: Salesforce deals, the blocked PII vault and Zendesk tickets, with the side panel showing every kill](assets/demo.gif)
+![Claude playing a level built from live Connect AI data: Salesforce deals, Zendesk tickets, Stripe invoices and the PII vault Connect AI blocked, with the side panel showing every kill](assets/demo.gif)
 
 - **Each room is a data source**: Salesforce, Zendesk, Stripe, whatever answers the question.
 - **Each monster is a record** from that source. Aim at one to see it. The biggest monster in each room is urgent.

@@ -432,6 +432,7 @@ class PanelServerTest(unittest.TestCase):
             status, headers, body = self.get(path)
             self.assertEqual(status, 200)
             self.assertIn("text/html", headers["Content-Type"])
+            self.assertEqual(headers["Cache-Control"], "no-cache")   # never an old page after an update
             self.assertEqual(body, (ROOT / "panel" / "index.html").read_bytes())
 
     def test_does_not_serve_files_outside_the_panel(self):

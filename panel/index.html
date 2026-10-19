@@ -213,7 +213,8 @@
   .rl .bar { height: 8px; background: #0D0D12; border-radius: 4px; overflow: hidden; }
   .rl .bar span { display: block; height: 100%; background: var(--doom-red); transition: width .4s; }
   .rl .sub { font-size: 12.5px; color: var(--balance); }
-  .rl .mons { display: flex; align-items: flex-end; gap: 6px; font-size: 12px; color: var(--balance); }
+  .rl .mons { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 10px; font-size: 12px; color: var(--balance); }
+  .rl .mon { display: flex; align-items: flex-end; gap: 6px; }   /* a sprite and its name wrap together */
   .rl .mons img { height: 26px; width: 26px; object-fit: contain; object-position: bottom; image-rendering: pixelated; }
   .rl .mons b { color: var(--clarity); font-weight: 600; }
   .tile .pair { display: flex; gap: 2px; flex: none; }
@@ -761,8 +762,8 @@ function renderMission(m, events, rooms) {
 // Each room's monsters, after its app's theme (tools/themes.py): a record, and an urgent record.
 function monsters(r) {
   if (!r.monster) return "";
-  return `<div class="mons"><img src="sprites/${esc(r.monster.key)}.png" alt=""><span><b>${esc(r.monster.name)}</b> record</span>
-    <img src="sprites/${esc(r.urgent_monster.key)}.png" alt=""><span><b>${esc(r.urgent_monster.name)}</b> urgent</span></div>`;
+  return `<div class="mons"><span class="mon"><img src="sprites/${esc(r.monster.key)}.png" alt=""><span><b>${esc(r.monster.name)}</b> record</span></span>
+    <span class="mon"><img src="sprites/${esc(r.urgent_monster.key)}.png" alt=""><span><b>${esc(r.urgent_monster.name)}</b> urgent</span></span></div>`;
 }
 // The legend's monster tiles: this run's pair for each room, once the rooms are known.
 function legendMonsters(rooms) {
@@ -825,15 +826,21 @@ function vaultRequest(v) {
 
 // replay: the offline player (play.py replay), narrating with Claude's lines from earlier runs
 const claudePlays = game => game?.mode === "claude" || game?.mode === "replay";
-const modeText = game => ({claude: "CLAUDE IS PLAYING · LIVE", replay: "CLAUDE PLAYS · OFFLINE REPLAY"})[game.mode]
-  || "YOU'RE PLAYING · LIVE";
+// Where this game's records come from: Connect AI, the offline sample level, or saved records.
+function dataText(s) {
+  const rooms = s.mission?.rooms || [];
+  if (s.records?.source === "demo" || (rooms.length && rooms.every(r => r.rows))) return "OFFLINE";
+  return ["saved", "saved-data"].includes(s.records?.source) ? "SAVED DATA" : "LIVE";
+}
+const modeText = (game, s) => game.mode === "replay" ? "CLAUDE PLAYS · OFFLINE REPLAY"
+  : `${game.mode === "claude" ? "CLAUDE IS PLAYING" : "YOU'RE PLAYING"} · ${dataText(s)}`;
 
 function renderGame(s) {
   const game = s.game;
   document.body.classList.toggle("in-game", !!game);
   $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
   if (!game) return;
-  $("now-mode").textContent = modeText(game);
+  $("now-mode").textContent = modeText(game, s);
   $("now-keys").hidden = claudePlays(game);
   if (!lastEventKey) setHTML($("now-big"), `<div class="hint">${claudePlays(game)
     ? "Claude grabs the keycards, then clears the rooms. Every kill shows up here."
@@ -1154,7 +1161,7 @@ function renderStage(s, events) {
   setText($("stage-q"), q);
   setText($("stage-ask"), q);
   const briefed = events.some(e => e.kind === "mission");
-  setText($("stage-mode"), game ? modeText(game)
+  setText($("stage-mode"), game ? modeText(game, s)
     : briefed ? "LEVEL READY" : "CLAUDE IS BRIEFING · LIVE");
   const calls = events.filter(e => e.kind === "call").length;
   setText($("stage-progress"), briefed ? `Level built from ${(m?.rooms || []).length} apps. Loading the game...`

@@ -56,7 +56,9 @@ function run(argv) {
   const view = $.WKWebView.alloc.initWithFrameConfiguration(
     $.NSMakeRect(0, 0, frame.size.width, frame.size.height), $.WKWebViewConfiguration.alloc.init);
   view.setValueForKey($.NSNumber.numberWithBool(false), "drawsBackground");  // black, not white, while it loads
-  view.loadRequest($.NSURLRequest.requestWithURL($.NSURL.URLWithString(argv[0])));
+  // Ignore the web view's cache: it would keep showing the panel page from before an update.
+  view.loadRequest($.NSURLRequest.requestWithURLCachePolicyTimeoutInterval(
+    $.NSURL.URLWithString(argv[0]), $.NSURLRequestReloadIgnoringLocalCacheData, 30));
   win.contentView = view;
   win.makeKeyAndOrderFront(null);
   app.activateIgnoringOtherApps(true);

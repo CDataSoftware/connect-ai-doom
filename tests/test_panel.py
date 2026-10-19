@@ -160,6 +160,7 @@ class PanelTest(unittest.TestCase):
         self.assertIn('<div class="live">Saved data (Options menu): the records from Oct 15, 15:35',
                       ids["rooms-live"]["html"])
         self.assertNotIn("Live:", ids["rooms-live"]["html"])
+        self.assertEqual(ids["now-mode"]["text"], "YOU'RE PLAYING · SAVED DATA")   # not "LIVE"
 
     def test_all_rooms_clear(self):
         kill = {"id": "Zendesk:1", "app": "Zendesk", "label": "Initech", "detail": "", "writable": True,
@@ -253,6 +254,10 @@ class PanelTest(unittest.TestCase):
         rl = ids["rooms-live"]["html"]
         self.assertIn('<span class="acc"> · READ + WRITE</span><span class="acc-s"> · R+W</span>', rl)
         self.assertIn('<span class="acc-s"> · READ</span>', rl)
+        # the offline sample level (its rooms carry their rows): the header says so, not "LIVE"
+        ids = self.render(events=[], rooms_live=rooms, game={"mode": "player", "started": 0},
+                          mission={"question": "q", "rooms": [{"app": "Salesforce", "rows": [{"Id": "1"}]}]})
+        self.assertEqual(ids["now-mode"]["text"], "YOU'RE PLAYING · OFFLINE")
 
     def test_no_stage_without_the_layout(self):
         ids = self.render()

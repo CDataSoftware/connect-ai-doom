@@ -482,6 +482,12 @@ def cmd_panel(args):
         def log_message(self, *a):
             pass
 
+        def end_headers(self):
+            # The stage's web view otherwise keeps an old panel page after an update.
+            if self.path.split("?")[0] != "/state.json":
+                self.send_header("Cache-Control", "no-cache")
+            super().end_headers()
+
         def do_GET(self):
             if self.path.split("?")[0] != "/state.json":
                 return super().do_GET()

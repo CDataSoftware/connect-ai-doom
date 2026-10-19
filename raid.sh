@@ -289,7 +289,12 @@ case "$MODE" in
   brief) python3 brief.py ${QUESTION:+"$QUESTION"}; exit ;;
   live) python3 brief.py ${QUESTION:+"$QUESTION"} >/dev/null ;;
   demo)
-    if grep -q '"query"' state/mission.json 2>/dev/null; then cp state/mission.json state/mission-live.json; fi
+    # Set the real level aside, not the sample: an offline game killed before its exit trap leaves
+    # the sample in mission.json (its rooms carry rows), and copying that would lose the real one.
+    if python3 -c 'import json, sys; r = json.load(open("state/mission.json")).get("rooms") or [{}]
+sys.exit(0 if any("query" in x for x in r) and not all("rows" in x for x in r) else 1)' 2>/dev/null; then
+      cp state/mission.json state/mission-live.json
+    fi
     python3 "$BRIDGE" poll --demo ;;
 esac
 [[ -f state/mission.json ]] || { echo "No level yet: run ./raid.sh new first." >&2; exit 1; }

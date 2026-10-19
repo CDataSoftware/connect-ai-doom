@@ -336,6 +336,15 @@ class RaidTest(unittest.TestCase):
             (self.state / "hits.jsonl").unlink()
             time.sleep(1.1)
             self.assertEqual(self.assert_played(self.raid("replay", env=env)), 3)
+            # an offline game killed before its exit trap: the sample in mission.json, the real level
+            # set aside. The next offline game must not copy the sample over it.
+            (self.state / "mission-live.json").write_text((self.state / "mission.json").read_text())
+            (self.state / "mission.json").write_text(json.dumps({"question": "sample", "rooms": [
+                {"app": "Salesforce", "query": "SELECT 1", "rows": []}]}))
+            (self.state / "hits.jsonl").unlink()
+            time.sleep(1.1)
+            self.assertEqual(self.assert_played(self.raid("offline", env=env)), 40)
+            self.assertEqual(json.loads((self.state / "mission.json").read_text())["question"], "Who is late?")
 
     def test_booth_plays_game_after_game(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:

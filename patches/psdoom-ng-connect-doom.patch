@@ -1,5 +1,5 @@
 diff --git i/trunk/src/d_main.c w/trunk/src/d_main.c
-index 125d27b..9aa5b4c 100644
+index 125d27b..d8b12f6 100644
 --- i/trunk/src/d_main.c
 +++ w/trunk/src/d_main.c
 @@ -217,6 +217,8 @@ event_t *D_PopEvent(void)
@@ -19,16 +19,44 @@ index 125d27b..9aa5b4c 100644
  	if (M_Responder (ev))
  	    continue;               // menu ate the event
  	G_Responder (ev);
-@@ -300,6 +303,8 @@ void D_Display (void)
+@@ -251,6 +254,7 @@ void D_Display (void)
+ {
+     static  boolean		viewactivestate = false;
+     static  boolean		menuactivestate = false;
++    static  boolean		pausedstate = false;    // connect-doom
+     static  boolean		inhelpscreensstate = false;
+     static  boolean		fullscreen = false;
+     static  gamestate_t		oldgamestate = -1;
+@@ -300,6 +304,10 @@ void D_Display (void)
  	    redrawsbar = true;
  	if (inhelpscreensstate && !inhelpscreens)
  	    redrawsbar = true;              // just put away the help screen
 +	if (menuactive || menuactivestate)
 +	    redrawsbar = true;              // connect-doom: the Options menu reaches down over the status bar
++	if (paused || pausedstate)
++	    redrawsbar = true;              // connect-doom: and so does the pause screen's logo
  	ST_Drawer (viewheight == 200, redrawsbar );
  	fullscreen = viewheight == 200;
  	break;
-@@ -1239,6 +1244,10 @@ void D_DoomMain (void)
+@@ -341,7 +349,8 @@ void D_Display (void)
+     // see if the border needs to be updated to the screen
+     if (gamestate == GS_LEVEL && !automapactive && scaledviewwidth != 320)
+     {
+-	if (menuactive || menuactivestate || !viewactivestate)
++	// connect-doom: the pause logo hangs over the border too; without this it stays there after unpausing
++	if (menuactive || menuactivestate || paused || pausedstate || !viewactivestate)
+ 	    borderdrawcount = 3;
+ 	if (borderdrawcount)
+ 	{
+@@ -359,6 +368,7 @@ void D_Display (void)
+     }
+ 
+     menuactivestate = menuactive;
++    pausedstate = paused;
+     viewactivestate = viewactive;
+     inhelpscreensstate = inhelpscreens;
+     oldgamestate = wipegamestate = gamestate;
+@@ -1239,6 +1249,10 @@ void D_DoomMain (void)
      p = M_CheckParm ("-nopslev");
      if (p)
      {

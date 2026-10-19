@@ -69,6 +69,8 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
 
 The raid takes over the whole screen, for booths and screen recordings: the game on the left two thirds, with Claude's question and the controls under it, and the panel on the right third. When Claude plays, the panel streams each decision and tool call as Claude makes it. Cmd-Tab to another app and the full screen steps aside until you come back to the game; Cmd-Q on the game or the panel ends it at once; `LAYOUT=off` plays in a normal window instead. The game plays on the easiest skill: you take half damage and pick-ups give twice the ammo. A record only wakes when you come within 384 units in sight or shoot it, so you clear a room a few at a time. **Controls:** WASD to move, the mouse to turn, click or Space to fire, walk into a door to open it (or press E), Shift to run, P to pause.
 
+**Ask a new question mid-game** in the box at the bottom of the panel: press P to free the mouse, click the box, type the question and press Enter (or *Use the default question* to go back to the stock one). The game ends, Claude briefs the new question on the stage while you watch, about a minute, and the next game is its level, with the Options menu's switches as you left them. If Claude can't build a level for it, the last level comes back and the panel says so. It needs a Connect AI account and Claude Code, so an offline game has the box switched off.
+
 **Switch things mid-game** in the Options menu (Esc → Options):
 
 - *Claude plays* hands the marine to Claude or takes it back.

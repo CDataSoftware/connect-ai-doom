@@ -19,6 +19,7 @@ from helpers import PAT, ROOT, USER, FakeMCP, TempState, free_port, query
 
 import connect_ai_mcp
 import connect_doom as cd
+from brief import DEFAULT_QUESTION
 
 ROOM = {"connection": "Salesforce1", "app": "Salesforce", "writable": True}
 
@@ -387,6 +388,49 @@ class PollCLITest(unittest.TestCase):
                 self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|check|score|reset|panel}", r.stderr)
 
 
+class AskTest(unittest.TestCase):
+    """A question from the panel's box: ask.json for raid.sh, and the game ended for the new level."""
+
+    def setUp(self):
+        self.ctx = TempState()
+        self.state = self.ctx.__enter__()
+        self.addCleanup(self.ctx.__exit__)
+        env = mock.patch.dict(os.environ, {"RAID_PID": "4242", "CONNECT_AI_PAT": PAT})
+        env.start()
+        self.addCleanup(env.stop)
+        which = mock.patch.object(cd.shutil, "which", return_value="/usr/local/bin/claude")
+        which.start()
+        self.addCleanup(which.stop)
+
+    def test_ask_ends_the_game_for_the_new_level(self):
+        self.assertEqual(cd.ask("Who owes us?"), (409, {"error": "Wait for the game to start, then ask."}))
+        cd.GAME.write_text('{"mode": "player", "started": 1}')
+        with mock.patch.object(cd.subprocess, "run") as run:
+            self.assertEqual(cd.ask("Who owes us?"), (202, {"question": "Who owes us?"}))
+        run.assert_called_once_with(["pkill", "-9", "-P", "4242", "-x", "psdoom"], check=False)
+        self.assertEqual(json.loads(cd.ASK.read_text())["question"], "Who owes us?")
+        self.assertEqual(cd.ask_state()["pending"], "Who owes us?")
+        self.assertEqual(cd.ask("Again?")[0], 409)                  # one briefing at a time
+        cd.ASK.rename(cd.ASKING)                                    # raid.sh is briefing it
+        self.assertEqual(cd.ask_state()["pending"], "Who owes us?")
+        self.assertEqual(cd.ask("Again?")[0], 409)
+
+    def test_ask_checks_the_question_and_the_account(self):
+        cd.GAME.write_text('{"mode": "player", "started": 1}')
+        self.assertEqual(cd.ask(""), (400, {"error": "Type a question first."}))
+        self.assertEqual(cd.ask("x" * 501)[0], 400)
+        with mock.patch.dict(os.environ, {"CONNECT_AI_PAT": ""}):
+            self.assertIn("./raid.sh login", cd.ask("Who owes us?")[1]["error"])
+            self.assertIn("./raid.sh login", cd.ask_state()["unavailable"])
+        self.assertFalse(cd.ASK.exists())
+
+    def test_a_failed_briefing_shows_for_two_minutes(self):
+        cd.ASK_FAILED.write_text(json.dumps({"question": "Who owes us?", "at": time.time()}))
+        self.assertEqual(cd.ask_state()["failed"]["question"], "Who owes us?")
+        cd.ASK_FAILED.write_text(json.dumps({"question": "Who owes us?", "at": time.time() - 300}))
+        self.assertIsNone(cd.ask_state()["failed"])
+
+
 class PanelServerTest(unittest.TestCase):
     """`panel` serves panel/index.html and /state.json."""
 
@@ -454,7 +498,19 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
                                              "game": None, "kills": [], "kill_total": 0, "hits": [],
                                              "rooms_live": [], "records": {"source": None, "fetched_at": None},
-                                             "vault": [], "vault_checking": None, "standing": 0})
+                                             "vault": [], "vault_checking": None, "standing": 0,
+                                             "ask": {"unavailable": "New questions work while ./raid.sh runs the game.",
+                                                     "default": DEFAULT_QUESTION, "pending": None, "failed": None}})
+
+    def test_a_question_needs_raid_sh(self):
+        req = urllib.request.Request(self.base + "/ask", data=json.dumps({"question": "Who owes us?"}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(e.exception.code, 409)
+        self.assertEqual(json.loads(e.exception.read()), {"error": "New questions work while ./raid.sh runs the game."})
+        e.exception.close()
+        self.assertFalse((self.state / "ask.json").exists())
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}

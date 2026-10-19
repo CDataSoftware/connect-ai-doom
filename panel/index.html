@@ -177,6 +177,20 @@
   .keycard .title { color: #D9D6CF; font-size: 14px; }
   .keycard .access { font: 8px/1.6 var(--pixel); color: var(--kc); margin-top: 6px; }
 
+  /* ---------- a new question: the next level ---------- */
+  .newq form { display: grid; gap: 8px; }
+  .newq textarea { width: 100%; resize: vertical; min-height: 52px; font: 15px/1.4 var(--sans); color: var(--clarity);
+                   background: #0D0D12; border: 1px solid var(--line); border-left: 4px solid var(--agility);
+                   border-radius: 4px; padding: 8px 10px; }
+  .newq textarea:focus { outline: none; border-color: var(--agility); }
+  .newq textarea:disabled { opacity: .5; }
+  .newq .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .newq button { font: 9px/1 var(--pixel); color: var(--depth); background: var(--agility); border: 0; border-radius: 2px;
+                 padding: 9px 10px; cursor: pointer; }
+  .newq button.link { font: 13px/1 var(--sans); color: var(--balance); background: none; padding: 4px 0; text-decoration: underline; }
+  .newq button:disabled { opacity: .4; cursor: default; }
+  .newq .msg { font-size: 13px; color: var(--balance); }
+  .newq .msg.bad { color: var(--key-red); }
   .answer { background: var(--depth-2); border: 1px solid var(--line); border-left: 4px solid var(--resolve); padding: 12px 14px; border-radius: 4px; }
   .meta { font: 12px var(--mono); color: var(--balance); margin-top: 8px; }
 
@@ -482,6 +496,14 @@
   <section class="brief grow"><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
   <section class="brief"><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
   <section class="brief"><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
+  <section class="newq" id="newq" hidden><h2>ASK CLAUDE A NEW QUESTION</h2>
+    <form id="newq-form">
+      <textarea id="newq-text" rows="2" maxlength="500" placeholder="e.g. Which deals are slipping this quarter, and who owes us money?"></textarea>
+      <div class="row"><button type="submit" id="newq-go">BUILD A NEW LEVEL</button>
+        <button type="button" class="link" id="newq-default">Use the default question</button></div>
+      <div class="msg" id="newq-msg"></div>
+    </form>
+  </section>
 </main>
 <footer>
   <div class="hazard"></div>
@@ -835,8 +857,10 @@ function dataText(s) {
 const modeText = (game, s) => game.mode === "replay" ? "CLAUDE PLAYS · OFFLINE REPLAY"
   : `${game.mode === "claude" ? "CLAUDE IS PLAYING" : "YOU'RE PLAYING"} · ${dataText(s)}`;
 
+let lastGame = null;
 function renderGame(s) {
   const game = s.game;
+  if (game && game.started !== lastGame) { lastEventKey = null; seenEvents = null; lastGame = game.started; }
   document.body.classList.toggle("in-game", !!game);
   $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
   if (!game) return;
@@ -1204,10 +1228,55 @@ try {
   lg.addEventListener("toggle", () => { try { localStorage.setItem("legend", lg.open ? "open" : "closed"); } catch (e) {} });
 } catch (e) { /* storage blocked: the legend just starts open */ }
 
+let lastRun = null;
+
+// ---------- a new question: raid.sh ends this game, Claude briefs it, and the next game is its level ----------
+const asking = {note: "", bad: false, until: 0, sending: false, last: null};
+function renderAsk(s) {
+  const a = s.ask;
+  $("newq").hidden = !a;
+  if (!a) return;
+  asking.last = a;
+  let msg = "", bad = false, off = true;
+  if (a.unavailable) msg = a.unavailable;
+  else if (a.pending) msg = `Claude is building a new level for: ${a.pending}`;
+  else if (!s.game) msg = "You can ask once the game is running.";
+  else {
+    off = false;
+    if (a.failed) { msg = `Claude couldn't build a level for "${a.failed.question}", so the last level is back. Try another question.`; bad = true; }
+    else msg = `${STAGED && !claudePlays(s.game) ? "Press P in the game to free the mouse, then type here. " : ""}Enter builds the level, in about a minute.`;
+  }
+  if (asking.sending) off = true;
+  if (Date.now() < asking.until) { msg = asking.note; bad = asking.bad; }
+  $("newq-text").disabled = $("newq-go").disabled = $("newq-default").disabled = off;
+  setText($("newq-msg"), msg);
+  $("newq-msg").className = `msg${bad ? " bad" : ""}`;
+}
+function askNote(note, bad) { Object.assign(asking, {note, bad, until: Date.now() + 8000}); }
+async function askNew(e) {
+  if (e) e.preventDefault();
+  const question = String($("newq-text").value || "").trim();
+  if (!question) { askNote("Type a question first.", true); return; }
+  asking.sending = true;
+  try {
+    const r = await fetch("/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})});
+    const reply = await r.json();
+    if (r.ok) { $("newq-text").value = ""; askNote("Ending this game. Claude is reading the question...", false); }
+    else askNote(reply.error || "Couldn't ask that.", true);
+  } catch (err) { askNote("The game isn't answering. Try again in a moment.", true); }
+  asking.sending = false;
+}
+$("newq-form").addEventListener("submit", askNew);
+$("newq-text").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) askNew(e); });
+$("newq-default").addEventListener("click", () => { if (asking.last) $("newq-text").value = asking.last.default; });
+
 async function tick() {
   try {
     const s = await (await fetch("/state.json", {cache: "no-store"})).json();
     const events = s.events || [];
+    // a new briefing in this page (a question from the box): its log starts over
+    const run = events.length ? JSON.stringify(events[0]) : "";
+    if (run !== lastRun) { feed.reset(); automap.rooms.clear(); automap.seen = 0; lastRun = run; }
     feed.apply(events);
     renderMission(s.mission, events, s.rooms_live);
     const play = s.play_events || [];
@@ -1215,6 +1284,7 @@ async function tick() {
     if (play.length) playFeed.apply(play);
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
+    renderAsk(s);
     if (STAGED) renderStage(s, events);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }
 }

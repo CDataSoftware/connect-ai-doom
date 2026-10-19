@@ -28,7 +28,8 @@
 # replay on, a minute without a key or the mouse hands the game to Claude (IDLE_SECONDS).
 # With no mode, ./raid.sh is ./raid.sh new. The old names still work: --again (replay),
 # --demo (offline), brief (brief-only).
-# The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it.
+# The side panel (http://localhost:8666) shows Claude's MCP calls live; NO_PANEL=1 skips it. Its
+# question box ends the game, briefs the new question and plays its level, in the same raid.
 # NOGORE=1: hits throw bullet puffs instead of blood, and a kill vanishes in teleport fog.
 # Kills write nothing back: each is logged and its record read again live through Connect AI.
 set -euo pipefail
@@ -146,21 +147,24 @@ if [[ -n "$BOOTH" ]]; then
 fi
 
 # The Options menu's switches: the flags, or in a booth the last game's (state/options.json).
-if [[ -z "${CONNECT_DOOM_BOOTH:-}" ]]; then
-  rm -f state/options.json
-elif [[ -f state/options.json ]]; then
-  read -r PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX < <(python3 -c 'import json
+# A new level asked for from the panel starts from the switches of the game before it, too.
+load_options() {
+  if [[ -f state/options.json ]]; then
+    read -r PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX < <(python3 -c 'import json
 o = json.load(open("state/options.json"))
 print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mode", "saved_data", "offline_claude")],
       *["-" if o.get(k, 1) else 1 for k in ("music", "sound_effects")])' \
-    2>/dev/null || true)
-  for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
-fi
-export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
-PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1
-[[ -n "$NOMUSIC" ]] && PSDOOM_OPT_MUSIC=0
-[[ -n "$NOSFX" ]] && PSDOOM_OPT_SFX=0
-export PSDOOM_OPT_MUSIC PSDOOM_OPT_SFX
+      2>/dev/null || true)
+    for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
+  fi
+  export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
+  PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1
+  [[ -n "$NOMUSIC" ]] && PSDOOM_OPT_MUSIC=0
+  [[ -n "$NOSFX" ]] && PSDOOM_OPT_SFX=0
+  export PSDOOM_OPT_MUSIC PSDOOM_OPT_SFX
+}
+[[ -z "${CONNECT_DOOM_BOOTH:-}" ]] && rm -f state/options.json
+load_options
 
 if [[ "$MODE" == doctor ]]; then
   # One line per check; an x line says what to run. Exits 1 if anything needed to play is missing.
@@ -229,6 +233,9 @@ pkill -f "$PWD/tools/stage.js" 2>/dev/null || true
 # set aside: put the real level back before anything reads it.
 if [[ -f state/mission-live.json ]]; then mv -f state/mission-live.json state/mission.json; fi
 
+# A question asked from the panel of a raid that was killed mid-briefing is stale.
+rm -f state/ask.json state/asking.json state/ask-failed.json
+
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
 # An offline game sets the real level aside in mission-live.json; put it back for the next replay.
@@ -287,7 +294,8 @@ open_panel() {
 
 if [[ "${NO_PANEL:-}" != 1 ]]; then
   [[ -f panel/sprites/knight.png ]] || python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
-  python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
+  # RAID_PID: the panel's question box ends this raid's game (its psdoom) so the next is a new level
+  RAID_PID=$$ python3 "$BRIDGE" panel "$PANEL_PORT" 2>/dev/null &
   PIDS+=($!)
   /bin/sleep 0.5
   open_panel
@@ -307,52 +315,77 @@ sys.exit(0 if any("query" in x for x in r) and not all("rows" in x for x in r) e
 esac
 [[ -f state/mission.json ]] || { echo "No level yet: run ./raid.sh new first." >&2; exit 1; }
 
-# The records to start with. Without Wi-Fi, poll --once falls back to the ones this level last
-# fetched; if it never fetched any (exit 3), play offline.
-if [[ "$MODE" != demo ]] && ! python3 "$BRIDGE" poll --once; then
-  echo "Can't reach Connect AI, and this level has no saved records yet: playing offline instead." >&2
-  MODE=demo
-  cp state/mission.json state/mission-live.json
-  python3 "$BRIDGE" poll --demo
-fi
+# A question asked from the panel's box (connect_doom.py ask): Claude briefs it while the stage
+# shows the briefing, and the next game is its level. If the briefing fails or finds no rooms,
+# the last level comes back and the panel says so.
+new_level() {
+  mv -f state/ask.json state/asking.json
+  local question
+  question=$(python3 -c 'import json; print(json.load(open("state/asking.json"))["question"])')
+  echo "New question from the panel: $question" >&2
+  cp state/mission.json state/mission-before.json
+  if python3 brief.py "$question" >/dev/null 2>>state/brief.err && python3 -c 'import json, sys
+sys.exit(0 if json.load(open("state/mission.json")).get("rooms") else 1)' 2>/dev/null; then
+    rm -f state/mission-live.json state/mission-before.json   # a real level now, not the offline one
+    MODE=live
+  else
+    mv -f state/mission-before.json state/mission.json
+    python3 -c 'import json, sys, time
+json.dump({"question": sys.argv[1], "at": time.time()}, open("state/ask-failed.json", "w"))' "$question"
+    echo "Claude couldn't build a level for that question; playing the last level again." >&2
+  fi
+  rm -f state/asking.json
+  load_options
+}
 
-# The level for this mission: map, signs, keycard messages (and, with NOGORE=1, no blood or corpses).
-python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
-python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --records state/cache.json --brand
-"$ZDBSP" -o state/level.wad state/level-raw.wad >/dev/null
-if [[ "${NOGORE:-}" == 1 ]]; then
-  python3 tools/make_deh.py state/mission.json state/level.deh --no-gore
-else
-  python3 tools/make_deh.py state/mission.json state/level.deh
-fi
-# Each room's monsters, after its app's theme (tools/themes.py): a record's and an urgent record's.
-PSDOOM_MONSTERS=$(python3 tools/themes.py monsters state/mission.json)
-export PSDOOM_MONSTERS
+GAME_PIDS=()
+while :; do
+  # The records to start with. Without Wi-Fi, poll --once falls back to the ones this level last
+  # fetched; if it never fetched any (exit 3), play offline.
+  if [[ "$MODE" != demo ]] && ! python3 "$BRIDGE" poll --once; then
+    echo "Can't reach Connect AI, and this level has no saved records yet: playing offline instead." >&2
+    MODE=demo
+    cp state/mission.json state/mission-live.json
+    python3 "$BRIDGE" poll --demo
+  fi
 
-if [[ "$MODE" != demo ]]; then
-  python3 "$BRIDGE" poll 2>>state/poll.log &
-  PIDS+=($!)
-fi
+  # The level for this mission: map, signs, keycard messages (and, with NOGORE=1, no blood or corpses).
+  python3 tools/make_branding.py wads/freedoom2.wad assets/brand state/brand.wad --mission state/mission.json
+  python3 tools/make_arena.py state/level-raw.wad --mission state/mission.json --records state/cache.json --brand
+  "$ZDBSP" -o state/level.wad state/level-raw.wad >/dev/null
+  if [[ "${NOGORE:-}" == 1 ]]; then
+    python3 tools/make_deh.py state/mission.json state/level.deh --no-gore
+  else
+    python3 tools/make_deh.py state/mission.json state/level.deh
+  fi
+  # Each room's monsters, after its app's theme (tools/themes.py): a record's and an urgent record's.
+  PSDOOM_MONSTERS=$(python3 tools/themes.py monsters state/mission.json)
+  export PSDOOM_MONSTERS
 
-export PSDOOMPSCMD="python3 $BRIDGE list"
-export PSDOOM_LABELS="$PWD/state/labels.tsv"  # the record under the crosshair, written by the bridge
-export PSDOOMVAULTCMD="python3 $BRIDGE vault"   # the red door asks Connect AI again, live
-export PSDOOMKILLCMD="python3 $BRIDGE kill"
-export PSDOOMRENICECMD="python3 $BRIDGE hit"
+  if [[ "$MODE" != demo ]]; then
+    python3 "$BRIDGE" poll 2>>state/poll.log &
+    PIDS+=($!) GAME_PIDS+=($!)
+  fi
 
-rm -f state/play.jsonl  # the panel's Claude plays feed is only for this game
-# The agent channel patched into psdoom: Claude's commands in, game state out. It's always
-# open, so Claude plays can be switched on from the Options menu; play.py loop follows the
-# menu's switches and starts or stops Claude.
-mkdir -p state/agent && rm -f state/agent/*
-export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_CLAUDE=${PLAYS:-0} PSDOOM_AGENT_LOOP=${LOOP:-0}
-python3 play.py loop 2>>state/play.err &
-PIDS+=($!)
+  export PSDOOMPSCMD="python3 $BRIDGE list"
+  export PSDOOM_LABELS="$PWD/state/labels.tsv"  # the record under the crosshair, written by the bridge
+  export PSDOOMVAULTCMD="python3 $BRIDGE vault"   # the red door asks Connect AI again, live
+  export PSDOOMKILLCMD="python3 $BRIDGE kill"
+  export PSDOOMRENICECMD="python3 $BRIDGE hit"
 
-# Modern FPS controls, as in GZDoom: WASD to move, the mouse to turn, left click or Space to
-# fire, walk into a door (or E, or right click) to open it, Shift to run, P to pause; the arrows turn too. Written
-# fresh each launch (values are keyboard scancodes), so a booth machine always plays the same.
-cat > state/controls.cfg <<'CFG'
+  rm -f state/play.jsonl  # the panel's Claude plays feed is only for this game
+  # The agent channel patched into psdoom: Claude's commands in, game state out. It's always
+  # open, so Claude plays can be switched on from the Options menu; play.py loop follows the
+  # menu's switches and starts or stops Claude.
+  mkdir -p state/agent && rm -f state/agent/*
+  export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_CLAUDE=${PLAYS:-0} PSDOOM_AGENT_LOOP=${LOOP:-0}
+  python3 play.py loop 2>>state/play.err &
+  PIDS+=($!) GAME_PIDS+=($!)
+
+  # Modern FPS controls, as in GZDoom: WASD to move, the mouse to turn, left click or Space to
+  # fire, walk into a door (or E, or right click) to open it, Shift to run, P to pause; the arrows turn too. Written
+  # fresh each launch (values are keyboard scancodes), so a booth machine always plays the same.
+  cat > state/controls.cfg <<'CFG'
 key_up 17
 key_down 31
 key_strafeleft 30
@@ -369,24 +402,33 @@ mouseb_strafe -1
 mouseb_forward -1
 mouse_sensitivity 6
 CFG
-# The mouse turns but doesn't walk; its right button opens doors. While Claude plays (the
-# Options menu switch), the game leaves the mouse free for clicking through Claude's feed.
-# show_endoom 0: Cmd-Q quits at once, with no ENDOOM text screen waiting for a key.
-printf 'novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\n' > state/controls-extra.cfg
+  # The mouse turns but doesn't walk; its right button opens doors. While Claude plays (the
+  # Options menu switch), the game leaves the mouse free for clicking through Claude's feed.
+  # show_endoom 0: Cmd-Q quits at once, with no ENDOOM text screen waiting for a key.
+  printf 'novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\n' > state/controls-extra.cfg
 
-GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
-printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
+  GAME_MODE=player; [[ -n "$PLAYS" ]] && GAME_MODE=claude
+  printf '{"mode": "%s", "started": %s}\n' "$GAME_MODE" "$(date +%s)" > state/game.json
 
-# Cmd-Q on the stage ends the raid. psdoom ignores SIGTERM, so it gets SIGKILL.
-if [[ -n "${PSDOOM_STAGE_PID:-}" ]]; then
-  ( while kill -0 "$PSDOOM_STAGE_PID" 2>/dev/null; do /bin/sleep 1; done; pkill -9 -P $$ -x psdoom || true ) &
-  PIDS+=($!)
-fi
+  # Cmd-Q on the stage ends the raid. psdoom ignores SIGTERM, so it gets SIGKILL.
+  if [[ -n "${PSDOOM_STAGE_PID:-}" && -z "${STAGE_WATCHED:-}" ]]; then
+    ( while kill -0 "$PSDOOM_STAGE_PID" 2>/dev/null; do /bin/sleep 1; done; pkill -9 -P $$ -x psdoom || true ) &
+    PIDS+=($!) STAGE_WATCHED=1
+  fi
 
-# -nopslev: spawn monsters into the three arenas of the level
-# -psallusers: don't filter monsters by Unix user
-"$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
-  -nopslev -psallusers -warp 1 -skill 1 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
-  >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
+  # -nopslev: spawn monsters into the three arenas of the level
+  # -psallusers: don't filter monsters by Unix user
+  "$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
+    -nopslev -psallusers -warp 1 -skill 1 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
+    >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
+
+  # The game is over, or the panel ended it for a new question.
+  kill ${GAME_PIDS[@]+"${GAME_PIDS[@]}"} 2>/dev/null || true
+  GAME_PIDS=()
+  [[ -f state/ask.json ]] || break
+  if [[ -n "${PSDOOM_STAGE_PID:-}" ]] && ! kill -0 "$PSDOOM_STAGE_PID" 2>/dev/null; then break; fi
+  rm -f state/game.json   # the panel shows the briefing, not the game, until the next one starts
+  new_level
+done
 
 python3 "$BRIDGE" score

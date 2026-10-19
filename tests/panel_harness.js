@@ -46,7 +46,11 @@ const ctx = {
               documentElement: { style: { setProperty: (k, v) => { cssVars[k] = v; } } } },
   location: { search: process.env.PANEL_SEARCH || "" },     // e.g. ?stage=... for the full-screen layout
   URLSearchParams, console,
-  fetch: async url => {
+  fetch: async (url, opts) => {
+    if (url === "/ask") {           // the question box: answered as the server would, and recorded
+      ctx.asked = JSON.parse(opts.body);
+      return { ok: !state.ask_error, json: async () => state.ask_error ? { error: state.ask_error } : ctx.asked };
+    }
     if (!url.startsWith("/state.json")) throw new Error(`unexpected fetch ${url}`);
     return { json: async () => state };
   },

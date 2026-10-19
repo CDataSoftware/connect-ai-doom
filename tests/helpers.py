@@ -247,7 +247,7 @@ class TempState:
         self.tmp = tempfile.TemporaryDirectory()
         paths = {"CACHE": "cache.json", "KILLS": "kills.jsonl", "HITS": "hits.jsonl", "MISSION": "mission.json",
                  "GAME": "game.json", "LOOKUPS": "lookups.jsonl", "LABELS": "labels.tsv",
-                 "VAULT": "vault.jsonl"}
+                 "VAULT": "vault.jsonl", "ASK": "ask.json", "ASKING": "asking.json", "ASK_FAILED": "ask-failed.json"}
         self.saved = {k: getattr(cd, k) for k in ("STATE", *paths)}
         state = Path(self.tmp.name)
         cd.STATE = state

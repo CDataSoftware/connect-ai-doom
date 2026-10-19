@@ -22,6 +22,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -44,6 +45,10 @@ LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the cr
 MISSION = STATE / "mission.json"
 SAVED = STATE / "saved-records.json"  # the last live refresh, for playing a level without Wi-Fi
 GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "player" | "claude", "started": epoch}
+ASK = STATE / "ask.json"  # a question asked from the panel, for raid.sh's next level: {"question", "at"}
+ASKING = STATE / "asking.json"  # raid.sh moves ask.json here while Claude briefs it
+ASK_FAILED = STATE / "ask-failed.json"  # that briefing failed, and the last level came back
+MAX_QUESTION = 500
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 # Seconds to wait on each Connect AI call during a game. On bad conference Wi-Fi a short wait
 # means the game starts on the last records fetched instead of hanging before it opens.
@@ -472,6 +477,50 @@ def cmd_score(_):
         print(f"  {k['killed_at']}  {k['app']:<18} {k['label'][:40]:<40} {k['detail'][:30]}  [{k['mode']}]")
 
 
+def can_ask():
+    """Why a new question can't be asked from the panel right now, or None if it can. raid.sh
+    sets RAID_PID: it runs the briefing between games, which needs Connect AI and Claude Code."""
+    if not os.environ.get("RAID_PID"):
+        return "New questions work while ./raid.sh runs the game."
+    if not os.environ.get("CONNECT_AI_PAT"):
+        return "New questions need a Connect AI account: run ./raid.sh login, then ./raid.sh new."
+    if not shutil.which("claude"):
+        return "New questions need Claude Code's CLI (claude), signed in."
+    return None
+
+
+def ask_state():
+    """The panel's question box: can it ask, the default question, and a question underway or failed."""
+    from brief import DEFAULT_QUESTION   # here, not at the top: the game runs this file every tick
+    failed = read_json(ASK_FAILED)
+    return {"unavailable": can_ask(), "default": DEFAULT_QUESTION,
+            "pending": (read_json(ASKING) or read_json(ASK) or {}).get("question"),
+            "failed": failed if failed and time.time() - failed.get("at", 0) < 120 else None}
+
+
+def ask(question):
+    """A question from the panel: hand it to raid.sh and end this game, so the next one is the
+    level Claude builds for it. Returns an HTTP status and a reply."""
+    why = can_ask()
+    if why:
+        return 409, {"error": why}
+    if not question:
+        return 400, {"error": "Type a question first."}
+    if len(question) > MAX_QUESTION:
+        return 400, {"error": f"Keep the question under {MAX_QUESTION} characters."}
+    if ASK.exists() or ASKING.exists():
+        return 409, {"error": "Claude is already building a level for another question."}
+    if not GAME.exists():
+        return 409, {"error": "Wait for the game to start, then ask."}
+    tmp = ASK.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"question": question, "at": time.time()}))
+    tmp.replace(ASK)
+    ASK_FAILED.unlink(missing_ok=True)
+    # psdoom ignores SIGTERM; raid.sh sees ask.json once the game is gone
+    subprocess.run(["pkill", "-9", "-P", os.environ["RAID_PID"], "-x", "psdoom"], check=False)
+    return 202, {"question": question}
+
+
 def cmd_panel(args):
     """Serve the side panel (panel/index.html) and the run's state on localhost."""
     import http.server
@@ -547,12 +596,29 @@ def cmd_panel(args):
                 "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
                 "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
                 "standing": len([m for m in monsters if m["id"] not in dead]),
+                "ask": ask_state(),
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+
+        def do_POST(self):
+            if self.path.split("?")[0] != "/ask":
+                return self.send_error(404)
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                question = " ".join(str(body.get("question", "")).split())
+            except (ValueError, AttributeError):
+                question = ""
+            status, reply = ask(question)
+            data = json.dumps(reply).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
 
     print(f"panel on http://localhost:{port}", file=sys.stderr)
     http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

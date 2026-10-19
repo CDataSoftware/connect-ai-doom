@@ -191,6 +191,53 @@ class RaidTest(unittest.TestCase):
         cache = json.loads((self.state / "cache.json").read_text())
         self.assertEqual(cache["source"], "connect-ai-mcp")
 
+    def ask_from_the_panel(self, env, question):
+        """The first game asks a new question from the panel's box, and waits to be ended (a copy
+        of sleep named psdoom, so the panel's pkill -x psdoom finds it); the next game plays."""
+        bin_ = self.repo / "vendor/src/psdoom-ng/trunk/src"
+        (bin_ / "psdoom").rename(bin_ / "psdoom-game")
+        shutil.copy("/bin/sleep", self.base / "psdoom")         # copy2 trips on /bin's system flags
+        self.install("vendor/src/psdoom-ng/trunk/src/psdoom", rf'''#!/bin/bash
+if [[ ! -f state/asked ]]; then
+  touch state/asked
+  [[ -n "${{BREAK_BRIEF:-}}" ]] && echo '[]' > "$FAKE_CLAUDE_STREAM"     # Claude finds nothing
+  python3 -c "import json, sys, urllib.request
+r = urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:$PANEL_PORT/ask', method='POST',
+    data=json.dumps({{'question': sys.argv[1]}}).encode(), headers={{'Content-Type': 'application/json'}}))
+print(r.status, r.read().decode())" {json.dumps(question)} > state/ask-reply.txt
+  exec "{self.base / 'psdoom'}" 60
+fi
+exec "$0-game" "$@"
+''')
+        return self.raid("new", "-q", "Who is late?", env=env, panel=True)
+
+    def test_a_question_from_the_panel_builds_the_next_level(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            start = time.time()
+            r = self.ask_from_the_panel(env, "Who owes us money?")
+            self.assert_played(r)
+        self.assertLess(time.time() - start, 50, "the panel ended the first game, not its 60 s sleep")
+        self.assertEqual((self.state / "ask-reply.txt").read_text(), '202 {"question": "Who owes us money?"}\n')
+        self.assertEqual(json.loads((self.base / "claude-call.json").read_text())["argv"][1], "Who owes us money?")
+        self.assertEqual(json.loads((self.state / "mission.json").read_text())["question"], "Who owes us money?")
+        panel = json.loads((self.state / "panel-state.json").read_text())
+        self.assertEqual(panel["mission"]["question"], "Who owes us money?")
+        self.assertEqual(panel["ask"]["pending"], None)
+        self.assertIsNone(panel["ask"]["unavailable"])
+        self.assertIn("New question from the panel: Who owes us money?", r.stderr)
+        for name in ("ask.json", "asking.json", "ask-failed.json", "mission-before.json"):
+            self.assertFalse((self.state / name).exists(), name)
+
+    def test_a_question_claude_cant_answer_puts_the_last_level_back(self):
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            r = self.ask_from_the_panel({**env, "BREAK_BRIEF": "1"}, "What is the airspeed of a swallow?")
+            self.assert_played(r)
+        self.assertEqual(json.loads((self.state / "mission.json").read_text())["question"], "Who is late?")
+        self.assertIn("Claude couldn't build a level for that question", r.stderr)
+        panel = json.loads((self.state / "panel-state.json").read_text())
+        self.assertEqual(panel["ask"]["failed"]["question"], "What is the airspeed of a swallow?")
+        self.assertFalse((self.state / "mission-before.json").exists())
+
     def built_from_this_patch(self):
         """What setup.sh leaves: the patch, and the checksum of the one the game was built from."""
         (self.repo / "patches").mkdir()

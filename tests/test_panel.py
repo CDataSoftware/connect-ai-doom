@@ -293,12 +293,53 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(desc, "Checked the fields of <b>T</b> in <b>Z&lt;1&gt;</b>")
         self.assertEqual(stat, ["blocked", "BLOCKED BY CONNECT AI"])
 
+    ASK = {"unavailable": None, "default": "Which customers are at risk?", "pending": None, "failed": None}
+    GAME = {"mode": "player", "started": 1}
+
+    def test_ask_a_new_question(self):
+        ask = "[$('newq-text').disabled, $('newq-msg').textContent]"
+        ids, (off, msg) = self.render(ask, ask=self.ASK, game=self.GAME)
+        self.assertFalse(ids["newq"]["hidden"])
+        self.assertFalse(off)
+        self.assertEqual(msg, "Enter builds the level, in about a minute.")
+        _, (off, msg) = self.render(ask, search="?stage=10,48,960,720,1008,32", ask=self.ASK, game=self.GAME)
+        self.assertTrue(msg.startswith("Press P in the game to free the mouse"))   # the game holds the mouse
+        _, (off, msg) = self.render(ask, ask=self.ASK)
+        self.assertEqual((off, msg), (True, "You can ask once the game is running."))
+        _, (off, msg) = self.render(ask, ask={**self.ASK, "pending": "Who owes us?"}, game=self.GAME)
+        self.assertEqual((off, msg), (True, "Claude is building a new level for: Who owes us?"))
+        _, (off, msg) = self.render(ask, ask={**self.ASK, "unavailable": "New questions need a Connect AI account."},
+                                    game=self.GAME)
+        self.assertEqual((off, msg), (True, "New questions need a Connect AI account."))
+        ids, (_, msg) = self.render(ask, ask={**self.ASK, "failed": {"question": "Huh?", "at": 1}}, game=self.GAME)
+        self.assertIn('build a level for "Huh?"', msg)
+        self.assertIn("bad", ids["newq-msg"]["className"])
+        self.assertTrue(self.render(ask={**self.ASK})["newq"]["hidden"] is False)
+        self.assertTrue(self.render()["newq"]["hidden"])                # an older server: no box
+
+    def test_ask_sends_the_question(self):
+        send = """(async () => {
+          $("newq-default").listener();                                  // fills in the default question
+          const filled = $("newq-text").value;
+          $("newq-text").value = "  Who owes us?  ";
+          await askNew({preventDefault() {}});
+          renderAsk(await (await fetch("/state.json")).json());
+          return [filled, asked, $("newq-text").value, $("newq-msg").textContent];
+        })()"""
+        _, (filled, asked, left, msg) = self.render(send, ask=self.ASK, game=self.GAME)
+        self.assertEqual(filled, "Which customers are at risk?")
+        self.assertEqual(asked, {"question": "Who owes us?"})
+        self.assertEqual(left, "")
+        self.assertEqual(msg, "Ending this game. Claude is reading the question...")
+        _, (_, _, left, msg) = self.render(send, ask=self.ASK, game=self.GAME, ask_error="Claude is already building a level.")
+        self.assertEqual((left, msg), ("  Who owes us?  ", "Claude is already building a level."))
+
     def test_state_keys_match_the_server(self):
         """Every key the panel reads from /state.json is one connect_doom.py serves."""
         script = (ROOT / "panel/index.html").read_text()
         served = (ROOT / "connect_doom.py").read_text()
         for key in ("events", "play_events", "mission", "game", "kills", "kill_total", "hits", "rooms_live",
-                    "records", "vault_checking"):
+                    "records", "vault_checking", "ask"):
             self.assertIn(f"s.{key}", script)
             self.assertIn(f'"{key}":', served)
 

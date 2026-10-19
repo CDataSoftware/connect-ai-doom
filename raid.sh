@@ -86,8 +86,12 @@ fi
 BUILT=$(cat vendor/src/psdoom-ng/.connect-doom-patch 2>/dev/null || true)
 if [[ -n "$BUILT" && "$BUILT" != "$(shasum -a 256 patches/psdoom-ng-connect-doom.patch | cut -d' ' -f1)" ]] \
    && [[ "$MODE" != doctor ]]; then
-  echo "The game was built from an older patch: run ./setup.sh again first." >&2
-  exit 1
+  # A pull brought a new patch: rebuild just the game (no downloads, so bad Wi-Fi is fine).
+  echo "The game patch changed since this Mac built it: rebuilding the game (about a minute)..." >&2
+  if ! ./setup.sh --game >&2; then
+    echo "Rebuilding the game failed: run ./setup.sh (its log is vendor/build.log)." >&2
+    exit 1
+  fi
 fi
 if [[ "$MODE" == live || "$MODE" == brief ]] && ! command -v claude >/dev/null; then
   echo "The briefing needs Claude Code's CLI (claude), signed in. Or play the last level: ./raid.sh replay, or play offline: ./raid.sh offline" >&2
@@ -240,7 +244,8 @@ rm -f state/ask.json state/asking.json state/ask-failed.json
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
 # An offline game sets the real level aside in mission-live.json; put it back for the next replay.
-trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; rm -f state/game.json
+# The game too (psdoom ignores SIGTERM): a raid that dies must not leave it frozen on the screen.
+trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; pkill -9 -P $$ -x psdoom 2>/dev/null || true; rm -f state/game.json
   if [[ -f state/mission-live.json ]]; then mv -f state/mission-live.json state/mission.json; fi' EXIT
 # Keep the screen from dimming or locking mid-game.
 if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi

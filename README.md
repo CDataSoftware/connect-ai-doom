@@ -131,6 +131,7 @@ More detail: [docs/internals.md](docs/internals.md).
 - **"No Connect AI token"**: run `./raid.sh login`.
 - **Empty rooms**: your connections returned no rows for that question. Try `./raid.sh new -q "..."` with a question about data you have.
 - **The game is in a normal window and the panel in a browser tab**: the game was built before the full-screen layout. Run `./setup.sh` again to rebuild it.
+- **"Rebuilding the game failed"**: `raid.sh` rebuilds the game itself after a pull changes it; if that fails, run `./setup.sh` and check `vendor/build.log`.
 
 ## Contributing
 

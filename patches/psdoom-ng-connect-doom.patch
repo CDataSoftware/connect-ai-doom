@@ -734,6 +734,19 @@ index fb45bdc..2d3ab84 100644
  		P_SlideMove (mo);
  	    }
  	    else if (mo->flags & MF_MISSILE)
+diff --git i/trunk/src/p_mobj.h w/trunk/src/p_mobj.h
+index 0789754..e087ae4 100644
+--- i/trunk/src/p_mobj.h
++++ w/trunk/src/p_mobj.h
+@@ -290,7 +290,7 @@ typedef struct mobj_s
+ // *** PID BEGIN ***
+     // the process id (0 if not a process)
+     int                 m_pid;
+-    char                m_pname[8];
++    char                m_pname[13];    // connect-doom: 8, room for a 12-letter name
+ 
+     // Need more variables for advanced process management:
+ 
 diff --git i/trunk/src/p_sight.c w/trunk/src/p_sight.c
 index 79c1bb1..a59b3d2 100644
 --- i/trunk/src/p_sight.c
@@ -760,7 +773,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..28172a1 100644
+index fa4fe83..5210210 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -771,7 +784,24 @@ index fa4fe83..28172a1 100644
  #include <math.h>
  #include <unistd.h>
  
-@@ -564,6 +565,43 @@ void cleanup_pid_list(mobj_t *del_mobj) {
+@@ -361,13 +362,10 @@ void add_to_pid_list(int pid, const char *name, int demon) {
+             // ie. mingetty --> bash
+ // TODO: Make name change conditional?  Or is memcpy() fast enough
+ //       that we can do it every time?
++            // connect-doom: the record's short name, up to 12 letters
+             name_length = strlen( name );
+-            if ( name_length <= 7 ) {
+-               memcpy(pid_list_pos->m_pname, name, 8);
+-            }
+-            else {
+-               memcpy(pid_list_pos->m_pname, name + name_length - 7, 8);
+-            }
++            snprintf(pid_list_pos->m_pname, sizeof(pid_list_pos->m_pname), "%s",
++                     name + (name_length > 12 ? name_length - 12 : 0));
+ 
+             // if the process is still running on the machine, but
+             // the mobj has been killed in Doom (ie. the process
+@@ -564,6 +562,43 @@ void cleanup_pid_list(mobj_t *del_mobj) {
  }
  
  
@@ -815,7 +845,7 @@ index fa4fe83..28172a1 100644
  // add_new_process
  // Need to return the newly created mobj_t from this routine, or
  // NULL if the monster couldn't be spawned due to collisions.
-@@ -601,13 +639,9 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
+@@ -601,13 +636,9 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
      /* make sure the unused data is zero */
      memset((void*)&mt_ext, 0, sizeof(mt_ext));
  
@@ -832,7 +862,7 @@ index fa4fe83..28172a1 100644
  
      //mt_ext.flags = 7;
      //mt_ext.flags |= (MTF_SINGLE | MTF_COOPERATIVE | MTF_DEATHMATCH);
-@@ -634,7 +668,8 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
+@@ -634,7 +665,8 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
         box_num = pid % 3;
  
         mt_ext.x = ( 2048 * box_num ) + ( (pid % 16) * 64 );
@@ -842,7 +872,24 @@ index fa4fe83..28172a1 100644
         mt_ext.angle = 315 - ( 45 * box_num );
  
         // This routine is called for custom level processing only.
-@@ -872,7 +907,21 @@ void pr_kill(int pid) {
+@@ -740,13 +772,10 @@ mobj_t *add_new_process(int pid, const char *pname, int demon) {
+ 
+ // Want the last 7 chars of the process name, not the first 7.
+ // ie: '/sbin/mingetty' is shown as 'ingetty' rather than '/sbin/m'
++// connect-doom: the record's short name, up to 12 letters
+        pname_length = strlen( pname );
+-       if ( pname_length <= 7 ) {
+-          memcpy(pid_mobj->m_pname, pname, 8);
+-       }
+-       else {
+-          memcpy(pid_mobj->m_pname, pname + pname_length - 7, 8);
+-       }
++       snprintf(pid_mobj->m_pname, sizeof(pid_mobj->m_pname), "%s",
++                pname + (pname_length > 12 ? pname_length - 12 : 0));
+ 
+        pid_mobj->m_pid = pid;
+ 
+@@ -872,7 +901,21 @@ void pr_kill(int pid) {
      cmd = "kill -9";
    }
    sprintf(buf, "%s %d", cmd, pid);
@@ -865,7 +912,7 @@ index fa4fe83..28172a1 100644
  }
  
  // pr_renice
-@@ -890,3 +939,468 @@ void pr_renice(int pid) {
+@@ -890,3 +933,488 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -888,6 +935,7 @@ index fa4fe83..28172a1 100644
 +#include "r_main.h"
 +#include "doomstat.h"
 +#include "g_game.h"
++#include "i_system.h"
 +
 +void D_PostEvent(event_t *ev);
 +
@@ -1052,7 +1100,7 @@ index fa4fe83..28172a1 100644
 +        m = (mobj_t *) th;
 +        if (!m->m_pid)
 +            continue;
-+        fprintf(f, "%s\n  {\"pid\": %d, \"name\": \"%.7s\", \"x\": %d, \"y\": %d, \"health\": %d, "
++        fprintf(f, "%s\n  {\"pid\": %d, \"name\": \"%.12s\", \"x\": %d, \"y\": %d, \"health\": %d, "
 +                   "\"visible\": %s, \"distance\": %d}",
 +                first ? "" : ",", m->m_pid, m->m_pname, m->x >> FRACBITS, m->y >> FRACBITS, m->health,
 +                m->health > 0 && P_CheckSight(mo, m) ? "true" : "false",
@@ -1082,6 +1130,16 @@ index fa4fe83..28172a1 100644
 +    if (gamestate != GS_LEVEL || mo == NULL)
 +        return;
 +
++    // Everyone starts with a shotgun and a box of shells (after auto replay's restart too):
++    // with only the pistol, a booth visitor spends the first minute plinking at an imp.
++    if (leveltime < TICRATE && !p->weaponowned[wp_shotgun])
++    {
++        p->weaponowned[wp_shotgun] = true;
++        if (p->ammo[am_shell] < 20)
++            p->ammo[am_shell] = 20;
++        p->pendingweapon = wp_shotgun;
++    }
++
 +    if (PR_AgentOption(0))
 +    {
 +        // Claude thinks slowly: don't let it die mid-thought, and keep it on a
@@ -1104,6 +1162,15 @@ index fa4fe83..28172a1 100644
 +    }
 +
 +    ++agent_clock;
++    // connect-doom: raid.sh (the launcher) gone means nothing serves the records or the panel
++    // any more, and a game left behind would sit frozen on the screen: quit. Its exit trap
++    // kills the game too; this covers the times the trap never runs (kill -9, a crash).
++    if (agent_clock % TICRATE == 0 && getppid() == 1)
++    {
++        extern int show_endoom;
++        show_endoom = 0;               // nobody is there to press a key on the ENDOOM screen
++        I_Quit();
++    }
 +    if (agent_clock % 4 == 0)
 +    {
 +        agent_read_cmd();
@@ -1348,7 +1415,7 @@ index 47194d9..c4f2c8c 100644
  // newend is one past the last valid seg
  cliprange_t*	newend;
 diff --git i/trunk/src/r_defs.h w/trunk/src/r_defs.h
-index e4381a2..f95a25a 100644
+index e4381a2..1fe07a2 100644
 --- i/trunk/src/r_defs.h
 +++ w/trunk/src/r_defs.h
 @@ -56,7 +56,7 @@
@@ -1360,6 +1427,15 @@ index e4381a2..f95a25a 100644
  
  
  
+@@ -413,7 +413,7 @@ typedef struct vissprite_s
+ // *** PID BEGIN ***
+     // the process id (0 if not a process)
+     int                 m_pid;
+-    char                m_pname[8];
++    char                m_pname[13];    // connect-doom: 8, room for a 12-letter name
+ 
+     // Need another variable for advanced process management:
+     // A flag to tell whether to draw the pid info.
 diff --git i/trunk/src/r_plane.c w/trunk/src/r_plane.c
 index 400821d..70af371 100644
 --- i/trunk/src/r_plane.c
@@ -1382,7 +1458,7 @@ index 400821d..70af371 100644
  short*			lastopening;
  
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
-index e60ec34..ff17714 100644
+index e60ec34..725d1a1 100644
 --- i/trunk/src/r_things.c
 +++ w/trunk/src/r_things.c
 @@ -36,6 +36,7 @@
@@ -1479,6 +1555,15 @@ index e60ec34..ff17714 100644
      }
  // *** PID END ***
  }
+@@ -643,7 +697,7 @@ void R_ProjectSprite (mobj_t* thing)
+ // *** PID BEGIN ***
+ // Set the pid and name in the vissprite.
+     vis->m_pid = thing->m_pid;
+-    memcpy(vis->m_pname, thing->m_pname, 8);
++    memcpy(vis->m_pname, thing->m_pname, sizeof(vis->m_pname));
+ // Also set flag that tells whether to draw the pid info or not.
+     vis->m_draw_pid_info = thing->m_draw_pid_info;
+ // *** PID END ***
 @@ -1079,6 +1133,7 @@ void R_DrawMasked (void)
  	    R_DrawSprite (spr);
  	}

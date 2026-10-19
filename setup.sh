@@ -1,5 +1,6 @@
 #!/bin/bash
 # Build everything connect-doom needs on macOS (Apple Silicon or Intel).
+#   ./setup.sh --game   only rebuild the game from a changed patch (raid.sh runs it; no downloads)
 # Homebrew dropped SDL 1.2 mixer/net, so those two are built into vendor/local.
 set -euo pipefail
 set -E  # the ERR trap below also fires inside functions and subshells
@@ -23,12 +24,15 @@ if ! command -v brew >/dev/null; then
   echo "Homebrew is missing: install it from https://brew.sh, then run ./setup.sh again." >&2; exit 1
 fi
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+GAME_ONLY=""; [[ "${1:-}" == --game ]] && GAME_ONLY=1
 STEP="Homebrew packages"
 # Everything below logs to vendor/build.log; on a failure, say which step and show the log's end.
 trap 'echo "Setup failed at: $STEP. The end of vendor/build.log:" >&2; tail -15 "$LOG" >&2' ERR
 
-echo "Homebrew packages (sdl12-compat, pkgconf, cmake, automake)..."
-HOMEBREW_NO_AUTO_UPDATE=1 brew install sdl12-compat pkgconf cmake automake >>"$LOG" 2>&1
+if [[ -z "$GAME_ONLY" ]]; then
+  echo "Homebrew packages (sdl12-compat, pkgconf, cmake, automake)..."
+  HOMEBREW_NO_AUTO_UPDATE=1 brew install sdl12-compat pkgconf cmake automake >>"$LOG" 2>&1
+fi
 AUTOMAKE_SHARE=$(ls -d "$(brew --prefix)"/share/automake-*/ | head -1)
 fresh_config() {  # 2012-era config.sub doesn't know arm64 Macs
   find "$1" -name config.sub -exec cp "$AUTOMAKE_SHARE/config.sub" {} \;
@@ -46,13 +50,15 @@ build_sdl_lib() {  # name version configure-args...
   (cd "$SRC/$dir" && ./configure --prefix="$L" "$@" && make -j"$JOBS" && make install) >>"$LOG" 2>&1
   echo "$*" > "$stamp"
 }
-echo "SDL_net / SDL_mixer 1.2..."; STEP="SDL_net / SDL_mixer"
-build_sdl_lib SDL_net 1.2.8 --disable-gui
-# Music is Freedoom's MIDI, played by macOS's own synth (native MIDI, not Timidity): no sound
-# fonts to install, and the same instruments on every Mac.
-build_sdl_lib SDL_mixer 1.2.12 --disable-music-mod --disable-music-mp3 --disable-music-ogg \
-  --disable-music-flac --disable-music-timidity-midi --disable-music-native-midi-gpl \
-  --disable-music-fluidsynth-midi --disable-smpegtest
+if [[ -z "$GAME_ONLY" ]]; then
+  echo "SDL_net / SDL_mixer 1.2..."; STEP="SDL_net / SDL_mixer"
+  build_sdl_lib SDL_net 1.2.8 --disable-gui
+  # Music is Freedoom's MIDI, played by macOS's own synth (native MIDI, not Timidity): no sound
+  # fonts to install, and the same instruments on every Mac.
+  build_sdl_lib SDL_mixer 1.2.12 --disable-music-mod --disable-music-mp3 --disable-music-ogg \
+    --disable-music-flac --disable-music-timidity-midi --disable-music-native-midi-gpl \
+    --disable-music-fluidsynth-midi --disable-smpegtest
+fi
 
 echo "psdoom-ng..."; STEP="psdoom-ng"
 if [[ ! -d "$SRC/psdoom-ng" ]]; then
@@ -78,6 +84,7 @@ fi
   make -j"$JOBS"
 ) >>"$LOG" 2>&1
 echo "$PATCH_SUM" > "$STAMP"
+if [[ -n "$GAME_ONLY" ]]; then trap - ERR; echo "Game rebuilt."; exit 0; fi
 
 echo "zdbsp node builder..."; STEP="zdbsp"
 if [[ ! -x "$SRC/zdbsp/build/zdbsp" ]]; then

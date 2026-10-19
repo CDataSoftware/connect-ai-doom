@@ -46,7 +46,7 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 
 ## Files
 
-- `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once, and rebuilds the game when the patch changes.
+- `raid.sh`: the launcher (modes, login, window layout, controls); `setup.sh` builds everything once, and rebuilds the game when the patch changes; `raid.sh` runs `setup.sh --game` itself when a pull brought a new patch (the game only, no downloads, about 15 s).
 - `brief.py`: the briefing: runs `claude -p` with the Connect AI MCP server and turns the result into `state/mission.json`.
 - `connect_ai_mcp.py`: a small MCP client (initialize, tools/call, CSV results).
 - `claude_run.py`: runs Claude Code headless (`claude -p`, stream-json) for `brief.py` and `play.py`: the read-only Connect AI MCP server config, and the event log the panel reads.
@@ -66,7 +66,9 @@ The old mode names still work: `--again` (replay), `--demo` (offline) and `brief
 `patches/psdoom-ng-connect-doom.patch`:
 
 - `-nopslev` always means arena mode (upstream checks the game mode before Freedoom is identified, so monsters landed in the void).
-- Name tags show only the short name.
+- Name tags show only the short name, up to 12 letters (upstream kept 7), on the monster, nearest first; a tag that would cover a nearer one is skipped.
+- Every game starts with a shotgun and a box of shells, after auto replay's restart too. God mode also keeps every ammo type full.
+- A game whose launcher is gone (its parent is now launchd: `raid.sh` was killed or died) quits within a second, so it never sits frozen on a booth's screen; `raid.sh`'s exit trap kills the game as well.
 - The data monsters' spawn rows start at y = 192, clear of the landing inside each door.
 - A record (a data monster) ignores noise and wakes only when a player comes within `PSDOOM_WAKE` units (default 384) and in sight, or shoots it, so a room is fought a few at a time.
 - Cmd-Q (SDL_QUIT) quits at once, with no "are you sure?" prompt; `raid.sh` also sets `show_endoom 0`, so no ENDOOM screen waits for a key. The menu's Quit Game still asks.

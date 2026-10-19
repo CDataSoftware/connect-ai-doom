@@ -45,21 +45,23 @@ class MonsterTest(unittest.TestCase):
         self.assertGreater(len(pids), 1990)
 
     def test_short_name(self):
-        cases = {"Desert Rose Inc": "DESERT", "2025 Acme Renewal": "ACME", "Q4-REN-Globex": "REN",
-                 "Wonkatronics Industries": "WONKATR", "AB": "AB", "": "X", None: "X", "42": "X",
-                 "O'Brien & Sons": "OBRIEN"}
+        cases = {"Desert Rose Inc": "DESERT", "2025 Acme Renewal": "ACME-RENEWAL", "Q4-REN-Globex": "REN-GLOBEX",
+                 "Wonkatronics Industries": "WONKATRONICS", "Continental Freight": "CONTINENTAL",
+                 "Great Lakes Medical": "GREAT-LAKES", "Sync jobs failing after Snowflake": "SYNC-JOBS",
+                 "OAuth reconnection help": "OAUTH", "Superconductivity Ltd": "SUPERCONDUCT",
+                 "AB": "AB", "": "X", None: "X", "42": "X", "O'Brien & Sons": "OBRIEN"}
         for label, want in cases.items():
             with self.subTest(label=label):
                 got = cd.short_name(label)
                 self.assertEqual(got, want)
-                self.assertLessEqual(len(got), 7)
+                self.assertLessEqual(len(got), 12)
                 self.assertNotIn(" ", got)
 
     def test_to_monster(self):
         m = cd.to_monster({"Id": "006A", "Label": "Acme Corp", "Detail": "$45,000", "Hot": "1"}, 2, ROOM)
         self.assertEqual(m, {"pid": cd.monster_id("Salesforce1:006A", 2), "id": "Salesforce1:006A",
                              "app": "Salesforce", "writable": True, "label": "Acme Corp", "detail": "$45,000",
-                             "name": "ACME", "demon": 1})
+                             "name": "ACME-CORP", "demon": 1})
 
     def test_hot_values(self):
         for hot, demon in (("1", 1), ("True", 1), ("true", 1), (1, 1), (True, 1), (" 1 ", 1),
@@ -70,7 +72,7 @@ class MonsterTest(unittest.TestCase):
     def test_to_monster_dropped_label_alias(self):
         row = {"Id": "287", "Subject": "Escalation - Desert Power", "Detail": "urgent open", "Hot": "1"}
         m = cd.to_monster(row, 0, ROOM)
-        self.assertEqual((m["label"], m["name"]), ("Escalation - Desert Power", "ESCALAT"))
+        self.assertEqual((m["label"], m["name"]), ("Escalation - Desert Power", "ESCALATION"))
 
     def test_to_monster_defaults(self):
         m = cd.to_monster({"Id": "1"}, 0, {"connection": "Raw1"})
@@ -129,7 +131,7 @@ class CommandsTest(unittest.TestCase):
 
     def test_list_format(self):
         lines = self.run_cmd("list").splitlines()
-        self.assertEqual(lines[0], f"connectai {self.monsters[0]['pid']} ACME 1")
+        self.assertEqual(lines[0], f"connectai {self.monsters[0]['pid']} ACME-CORP 1")
         self.assertEqual(len(lines), 3)
         for line in lines:
             user, pid, name, demon = line.split(" ")

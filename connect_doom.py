@@ -63,10 +63,17 @@ def monster_id(record_id, room):
 
 
 def short_name(label):
-    """psdoom shows at most 7 characters and no spaces: the first real word, e.g. DESERT
-    (skipping prefixes like '2025' or 'Q4-REN-')."""
-    words = ["".join(ch for ch in w if ch.isalpha()) for w in (label or "?").replace("-", " ").split()]
-    return next((w for w in words if len(w) >= 3), next((w for w in words if w), "X"))[:7].upper()
+    """psdoom shows at most 12 characters and no spaces: the first real word, e.g. DESERT
+    (skipping prefixes like '2025' or 'Q4-'), and the next one after a short word when both
+    fit, e.g. GREAT-LAKES."""
+    words = [w for w in ("".join(ch for ch in w if ch.isalpha()) for w in (label or "?").replace("-", " ").split()) if w]
+    i = next((i for i, w in enumerate(words) if len(w) >= 3), None)
+    if i is None:
+        return words[0][:12].upper() if words else "X"
+    name = words[i]
+    if len(name) < 6 and i + 1 < len(words) and len(name) + 1 + len(words[i + 1]) <= 12:
+        name += "-" + words[i + 1]
+    return name[:12].upper()
 
 
 def to_monster(row, room_index, room):

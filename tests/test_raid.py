@@ -296,14 +296,30 @@ exec "$0-game" "$@"
         self.assertEqual((self.state / "psdoom-env.txt").read_text().split(), ["1", "1512,-140"])
         self.assertRegex((self.logs / "osascript.txt").read_text(), r"\?stage=0,60,1280,960,1280,0")
 
-    def test_an_older_build_is_refused(self):
+    def test_an_older_build_is_rebuilt(self):
+        """After a pull brings a new patch, raid.sh rebuilds just the game, then plays."""
+        self.built_from_this_patch()
+        stamp = self.repo / "vendor/src/psdoom-ng/.connect-doom-patch"
+        want = stamp.read_text()
+        stamp.write_text("an older patch\n")
+        # setup.sh --game: stamps the build with the patch it now carries
+        self.install("setup.sh", f'#!/bin/bash\n[[ "$1" == --game ]] || exit 9\necho {want.strip()} > "{stamp}"\n')
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            r = self.raid(env={**env, "_layout": {"LAYOUT": "full"}}, panel=True)
+        self.assert_played(r)
+        self.assertIn("rebuilding the game", r.stderr)
+        self.assertEqual(stamp.read_text(), want)
+        self.assertTrue((self.state / "psdoom-env.txt").exists(), "the full-screen layout, from the new build")
+
+    def test_a_failed_rebuild_is_refused(self):
         """The themed level needs the patched renderer limits: an old build would crash mid-game."""
         self.built_from_this_patch()
         (self.repo / "vendor/src/psdoom-ng/.connect-doom-patch").write_text("an older patch\n")
+        self.install("setup.sh", "#!/bin/bash\nexit 1\n")
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             r = self.raid(env={**env, "_layout": {"LAYOUT": "full"}}, panel=True)
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("built from an older patch: run ./setup.sh again first", r.stderr)
+        self.assertIn("Rebuilding the game failed: run ./setup.sh", r.stderr)
         self.assertFalse((self.state / "psdoom-env.txt").exists())
 
     def test_again_replays_without_claude(self):

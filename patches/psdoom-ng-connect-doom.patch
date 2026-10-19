@@ -105,10 +105,10 @@ index afe3974..d987c9a 100644
      HUlib_drawIText(&w_chat);
      if (automapactive)
 diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
-index 15e4a6b..9d6a644 100644
+index 15e4a6b..2e7d77c 100644
 --- i/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
-@@ -50,9 +50,84 @@
+@@ -50,9 +50,86 @@
  #include "w_wad.h"
  #include "z_zone.h"
  
@@ -124,9 +124,10 @@ index 15e4a6b..9d6a644 100644
 +// on macOS the menu bar and the Dock hide while the game is in front.
 +// raid.sh's full-screen layout places the window inside a page
 +// (tools/stage.js, process PSDOOM_STAGE_PID) that draws the rest of the
-+// screen. The window floats while the game or that page is in front, so
-+// clicking the page keeps the game on top; switching to any other app puts
-+// it back among normal windows.
++// screen. The window floats while that page is showing, so clicking the
++// page (or another app on a second screen) keeps the game on top of it. The
++// page hides when another app comes to the front on its screen, and then the
++// game goes back among normal windows.
 +
 +static int frameless = 0;
 +static int floating = -1;   // the window level last set: 1 floating, 0 normal
@@ -170,21 +171,22 @@ index 15e4a6b..9d6a644 100644
 +#endif
 +}
 +
-+// Is the stage page the app in front?
-+static int StageInFront(void)
++// Is the stage page showing (running, and not hidden)? Not just in front:
++// with the page up and another app in use on a second screen, a game window
++// back among normal windows would drop behind the page.
++static int StageShowing(void)
 +{
 +#ifdef __APPLE__
 +    const char *stage = getenv("PSDOOM_STAGE_PID");
-+    id workspace, front;
++    id app;
 +
 +    if (stage == NULL)
 +        return 0;
 +
-+    workspace = MSG(id (*)(id, SEL))((id) objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
-+    front = MSG(id (*)(id, SEL))(workspace, sel_registerName("frontmostApplication"));
++    app = MSG(id (*)(id, SEL, int))((id) objc_getClass("NSRunningApplication"),
++                                    sel_registerName("runningApplicationWithProcessIdentifier:"), atoi(stage));
 +
-+    return front != NULL
-+        && MSG(int (*)(id, SEL))(front, sel_registerName("processIdentifier")) == atoi(stage);
++    return app != NULL && !MSG(signed char (*)(id, SEL))(app, sel_registerName("isHidden"));
 +#else
 +    return 0;
 +#endif
@@ -193,7 +195,7 @@ index 15e4a6b..9d6a644 100644
  // Non aspect ratio-corrected modes (direct multiples of 320x200)
  
  static screen_mode_t *screen_modes[] = {
-@@ -210,6 +285,11 @@ static boolean MouseShouldBeGrabbed()
+@@ -210,6 +287,11 @@ static boolean MouseShouldBeGrabbed()
      if (!window_focused)
          return false;
  
@@ -205,7 +207,7 @@ index 15e4a6b..9d6a644 100644
      // always grab the mouse when full screen (dont want to 
      // see the mouse pointer)
  
-@@ -274,6 +354,27 @@ static void UpdateFocus(void)
+@@ -274,6 +356,27 @@ static void UpdateFocus(void)
      // Should the screen be grabbed?
  
      screenvisible = (state & SDL_APPACTIVE) != 0;
@@ -217,8 +219,8 @@ index 15e4a6b..9d6a644 100644
 +    }
 +}
 +
-+// connect-doom: while the game isn't in front, float only if the stage is
-+// (checked a few times a second; focus events don't say which app took over).
++// connect-doom: while the game isn't in front, float only while the stage is
++// showing (checked a few times a second; focus events don't say which app took over).
 +static void UpdateFloating(void)
 +{
 +    static Uint32 next_check = 0;
@@ -228,12 +230,12 @@ index 15e4a6b..9d6a644 100644
 +
 +    next_check = SDL_GetTicks() + 300;
 +
-+    if (StageInFront() != floating)
++    if (StageShowing() != floating)
 +        SetFloating(!floating);
  }
  
  static void LoadDiskImage(void)
-@@ -607,9 +708,9 @@ void I_GetEvent(void)
+@@ -607,9 +710,9 @@ void I_GetEvent(void)
                  break;
  
              case SDL_QUIT:
@@ -246,7 +248,7 @@ index 15e4a6b..9d6a644 100644
                  break;
  
              case SDL_ACTIVEEVENT:
-@@ -729,12 +830,18 @@ static void UpdateGrab(void)
+@@ -729,12 +832,18 @@ static void UpdateGrab(void)
      }
      else if (grab && !currently_grabbed)
      {
@@ -265,7 +267,7 @@ index 15e4a6b..9d6a644 100644
          SDL_WM_GrabInput(SDL_GRAB_OFF);
      }
  
-@@ -879,6 +986,7 @@ void I_FinishUpdate (void)
+@@ -879,6 +988,7 @@ void I_FinishUpdate (void)
      }
  
      UpdateGrab();
@@ -273,7 +275,7 @@ index 15e4a6b..9d6a644 100644
  
      // Don't update the screen if the window isn't visible.
      // Not doing this breaks under Windows when we alt-tab away 
-@@ -1674,15 +1782,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1674,15 +1784,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
      {
          flags |= SDL_FULLSCREEN;
      }
@@ -295,7 +297,7 @@ index 15e4a6b..9d6a644 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
-@@ -1693,6 +1803,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1693,6 +1805,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
                  w, h, screen_bpp, SDL_GetError());
      }
  
@@ -308,7 +310,7 @@ index 15e4a6b..9d6a644 100644
      // Blank out the full screen area in case there is any junk in
      // the borders that won't otherwise be overwritten.
  
-@@ -1799,6 +1915,7 @@ void I_InitGraphics(void)
+@@ -1799,6 +1917,7 @@ void I_InitGraphics(void)
      // Check for command-line video-related parameters.
  
      CheckCommandLine();

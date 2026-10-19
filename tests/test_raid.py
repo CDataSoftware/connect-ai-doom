@@ -212,7 +212,7 @@ class RaidTest(unittest.TestCase):
         self.assertIn("tools/stage.js", stage)
         self.assertRegex(stage, r"http://localhost:\d+/\?stage=24,147,960,720,1008,32")
         self.assertFalse((self.logs / "open.txt").exists(), "the panel is on the stage, not in a tab")
-        self.assertRegex((self.state / "psdoom-stage.txt").read_text(), r"^\d+\n$")   # floats while the stage is in front
+        self.assertRegex((self.state / "psdoom-stage.txt").read_text(), r"^\d+\n$")   # floats while the stage is showing
         self.assertIn("grabmouse 1", (self.state / "controls-extra.cfg").read_text())
 
     def test_full_screen_layout_on_a_second_display(self):

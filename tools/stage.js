@@ -17,23 +17,31 @@ ObjC.registerSubclass({name: "StageDelegate", superclass: "NSObject", protocols:
   "applicationDidBecomeActive:": {types: ["void", ["id"]], implementation: () => {
     $.NSApplication.sharedApplication.presentationOptions = 2 | 8;  // hide the Dock and the menu bar
   }},
-  "appActivated:": {types: ["void", ["id"]], implementation: note => {
-    const app = $.NSApplication.sharedApplication;
-    const front = note.userInfo.objectForKey($.NSWorkspaceApplicationKey);
-    const exe = front.executableURL.isNil() ? "" : front.executableURL.lastPathComponent.js;
-    const ours = exe === "psdoom" || front.processIdentifier === $.NSProcessInfo.processInfo.processIdentifier;
-    if (ours) app.unhideWithoutActivation;
-    else app.hide(null);
-  }},
 }});
+
+// Which app is in front, checked twice a second: NSWorkspace's activation notifications never
+// reach a JXA script's observer, but a timer runs. Only a change counts: the Terminal that ran
+// raid.sh is still in front when the stage opens.
+let lastFront = 0;
+function checkFront() {
+  const app = $.NSApplication.sharedApplication;
+  const front = $.NSWorkspace.sharedWorkspace.frontmostApplication;
+  if (front.isNil() || front.processIdentifier === lastFront) return;
+  lastFront = front.processIdentifier;
+  const exe = front.executableURL.isNil() ? "" : front.executableURL.lastPathComponent.js;
+  const ours = exe === "psdoom" || front.processIdentifier === $.NSProcessInfo.processInfo.processIdentifier;
+  if (ours) app.unhideWithoutActivation;
+  else app.hide(null);
+}
 
 function run(argv) {
   const app = $.NSApplication.sharedApplication;
   app.setActivationPolicy($.NSApplicationActivationPolicyRegular);
   const delegate = $.StageDelegate.alloc.init;
   app.delegate = delegate;
-  $.NSWorkspace.sharedWorkspace.notificationCenter.addObserverSelectorNameObject(
-    delegate, "appActivated:", $.NSWorkspaceDidActivateApplicationNotification, null);
+  const front = $.NSWorkspace.sharedWorkspace.frontmostApplication;
+  if (!front.isNil()) lastFront = front.processIdentifier;
+  $.NSTimer.scheduledTimerWithTimeIntervalRepeatsBlock(0.5, true, () => checkFront());
 
   const menu = $.NSMenu.alloc.init, item = $.NSMenuItem.alloc.init, sub = $.NSMenu.alloc.init;
   sub.addItem($.NSMenuItem.alloc.initWithTitleActionKeyEquivalent("Quit", "terminate:", "q"));

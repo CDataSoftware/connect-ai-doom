@@ -271,7 +271,7 @@ open_panel() {
   if [[ -n "$STAGE" ]]; then
     osascript -l JavaScript "$PWD/tools/stage.js" "$PANEL_URL/?stage=$GX,$GY,$GW,$GH,$STAGE_W,$ST" >/dev/null 2>&1 &
     PIDS+=($!)
-    export PSDOOM_STAGE_PID=$!   # the game floats while it or the stage is in front
+    export PSDOOM_STAGE_PID=$!   # the game floats while the stage is showing
     return
   fi
   open "$PANEL_URL"

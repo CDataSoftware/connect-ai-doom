@@ -341,6 +341,9 @@ json.dump({"question": sys.argv[1], "at": time.time()}, open("state/ask-failed.j
 
 GAME_PIDS=()
 while :; do
+  # The last game's agent channel goes first: its state.json still holds that game's switches,
+  # and the bridge reads Saved data from it before options.json and the flags.
+  mkdir -p state/agent && rm -f state/agent/*
   # The records to start with. Without Wi-Fi, poll --once falls back to the ones this level last
   # fetched; if it never fetched any (exit 3), play offline.
   if [[ "$MODE" != demo ]] && ! python3 "$BRIDGE" poll --once; then
@@ -378,7 +381,6 @@ while :; do
   # The agent channel patched into psdoom: Claude's commands in, game state out. It's always
   # open, so Claude plays can be switched on from the Options menu; play.py loop follows the
   # menu's switches and starts or stops Claude.
-  mkdir -p state/agent && rm -f state/agent/*
   export PSDOOM_AGENT_DIR="$PWD/state/agent" PSDOOM_AGENT_CLAUDE=${PLAYS:-0} PSDOOM_AGENT_LOOP=${LOOP:-0}
   python3 play.py loop 2>>state/play.err &
   PIDS+=($!) GAME_PIDS+=($!)

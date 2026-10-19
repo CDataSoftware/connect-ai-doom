@@ -184,6 +184,16 @@ class RaidTest(unittest.TestCase):
         self.assert_played(r)
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 1 1\n")
 
+    def test_a_new_raid_ignores_the_last_games_switches(self):
+        """The last game's agent channel (state/agent/state.json) still says Saved data was on: a new
+        raid starts from its own flags, so its first refresh asks Connect AI."""
+        with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
+            self.assertEqual(self.raid("new", env=env).returncode, 0)
+            (self.state / "agent" / "state.json").write_text(json.dumps({"options": {"saved_data": 1}}))
+            r = self.raid("replay", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("saved data:", r.stderr)
+
     def test_live_run_with_panel(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:
             r = self.raid("new", "-q", "Who is late?", "-extra", env=env, panel=True)

@@ -867,7 +867,7 @@ function renderGame(s) {
   const game = s.game;
   if (game && game.started !== lastGame) { lastEventKey = null; seenEvents = null; lastGame = game.started; }
   document.body.classList.toggle("in-game", !!game);
-  $("s-kills").textContent = s.kill_total ?? (s.kills || []).length;
+  $("s-kills").textContent = game ? s.kill_total ?? (s.kills || []).length : 0;   // between games the log is every game's
   if (!game) return;
   $("now-mode").textContent = modeText(game, s);
   $("now-keys").hidden = claudePlays(game);
@@ -1198,7 +1198,8 @@ function stageDoing(events) {
 
 function renderStage(s, events) {
   const game = s.game, m = s.mission;
-  const q = (m && m.question) || (events.find(e => e.kind === "question") || {}).text || "";
+  // this briefing's question: mission.json is the last level's until this one's lands
+  const q = (events.find(e => e.kind === "question") || {}).text || (m && m.question) || "";
   setText($("stage-q"), q);
   setText($("stage-ask"), q);
   const briefed = events.some(e => e.kind === "mission");
@@ -1281,7 +1282,14 @@ async function tick() {
     const events = s.events || [];
     // a new briefing in this page (a question from the box): its log starts over
     const run = events.length ? JSON.stringify(events[0]) : "";
-    if (run !== lastRun) { feed.reset(); automap.rooms.clear(); automap.seen = 0; lastRun = run; }
+    if (run !== lastRun) {
+      feed.reset(); automap.rooms.clear(); automap.seen = 0; feed.doneMeta = null;
+      if (lastRun !== null) {     // the last level's answer and rooms aren't this question's
+        $("answer").innerHTML = '<span class="empty">Still working</span>';
+        $("rooms").innerHTML = '<div class="empty">The level is built when Claude is done</div>';
+      }
+      lastRun = run;
+    }
     feed.apply(events);
     renderMission(s.mission, events, s.rooms_live);
     const play = s.play_events || [];

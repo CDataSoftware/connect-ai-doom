@@ -96,7 +96,9 @@ class RaidTest(unittest.TestCase):
             env.pop("NO_PANEL", None)
         else:
             env["NO_PANEL"] = "1"
-        return subprocess.run(["bash", str(self.repo / "raid.sh"), *args], capture_output=True, text=True,
+        # /bin/bash: the shell raid.sh runs in on a Mac (3.2), not a newer one on the PATH
+        bash = "/bin/bash" if Path("/bin/bash").exists() else "bash"
+        return subprocess.run([bash, str(self.repo / "raid.sh"), *args], capture_output=True, text=True,
                               env=env, timeout=120, input=stdin)
 
     def assert_played(self, r):
@@ -171,6 +173,16 @@ class RaidTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 1 1\n")   # auto replay on
         self.assertFalse(options.exists())
+
+    def test_a_booth_keeps_the_default_switches(self):
+        """The switches as a game starts (all but auto replay off, music and sound on) stay that way."""
+        self.state.mkdir(exist_ok=True)
+        (self.state / "options.json").write_text(json.dumps({"claude_plays": 0, "auto_replay": 1, "god_mode": 0,
+                                                             "saved_data": 0, "offline_claude": 0, "music": 1,
+                                                             "sound_effects": 1}))
+        r = self.raid("offline", env={**os.environ, "CONNECT_DOOM_BOOTH": "1"})
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 0 1 0 0 0 1 1\n")
 
     def test_live_run_with_panel(self):
         with FakeMCP() as mcp, fake_claude_env(self.base, mcp.url) as env:

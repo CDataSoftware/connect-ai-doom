@@ -155,7 +155,8 @@ o = json.load(open("state/options.json"))
 print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mode", "saved_data", "offline_claude")],
       *["-" if o.get(k, 1) else 1 for k in ("music", "sound_effects")])' \
       2>/dev/null || true)
-    for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" ''; done
+    # '%s': macOS's bash 3.2 assigns nothing for printf -v with an empty format, so every switch flipped
+    for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" '%s' ''; done
   fi
   export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
   PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1

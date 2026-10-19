@@ -10,6 +10,11 @@ ObjC.import("WebKit");
 ObjC.registerSubclass({name: "StageWindow", superclass: "NSWindow", methods: {
   "canBecomeKeyWindow": {types: ["bool", []], implementation: () => true},
 }});
+// The question box takes its first click: without this, a click on the stage while the game is
+// in front only brings the stage forward, and a second click puts the cursor in the box.
+ObjC.registerSubclass({name: "StageWebView", superclass: "WKWebView", methods: {
+  "acceptsFirstMouse:": {types: ["bool", ["id"]], implementation: () => true},
+}});
 // Presentation options only apply while this app is in front, so set them each time it is.
 // When another app comes to the front (Cmd-Tab, a notification), the stage hides so that app
 // isn't stuck behind a full-screen page; it comes back with the game (psdoom) or itself.
@@ -47,13 +52,20 @@ function run(argv) {
   sub.addItem($.NSMenuItem.alloc.initWithTitleActionKeyEquivalent("Quit", "terminate:", "q"));
   item.submenu = sub;
   menu.addItem(item);
+  // An Edit menu, so the question box has Cmd-A, Cmd-C, Cmd-V, Cmd-X and Cmd-Z
+  const edit = $.NSMenuItem.alloc.init, editMenu = $.NSMenu.alloc.initWithTitle("Edit");
+  [["Undo", "undo:", "z"], ["Redo", "redo:", "Z"], ["Cut", "cut:", "x"], ["Copy", "copy:", "c"],
+   ["Paste", "paste:", "v"], ["Select All", "selectAll:", "a"]]
+    .forEach(([title, action, key]) => editMenu.addItem($.NSMenuItem.alloc.initWithTitleActionKeyEquivalent(title, action, key)));
+  edit.submenu = editMenu;
+  menu.addItem(edit);
   app.mainMenu = menu;
 
   const frame = $.NSScreen.mainScreen.frame;
   const win = $.StageWindow.alloc.initWithContentRectStyleMaskBackingDefer(
     frame, $.NSWindowStyleMaskBorderless, $.NSBackingStoreBuffered, false);
   win.backgroundColor = $.NSColor.blackColor;
-  const view = $.WKWebView.alloc.initWithFrameConfiguration(
+  const view = $.StageWebView.alloc.initWithFrameConfiguration(
     $.NSMakeRect(0, 0, frame.size.width, frame.size.height), $.WKWebViewConfiguration.alloc.init);
   view.setValueForKey($.NSNumber.numberWithBool(false), "drawsBackground");  // black, not white, while it loads
   // Ignore the web view's cache: it would keep showing the panel page from before an update.

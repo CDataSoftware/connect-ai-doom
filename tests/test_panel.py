@@ -48,7 +48,8 @@ class PanelTest(unittest.TestCase):
     def test_statusbar_and_mission(self):
         kills = [{"app": "Salesforce", "label": "Acme <b>Corp</b>", "detail": "$1", "writable": True},
                  {"app": "Zendesk", "label": "Initech", "detail": "3", "writable": False}]
-        ids = self.render(kills=kills, standing=5)
+        ids = self.render(kills=kills, standing=5, game={"mode": "player", "started": 1})
+        self.assertEqual(self.render(kills=kills, kill_total=625)["s-kills"]["text"], 0)   # between games: no game's kills
         self.assertEqual(ids["ask"]["text"], "Who is <at risk>?")
         self.assertEqual(ids["s-apps"]["text"], 2)                       # rooms in the mission
         self.assertEqual(ids["s-records"]["text"], 3)                    # 2 Salesforce rows + 1 masked row

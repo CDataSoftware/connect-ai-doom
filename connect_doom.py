@@ -17,6 +17,7 @@ hidden from later lists (otherwise psdoom resurrects the monster). Then `lookup`
 reads that one record again through Connect AI, with the room's own query, and
 logs the row and the round trip to state/lookups.jsonl for the side panel.
 """
+import concurrent.futures
 import datetime as dt
 import hashlib
 import json
@@ -38,6 +39,7 @@ KILLS = STATE / "kills.jsonl"
 HITS = STATE / "hits.jsonl"
 LOOKUPS = STATE / "lookups.jsonl"
 VAULT = STATE / "vault.jsonl"  # each time the red door is tried: Connect AI's live answer
+VAULT_CHECK = STATE / "vault-checking.json"   # while the red door waits on Connect AI
 LABELS = STATE / "labels.tsv"  # psdoom's PSDOOM_LABELS: the record under the crosshair
 MISSION = STATE / "mission.json"
 SAVED = STATE / "saved-records.json"  # the last live refresh, for playing a level without Wi-Fi
@@ -45,7 +47,7 @@ GAME = STATE / "game.json"  # written by raid.sh while psdoom runs: {"mode": "pl
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 # Seconds to wait on each Connect AI call during a game. On bad conference Wi-Fi a short wait
 # means the game starts on the last records fetched instead of hanging before it opens.
-TIMEOUT = float(os.environ.get("CONNECT_AI_TIMEOUT", "20"))
+TIMEOUT = float(os.environ.get("CONNECT_AI_TIMEOUT", "30"))
 
 
 # ---------------------------------------------------------------- monsters
@@ -319,12 +321,16 @@ def cmd_vault(_):
         return
     entry = {"connection": d["connection"], "tool": d["tool"], "request": d["request"]}
     start = time.time()
+    # Connect AI can take half a minute to refuse: the panel says it's checking meanwhile
+    VAULT_CHECK.write_text(json.dumps({"connection": d["connection"], "at": start}))
     try:
         entry["text"] = connect_ai_mcp.Client(timeout=TIMEOUT).call(d["tool"], **d["request"])[:300]
         entry["blocked"] = False
     except Exception as e:
         entry["text"] = str(e).split("\n")[0][:200]
         entry["blocked"] = isinstance(e, connect_ai_mcp.MCPError)
+    finally:
+        VAULT_CHECK.unlink(missing_ok=True)
     entry["ms"] = round((time.time() - start) * 1000)
     entry["at"] = time.time()
     append(VAULT, entry)
@@ -341,20 +347,27 @@ def fetch(mission, stats=None):
     append each room's round trip to it."""
     if is_offline(mission):
         return [to_monster(row, i, r) for i, r in enumerate(mission["rooms"]) for row in r["rows"]]
-    mcp = connect_ai_mcp.Client(timeout=TIMEOUT)
-    monsters = []
-    for i, room in enumerate(mission["rooms"][:3]):
+    def one(i, room):
         start = time.time()
-        stat = {"connection": room["connection"]}
+        stat, found = {"connection": room["connection"]}, []
         try:
-            rows = mcp.query(room["query"])[:MAX_PER_ROOM]
+            rows = connect_ai_mcp.Client(timeout=TIMEOUT).query(room["query"])[:MAX_PER_ROOM]
             stat["rows"] = len(rows)
-            monsters += [to_monster(row, i, room) for row in rows]
+            found = [to_monster(row, i, room) for row in rows]
         except connect_ai_mcp.MCPError as e:
             print(f"{room['app']}: {e}", file=sys.stderr)
             stat["error"] = str(e).split("\n")[0][:200]
         stat["ms"] = round((time.time() - start) * 1000)
         stat["at"] = time.time()
+        return found, stat
+
+    # the rooms at once: a slow Wi-Fi costs one time limit, not one per room
+    rooms = mission["rooms"][:3]
+    with concurrent.futures.ThreadPoolExecutor(len(rooms) or 1) as pool:
+        results = [f.result() for f in [pool.submit(one, i, r) for i, r in enumerate(rooms)]]
+    monsters = []
+    for found, stat in results:
+        monsters += found
         if stats is not None:
             stats.append(stat)
     return monsters
@@ -496,6 +509,7 @@ def cmd_panel(args):
             except (FileNotFoundError, json.JSONDecodeError):
                 mission = None
             game = read_json(GAME)
+            checking = read_json(VAULT_CHECK)
             kills = game_kills()      # while a game runs, only that game's kills and hits
             dead = {k["id"] for k in kills}
             monsters = cached_monsters()
@@ -519,7 +533,8 @@ def cmd_panel(args):
                               "killed": sum(m["id"] in dead for m in mine),
                               "refresh": refreshed.get(room["connection"])})
             body = json.dumps({
-                "events": live_events(STATE / "run.jsonl"),
+                # the briefing log belongs to the real level, not the offline sample in its place
+                "events": [] if is_offline(mission) else live_events(STATE / "run.jsonl"),
                 "play_events": live_events(STATE / "play.jsonl"),
                 "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
                 "game": game,
@@ -530,6 +545,7 @@ def cmd_panel(args):
                 # where the monsters came from: connect-ai-mcp (live), saved (Connect AI unreachable) or demo
                 "records": {k: (read_json(CACHE) or {}).get(k) for k in ("source", "fetched_at")},
                 "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
+                "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
                 "standing": len([m for m in monsters if m["id"] not in dead]),
             }).encode()
             self.send_response(200)

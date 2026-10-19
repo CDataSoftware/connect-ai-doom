@@ -206,7 +206,7 @@
   .rl.write { --kc: var(--key-yellow); } .rl.vault { --kc: var(--key-red); background: #2E0F0B; }
   .rl .top { display: flex; align-items: center; gap: 8px; }
   .rl .top img { width: 18px; image-rendering: pixelated; }
-  .rl .no { font: 8px/1.4 var(--pixel); color: var(--balance); }
+  .rl .no { font: 8px/1.4 var(--pixel); color: var(--balance); white-space: nowrap; }
   .rl .app { font-weight: 800; font-size: 17px; }
   .rl .num { font: 30px/1 var(--digits); color: var(--clarity); }
   .rl .num small { font-size: 18px; color: var(--balance); }
@@ -883,10 +883,22 @@ function renderGame(s) {
   const last = evs[0];
   const rooms = s.rooms_live || [];
   const clear = rooms.length > 0 && rooms.every(r => r.left === 0) && (s.kill_total || 0) > 0;
-  const key = clear ? `clear:${s.kill_total}` : last ? `${evKey(last)}:${last.lookup ? last.lookup.at : ""}` : null;  // redraw when the read lands
+  // the red door is waiting on Connect AI (it can take half a minute): say so, with a running count
+  const checking = s.vault_checking;
+  const waited = checking ? Math.max(0, Math.floor(Date.now() / 1000 - checking.at)) : 0;
+  const key = checking ? `checking:${checking.at}:${waited}`
+    : clear ? `clear:${s.kill_total}` : last ? `${evKey(last)}:${last.lookup ? last.lookup.at : ""}` : null;  // redraw when the read lands
   if (key === lastEventKey) return;
-  const fresh = lastEventKey !== null;  // not the state the page loaded with
+  const counting = checking && (lastEventKey || "").startsWith(`checking:${checking.at}:`);
+  const fresh = lastEventKey !== null && !counting;  // not the state the page loaded with, nor a tick of the count
   lastEventKey = key;
+  if (checking) {
+    $("now-big").innerHTML = `<div class="verb">RED DOOR: ASKING CONNECT AI, LIVE</div>
+       <div class="who">Checking with Data Security… ${waited} s</div>
+       <div class="d">Claude's PII lookup from the briefing, sent again right now to ${esc(checking.connection)}. Connect AI decides whether it goes through.</div>`;
+    if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
+    return;
+  }
   if (!last) return;
   $("now-big").innerHTML = clear
     ? `<div class="verb clear">ALL ${rooms.length} ROOMS CLEAR</div>

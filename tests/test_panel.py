@@ -144,6 +144,11 @@ class PanelTest(unittest.TestCase):
         self.assertIn("blocked it again, live in 1.6 s", ids["events"]["html"])
         self.assertIn("Tried 1× this game", ids["rooms-live"]["html"])
         self.assertRegex(ids["rooms-live"]["html"], r"Live: 15 rows [45]s ago, in 7\.2 s")
+        # while the door waits on Connect AI (it can take half a minute), the card says so and counts
+        ids = self.render(vault=vault, rooms_live=rooms, game={"mode": "player", "started": 0},
+                          vault_checking={"connection": "PostgreSQLPII", "at": now - 7})
+        self.assertIn("RED DOOR: ASKING CONNECT AI, LIVE", ids["now-big"]["html"])
+        self.assertRegex(ids["now-big"]["html"], r"Checking with Data Security… [678] s")
 
     def test_saved_records_say_so(self):
         """Connect AI didn't answer at launch: the rooms say the records are saved, not live."""
@@ -293,7 +298,7 @@ class PanelTest(unittest.TestCase):
         script = (ROOT / "panel/index.html").read_text()
         served = (ROOT / "connect_doom.py").read_text()
         for key in ("events", "play_events", "mission", "game", "kills", "kill_total", "hits", "rooms_live",
-                    "records"):
+                    "records", "vault_checking"):
             self.assertIn(f"s.{key}", script)
             self.assertIn(f'"{key}":', served)
 

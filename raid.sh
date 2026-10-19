@@ -191,7 +191,7 @@ if [[ "$MODE" == doctor ]]; then
   if [[ -f state/mission.json ]]; then
     ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"
     if [[ -n "$ANSWERS" ]] && grep -q '"query"' state/mission.json; then
-      echo "  … running this level's queries (up to ${CONNECT_AI_TIMEOUT:-20} s each)"
+      echo "  … running this level's queries (up to ${CONNECT_AI_TIMEOUT:-30} s each)"
       while IFS=$'\t' read -r status text; do
         case "$status" in
           ok) ok "$text" ;;
@@ -211,6 +211,10 @@ if [[ "$MODE" == doctor ]]; then
   screen=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var v = $.NSScreen.mainScreen.visibleFrame;
     Math.round(v.size.width) + "x" + Math.round(v.size.height)' 2>/dev/null || true)
   [[ -n "$screen" ]] && note "screen: ${screen}. The game and panel fill the main screen"
+  screens=$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSScreen.screens.count' 2>/dev/null || echo 1)
+  if ((screens > 1)); then
+    note "$screens screens: clicking an app on another screen hides the game's full-screen stage until you click the game again. At a booth, use one screen."
+  fi
   if ((BAD)); then echo "Not ready: fix the ✗ lines."; exit 1; fi
   if [[ -n "${CONNECT_AI_PAT:-}" ]]; then echo "Ready: ./raid.sh booth plays the last level game after game, ./raid.sh new makes a fresh one."
   else echo "Ready to play offline: ./raid.sh booth plays sample data game after game."; fi
@@ -220,6 +224,10 @@ fi
 # A previous run's panel or poller (say, after a crash) would hold the port and serve stale state.
 pkill -f "$BRIDGE (panel|poll)" 2>/dev/null || true
 pkill -f "$PWD/tools/stage.js" 2>/dev/null || true
+
+# An offline game killed before its exit trap left its sample in mission.json and the real level
+# set aside: put the real level back before anything reads it.
+if [[ -f state/mission-live.json ]]; then mv -f state/mission-live.json state/mission.json; fi
 
 PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
@@ -289,8 +297,8 @@ case "$MODE" in
   brief) python3 brief.py ${QUESTION:+"$QUESTION"}; exit ;;
   live) python3 brief.py ${QUESTION:+"$QUESTION"} >/dev/null ;;
   demo)
-    # Set the real level aside, not the sample: an offline game killed before its exit trap leaves
-    # the sample in mission.json (its rooms carry rows), and copying that would lose the real one.
+    # Set the real level aside, not the sample (its rooms carry rows): on a Mac that never had a
+    # real level, mission.json may hold only the sample.
     if python3 -c 'import json, sys; r = json.load(open("state/mission.json")).get("rooms") or [{}]
 sys.exit(0 if any("query" in x for x in r) and not all("rows" in x for x in r) else 1)' 2>/dev/null; then
       cp state/mission.json state/mission-live.json

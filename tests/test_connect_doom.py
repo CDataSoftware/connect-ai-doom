@@ -324,6 +324,7 @@ class PollCLITest(unittest.TestCase):
             self.assertEqual(entry["text"], "Request blocked: PII detected in inbound query")
             self.assertEqual(entry["request"], request)
             self.assertGreaterEqual(entry["ms"], 0)
+            self.assertFalse((Path(tmp) / "vault-checking.json").exists())   # only while it waits
 
     def test_saved_data_switch_asks_connect_ai_nothing(self):
         """The Options menu's saved data switch: the level's last saved records, and no Connect AI
@@ -453,7 +454,7 @@ class PanelServerTest(unittest.TestCase):
         self.assertEqual(self.state_json(), {"events": [], "play_events": [], "mission": None,
                                              "game": None, "kills": [], "kill_total": 0, "hits": [],
                                              "rooms_live": [], "records": {"source": None, "fetched_at": None},
-                                             "vault": [], "standing": 0})
+                                             "vault": [], "vault_checking": None, "standing": 0})
 
     def test_full_state(self):
         mission = {**cd.demo_mission(), "calls": [{"tool": "queryData", "args": {}, "error": False}]}
@@ -462,11 +463,11 @@ class PanelServerTest(unittest.TestCase):
         (self.state / "cache.json").write_text(json.dumps({"monsters": cache_monsters}))
         kills = [{**m, "killed_at": "2026-10-15T13:52:33", "mode": "read-only"} for m in cache_monsters[:14]]
         (self.state / "kills.jsonl").write_text("".join(json.dumps(k) + "\n" for k in kills))
-        (self.state / "run.jsonl").write_text('{"kind": "question", "text": "q"}\n{"kind": "ca')  # mid-write
-        (self.state / "play.jsonl").write_text('{"kind": "call", "server": "doom", "tool": "look"}\n')
+        (self.state / "run.jsonl").write_text('{"kind": "question", "text": "q"}\n')
+        (self.state / "play.jsonl").write_text('{"kind": "call", "server": "doom", "tool": "look"}\n{"kind": "ca')  # mid-write
         s = self.state_json()
-        self.assertEqual(s["events"], [{"kind": "question", "text": "q"}])
-        self.assertEqual(s["play_events"][0]["tool"], "look")
+        self.assertEqual(s["events"], [])   # the briefing log is the real level's, not this offline sample's
+        self.assertEqual(s["play_events"], [{"kind": "call", "server": "doom", "tool": "look"}])
         self.assertEqual(set(s["mission"]), {"question", "answer", "rooms", "denied", "masked"})  # no raw calls
         self.assertEqual([k["id"] for k in s["kills"]], [k["id"] for k in kills[-12:]])
         self.assertEqual(s["kill_total"], 14)

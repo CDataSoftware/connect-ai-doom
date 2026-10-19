@@ -30,7 +30,7 @@ raid.sh
 | `NO_PANEL=1` | No side panel. |
 | `NOGORE=1` | No blood or corpses: hits throw bullet puffs, and a killed record vanishes in green teleport fog (`make_deh.py --no-gore`). For booths and talks. |
 | `PANEL_PORT` | The panel's port (default 8666). |
-| `CONNECT_AI_TIMEOUT` | Seconds the bridge gives each Connect AI call during a game, start to finish (20). Each live refresh is saved in `state/saved-records.json`, and a game that starts without Connect AI plays those. |
+| `CONNECT_AI_TIMEOUT` | Seconds the bridge gives each Connect AI call during a game, start to finish (30); a refresh reads the rooms at once. Each live refresh is saved in `state/saved-records.json`, and a game that starts without Connect AI plays those. |
 | `BOOTH_PAUSE`, `BOOTH_GAMES` | `booth` mode: seconds between games (10), and a number of games to stop after (none). |
 | `POLL_SECONDS`, `MAX_PER_ROOM` | The refresh interval (15) and the most monsters per room (20). |
 | `BRIEF_MODEL`, `PLAY_MODEL`, `PLAY_MAX_TURNS` | The Claude model for the briefing and for Claude plays (sonnet), and Claude plays' turn limit (60). |

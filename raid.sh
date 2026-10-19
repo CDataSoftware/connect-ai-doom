@@ -245,7 +245,9 @@ PIDS=()
 # with set -e a failed kill would be the exit code; game.json tells the panel a game is on
 # An offline game sets the real level aside in mission-live.json; put it back for the next replay.
 # The game too (psdoom ignores SIGTERM): a raid that dies must not leave it frozen on the screen.
-trap 'kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true; pkill -9 -P $$ -x psdoom 2>/dev/null || true; rm -f state/game.json
+# disown -a first: bash says nothing about jobs it no longer tracks, so no "Terminated: 15" lines.
+trap 'disown -a 2>/dev/null || true; kill ${PIDS[@]+"${PIDS[@]}"} 2>/dev/null || true
+  pkill -9 -P $$ -x psdoom 2>/dev/null || true; rm -f state/game.json
   if [[ -f state/mission-live.json ]]; then mv -f state/mission-live.json state/mission.json; fi' EXIT
 # Keep the screen from dimming or locking mid-game.
 if command -v caffeinate >/dev/null; then caffeinate -d -w $$ & fi
@@ -426,11 +428,15 @@ CFG
 
   # -nopslev: spawn monsters into the three arenas of the level
   # -psallusers: don't filter monsters by Unix user
+  # In the background and waited on with 2>/dev/null: Cmd-Q and the question box end the game with
+  # SIGKILL, and a foreground job would print bash's "Killed: 9" line in the Terminal.
   "$PSDOOM" -iwad wads/freedoom2.wad -file state/level.wad state/brand.wad -deh state/level.deh \
     -nopslev -psallusers -warp 1 -skill 1 -window -geometry "$GEOMETRY" -config state/controls.cfg -extraconfig state/controls-extra.cfg "$@" \
-    >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) || true
+    >state/game.log 2> >(tee state/psdoom.err | grep --line-buffered -E 'KILL|ERROR' >&2) &
+  wait $! 2>/dev/null || true
 
   # The game is over, or the panel ended it for a new question.
+  disown -a 2>/dev/null || true   # as in the EXIT trap: no "Terminated: 15" lines
   kill ${GAME_PIDS[@]+"${GAME_PIDS[@]}"} 2>/dev/null || true
   GAME_PIDS=()
   [[ -f state/ask.json ]] || break

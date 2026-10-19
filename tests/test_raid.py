@@ -247,6 +247,8 @@ exec "$0-game" "$@"
         self.assertEqual(panel["ask"]["pending"], None)
         self.assertIsNone(panel["ask"]["unavailable"])
         self.assertIn("New question from the panel: Who owes us money?", r.stderr)
+        for notice in ("Killed: 9", "Terminated: 15"):    # bash's job lines stay out of the Terminal
+            self.assertNotIn(notice, r.stderr + r.stdout)
         for name in ("ask.json", "asking.json", "ask-failed.json", "mission-before.json"):
             self.assertFalse((self.state / name).exists(), name)
 

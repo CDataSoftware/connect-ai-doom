@@ -379,6 +379,11 @@
   #stage .bar.bottom .say b { font: 8px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; margin: 0 4px 0 10px; }
   #stage .bar.bottom .say b:first-of-type { margin-left: 0; }
   #stage .bar.bottom .fine { font: 12px/1.4 var(--mono); color: var(--balance); }
+  /* A short strip (1920x1080 leaves 60 px under a 1280x960 game) would overflow up behind the
+     game window: drop the fine print, then keep Claude's line to one row. */
+  #stage .bar.bottom { container-type: size; }
+  @container (max-height: 104px) { #stage .bar.bottom .fine { display: none; } }
+  @container (max-height: 80px) { #stage .bar.bottom .say .txt { -webkit-line-clamp: 1; } }
 
   body.stage #side { height: 100vh; overflow-y: auto; padding-top: var(--top); }
   body.stage main { max-width: none; padding: 12px 14px 18px; gap: 14px; }

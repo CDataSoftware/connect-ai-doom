@@ -732,7 +732,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..a31bbc8 100644
+index fa4fe83..d6bf76e 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -837,7 +837,7 @@ index fa4fe83..a31bbc8 100644
  }
  
  // pr_renice
-@@ -890,3 +939,460 @@ void pr_renice(int pid) {
+@@ -890,3 +939,462 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -1231,7 +1231,7 @@ index fa4fe83..a31bbc8 100644
 +static void aim_fit(char *s)
 +{
 +    size_t n = strlen(s);
-+    while (n > 3 && M_StringWidth(s) > SCREENWIDTH - 12)
++    while (n > 3 && M_StringWidth(s) > scaledviewwidth - 12)
 +    {
 +        s[--n] = '\0';
 +        s[n - 2] = s[n - 1] = '.';
@@ -1254,7 +1254,7 @@ index fa4fe83..a31bbc8 100644
 +void PR_DrawAimInfo(void)
 +{
 +    mobj_t *mo = players[consoleplayer].mo;
-+    int i, y, x, rows;
++    int i, j, y, x, rows;
 +    // Not over the menu's or the pause screen's own Connect AI logo.
 +    if (gamestate != GS_LEVEL || automapactive || menuactive || paused || mo == NULL)
 +        return;
@@ -1268,16 +1268,18 @@ index fa4fe83..a31bbc8 100644
 +        return;
 +    rows = aim_lines[1][0] ? 2 : 1;
 +    y = viewwindowy + viewheight - 4 - 9 * rows;
-+    // Darken a band behind the text so it reads over any wall.
-+    for (i = (y - 3) * SCREENWIDTH; i < (y + 9 * rows + 1) * SCREENWIDTH; i++)
-+        screens[0][i] = colormaps[24 * 256 + screens[0][i]];
++    // Darken a band behind the text so it reads over any wall. Only inside the view: the
++    // border around a smaller view is drawn once, so it would darken a bit more each frame.
++    for (i = y - 3; i < y + 9 * rows + 1; i++)
++        for (j = viewwindowx; j < viewwindowx + scaledviewwidth; j++)
++            screens[0][i * SCREENWIDTH + j] = colormaps[24 * 256 + screens[0][i * SCREENWIDTH + j]];
 +    for (i = 0; i < rows; i++)
 +    {
 +        char buf[64];
 +        snprintf(buf, sizeof(buf), "%s", aim_lines[i]);
 +        aim_fit(buf);
-+        x = (SCREENWIDTH - M_StringWidth(buf)) / 2;
-+        M_WriteText(x < 0 ? 0 : x, y + 9 * i, buf);
++        x = viewwindowx + (scaledviewwidth - M_StringWidth(buf)) / 2;
++        M_WriteText(x < viewwindowx ? viewwindowx : x, y + 9 * i, buf);
 +    }
 +}
 +// *** AIM END ***
@@ -1346,10 +1348,82 @@ index 400821d..70af371 100644
  short*			lastopening;
  
 diff --git i/trunk/src/r_things.c w/trunk/src/r_things.c
-index e60ec34..fb441a9 100644
+index e60ec34..ff17714 100644
 --- i/trunk/src/r_things.c
 +++ w/trunk/src/r_things.c
-@@ -520,16 +520,12 @@ R_DrawVisSprite
+@@ -36,6 +36,7 @@
+  
+ /* from m_menu.c */
+ void M_WriteText(int x, int y, char *string);
++int  M_StringWidth(char *string);
+ // *** PID END ***
+ 
+ #include "deh_main.h"
+@@ -432,6 +433,63 @@ boolean R_DrawMaskedColumn (column_t *column)
+ 
+ 
+ 
++// connect-doom: the records' names, queued while the sprites draw and written after them,
++// nearest first, skipping any that would cover one already written: far-off monsters'
++// names used to pile up into one unreadable line. Positions are on the screen, not the
++// view, so with a border around the view they sit on their monster, not up and left of it.
++#define MAXNAMES 64
++static struct { int x, y, w; fixed_t scale; char *name; } names[MAXNAMES];
++static int numnames;
++
++static void R_QueueName(vissprite_t *vis, int y)
++{
++    int x = viewwindowx + (vis->x1 << detailshift);
++    int w = M_StringWidth(vis->m_pname);
++
++    if (numnames == MAXNAMES)
++        return;
++    if (x + w > viewwindowx + scaledviewwidth)
++        x = viewwindowx + scaledviewwidth - w;
++    if (x < viewwindowx)
++        x = viewwindowx;
++    names[numnames].x = x;
++    names[numnames].y = viewwindowy + y;
++    names[numnames].w = w;
++    names[numnames].scale = vis->scale;
++    names[numnames].name = vis->m_pname;
++    numnames++;
++}
++
++static void R_DrawNames(void)
++{
++    int order[MAXNAMES], i, j, k, n;
++    boolean clear;
++
++    // nearest (biggest scale) first
++    for (i = 0; i < numnames; i++)
++    {
++        for (j = i; j > 0 && names[order[j - 1]].scale < names[i].scale; j--)
++            order[j] = order[j - 1];
++        order[j] = i;
++    }
++    for (n = 0, i = 0; i < numnames; i++)
++    {
++        clear = true;
++        for (k = 0; k < n && clear; k++)
++        {
++            j = order[k];
++            clear = names[order[i]].x >= names[j].x + names[j].w + 2 || names[j].x >= names[order[i]].x + names[order[i]].w + 2
++                    || names[order[i]].y >= names[j].y + 8 || names[j].y >= names[order[i]].y + 8;
++        }
++        if (clear)
++        {
++            M_WriteText(names[order[i]].x, names[order[i]].y, names[order[i]].name);
++            order[n++] = order[i];   // the first n are the ones written
++        }
++    }
++    numnames = 0;
++}
++
+ //
+ // R_DrawVisSprite
+ //  mfloorclip and mceilingclip should also be set.
+@@ -520,16 +578,12 @@ R_DrawVisSprite
         vis->x1>SCREENWIDTH/8 && vis->x2<SCREENWIDTH*7/8 &&
         drawing_occurred ) {
  
@@ -1367,10 +1441,18 @@ index e60ec34..fb441a9 100644
         }
 -       M_WriteText(vis->x1, lowest_dc_yl, buf);
 -       M_WriteText(vis->x1, lowest_dc_yl + 6, vis->m_pname);
-+       M_WriteText(vis->x1, lowest_dc_yl, vis->m_pname);
++       R_QueueName(vis, lowest_dc_yl);
      }
  // *** PID END ***
  }
+@@ -1079,6 +1133,7 @@ void R_DrawMasked (void)
+ 	    R_DrawSprite (spr);
+ 	}
+     }
++    R_DrawNames();   // connect-doom
+     
+     // render any remaining masked mid textures
+     for (ds=ds_p-1 ; ds >= drawsegs ; ds--)
 diff --git i/trunk/src/r_things.h w/trunk/src/r_things.h
 index 406a65f..60e0c2f 100644
 --- i/trunk/src/r_things.h

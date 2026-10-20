@@ -66,6 +66,11 @@ while [[ $# -gt 0 ]]; do
     --no-loop) LOOP=0; shift ;;
     -q|--question) QUESTION="$2"; shift 2 ;;
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
+    # The rest go to psdoom (e.g. -warp 2). A mistyped mode or help stops here: falling
+    # through to `new` would start a paid briefing and take over the screen.
+    -h|--help|help|[!-]*) sed -n '4,34p' "$0" | sed 's/^# \{0,1\}//'
+      [[ "$1" == -h || "$1" == --help || "$1" == help ]] && exit 0
+      echo "Unknown mode: $1" >&2; exit 2 ;;
     *) break ;;
   esac
 done

@@ -125,6 +125,16 @@ class RaidTest(unittest.TestCase):
         self.assertIn(b"CAIRM0", dict(wad_lumps((self.state / "brand.wad").read_bytes()))["TEXTURE1"])
         return len(listed)
 
+    def test_help_or_a_mistyped_mode_starts_nothing(self):
+        """Falling through to `new` would run a paid briefing and take over the screen."""
+        r = self.raid("--help", env=dict(os.environ))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("./raid.sh booth", r.stdout)
+        r = self.raid("booth", "offlne", env=dict(os.environ))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("Unknown mode: offlne", r.stderr)
+        self.assertFalse((self.state / "psdoom-args.txt").exists())
+
     def test_demo(self):
         r = self.raid("offline", env=dict(os.environ))
         self.assertEqual(self.assert_played(r), 40)

@@ -17,7 +17,7 @@ Play it yourself, or let Claude play while a side panel shows every step it take
 
 ## Install
 
-You need a Mac (Apple Silicon or Intel) and about 10 minutes.
+You need a Mac (Apple Silicon or Intel) or a Windows PC, and about 10 minutes. These steps are for the Mac; on Windows, follow [Install on Windows](#install-on-windows).
 
 1. **[Homebrew](https://brew.sh)**, if you don't have it. Its installer also sets up Xcode's command line tools (git, a C compiler).
 
@@ -45,6 +45,43 @@ You need a Mac (Apple Silicon or Intel) and about 10 minutes.
    ```bash
    ./raid.sh doctor
    ```
+
+### Install on Windows
+
+You need Windows 10 or 11 (x64 or Arm).
+
+1. **[Python](https://www.python.org/downloads/) 3.9 or newer.** In its installer, tick *Add python.exe to PATH*.
+
+2. **[Claude Code](https://code.claude.com/docs/en/setup)**. Install it, then run `claude` once and sign in.
+
+3. **A Connect AI account** with a personal access token, as in step 3 above.
+
+4. **Clone and build**, in a folder whose path has no spaces (the game's build tools can't handle one). `setup.cmd` installs [MSYS2](https://www.msys2.org) with winget if it's missing, for a C compiler and SDL 1.2. It then builds the game and the map builder from source, downloads Freedoom and installs Pillow. It takes about ten minutes.
+
+   ```powershell
+   git clone https://github.com/CDataSoftware/connect-ai-doom.git C:\connect-ai-doom
+   cd C:\connect-ai-doom
+   .\setup.cmd
+   python raid.py offline        # check the build: sample data, no account needed
+   ```
+
+5. **Log in**, once. Your email and token go into Windows Credential Manager.
+
+   ```powershell
+   python raid.py login
+   ```
+
+6. **Check the PC.** `python raid.py doctor` checks the same things as on the Mac.
+
+On Windows, `python raid.py` takes every mode and switch that `./raid.sh` does, so use it wherever this README says `./raid.sh`:
+
+```powershell
+python raid.py new -q "Which vendors are we late paying?"
+python raid.py replay --claude-plays
+python raid.py booth
+```
+
+On Windows the game plays in a window, with the panel in a browser tab; the full-screen layout is Mac-only for now. Close the game window to end the raid, or press Ctrl-C in the terminal to stop a booth. The screen stays awake while `raid.py` runs.
 
 ## Play
 
@@ -132,6 +169,13 @@ More detail: [docs/internals.md](docs/internals.md).
 - **Empty rooms**: your connections returned no rows for that question. Try `./raid.sh new -q "..."` with a question about data you have.
 - **The game is in a normal window and the panel in a browser tab**: the game was built before the full-screen layout. Run `./setup.sh` again to rebuild it.
 - **"Rebuilding the game failed"**: `raid.sh` rebuilds the game itself after a pull changes it; if that fails, run `./setup.sh` and check `vendor/build.log`.
+
+On Windows:
+
+- **"Running scripts is disabled on this system"**: run `.\setup.cmd`, not `.\setup.ps1`. It starts the script past Windows' default execution policy.
+- **"The game can't build in a folder whose path has a space"**: move the repo, for example to `C:\connect-ai-doom`.
+- **"Updating MSYS2 failed"**: open *MSYS2 MSYS* from the Start menu, run `pacman -Syu` until it reports nothing to do, then run `.\setup.cmd` again.
+- **"The build failed"**: the end of `vendor\build.log` says why. Run `.\setup.cmd` again after fixing it; finished steps are skipped.
 
 ## Contributing
 

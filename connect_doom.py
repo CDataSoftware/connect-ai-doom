@@ -28,6 +28,7 @@ import sys
 import time
 from pathlib import Path
 
+import compat
 import connect_ai_mcp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
@@ -49,6 +50,7 @@ ASK = STATE / "ask.json"  # a question asked from the panel, for raid.sh's next 
 ASKING = STATE / "asking.json"  # raid.sh moves ask.json here while Claude briefs it
 ASK_FAILED = STATE / "ask-failed.json"  # that briefing failed, and the last level came back
 MAX_QUESTION = 500
+RAID = "python raid.py" if compat.WINDOWS else "./raid.sh"   # the launcher, as the panel's messages name it
 MAX_PER_ROOM = int(os.environ.get("MAX_PER_ROOM", "20"))
 # Seconds to wait on each Connect AI call during a game. On bad conference Wi-Fi a short wait
 # means the game starts on the last records fetched instead of hanging before it opens.
@@ -151,7 +153,7 @@ def demo_mission(today=None):
     """The offline level (no Connect AI): the sample account above, as the live demo would find it."""
     from brief import DEFAULT_QUESTION   # here, not at the top: the game runs this file every tick
     today = today or dt.date.today()
-    day = lambda n: (today - dt.timedelta(days=n)).strftime("%b %-d")
+    day = lambda n: (lambda d: f"{d:%b} {d.day}")(today - dt.timedelta(days=n))   # %-d is glibc/BSD only
     deals = [{"Id": f"006S{i:03d}", "Label": name,
               "Detail": f"${amount:,}, {stage}, " + (f"close date passed {day(late)}" if late else f"pushed {pushed}x"),
               "Hot": int(late > 0 or pushed >= 2)}
@@ -206,10 +208,10 @@ def write_cache(monsters, source, rooms=None, fetched_at=None):
     tmp = CACHE.with_suffix(".tmp")
     tmp.write_text(json.dumps({"source": source, "fetched_at": fetched_at or time.time(), "rooms": rooms or [],
                                "monsters": monsters}, indent=1))
-    tmp.replace(CACHE)  # atomic, so `list` never reads a half-written file
+    compat.replace(tmp, CACHE)  # atomic, so `list` never reads a half-written file
     tmp = LABELS.with_suffix(".tmp")
     tmp.write_text("".join(f"{m['pid']}\t{line}\n" for m in monsters for line in [aim_label(m)]))
-    tmp.replace(LABELS)
+    compat.replace(tmp, LABELS)
 
 
 def aim_label(m):
@@ -221,7 +223,7 @@ def aim_label(m):
 def read_json(path):
     try:
         return json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, PermissionError, json.JSONDecodeError):  # PermissionError: Windows, mid-replace
         return None
 
 
@@ -436,7 +438,7 @@ def cmd_poll(args):
                 tmp = SAVED.with_suffix(".tmp")
                 tmp.write_text(json.dumps({"mission": mission_key(mission), "fetched_at": time.time(),
                                            "rooms": stats, "monsters": monsters}))
-                tmp.replace(SAVED)
+                compat.replace(tmp, SAVED)
             print(f"{now:%H:%M:%S} {source}: {len(monsters)} monsters", file=sys.stderr)
         except Exception as e:  # keep the last good cache; the game keeps running
             print(f"{now:%H:%M:%S} poll failed: {e}", file=sys.stderr)
@@ -488,9 +490,9 @@ def can_ask():
     """Why a new question can't be asked from the panel right now, or None if it can. raid.sh
     sets RAID_PID: it runs the briefing between games, which needs Connect AI and Claude Code."""
     if not os.environ.get("RAID_PID"):
-        return "New questions work while ./raid.sh runs the game."
+        return f"New questions work while {RAID} runs the game."
     if not os.environ.get("CONNECT_AI_PAT"):
-        return "New questions need a Connect AI account: run ./raid.sh login, then ./raid.sh new."
+        return f"New questions need a Connect AI account: run {RAID} login, then {RAID} new."
     if not shutil.which("claude"):
         return "New questions need Claude Code's CLI (claude), signed in."
     return None
@@ -521,10 +523,17 @@ def ask(question):
         return 409, {"error": "Wait for the game to start, then ask."}
     tmp = ASK.with_suffix(".tmp")
     tmp.write_text(json.dumps({"question": question, "at": time.time()}))
-    tmp.replace(ASK)
+    compat.replace(tmp, ASK)
     ASK_FAILED.unlink(missing_ok=True)
-    # psdoom ignores SIGTERM; raid.sh sees ask.json once the game is gone
-    subprocess.run(["pkill", "-9", "-P", os.environ["RAID_PID"], "-x", "psdoom"], check=False)
+    # psdoom ignores SIGTERM; raid.sh sees ask.json once the game is gone. On Windows there's no
+    # pkill: raid.py keeps the game's pid in state/psdoom.pid.
+    if compat.WINDOWS:
+        pid = (STATE / "psdoom.pid").read_text().strip() if (STATE / "psdoom.pid").exists() else ""
+        if pid:
+            subprocess.run(["taskkill", "/F", "/PID", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False)
+    else:
+        subprocess.run(["pkill", "-9", "-P", os.environ["RAID_PID"], "-x", "psdoom"], check=False)
     return 202, {"question": question}
 
 

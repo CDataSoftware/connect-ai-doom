@@ -153,10 +153,18 @@ def stream_json():
 
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
-"""Stands in for the Claude Code CLI: records how it was called, then prints a canned run."""
+"""Stands in for the Claude Code CLI: records how it was called, then prints a canned run.
+Through Windows' claude.cmd the prompt comes in on stdin and the system prompt in a file (see
+claude_run.run); both are recorded as the arguments they stand for."""
 import json, os, sys
 log = os.environ["FAKE_CLAUDE_LOG"]
-json.dump({"argv": sys.argv[1:], "basic": os.environ.get("CONNECT_AI_BASIC"), "cwd": os.getcwd()},
+argv = sys.argv[1:]
+if "-p" in argv and (argv[-1] == "-p" or argv[argv.index("-p") + 1].startswith("--")):
+    argv.insert(argv.index("-p") + 1, sys.stdin.read())
+if "--append-system-prompt-file" in argv:
+    i = argv.index("--append-system-prompt-file")
+    argv[i:i + 2] = ["--append-system-prompt", open(argv[i + 1], encoding="utf-8").read()]
+json.dump({"argv": argv, "basic": os.environ.get("CONNECT_AI_BASIC"), "cwd": os.getcwd()},
           open(log, "w"))
 if os.environ.get("FAKE_CLAUDE_FAIL"):
     print("boom: model overloaded", file=sys.stderr)
@@ -166,14 +174,22 @@ for line in json.load(open(os.environ["FAKE_CLAUDE_STREAM"])):
 '''
 
 
+def install_fake_claude(bin_):
+    """The fake claude in bin_: an executable script, and on Windows, where that can't run, a
+    claude.cmd shim the way npm installs the real one."""
+    bin_.mkdir(exist_ok=True)
+    (bin_ / "claude").write_text(FAKE_CLAUDE)
+    (bin_ / "claude").chmod(0o755)
+    if os.name == "nt":
+        (bin_ / "claude.cmd").write_text(f'@"{sys.executable}" "%~dp0claude" %*\r\n')
+
+
 @contextlib.contextmanager
 def fake_claude_env(tmp, mcp_url, fail=False):
     """Environment for running brief.py / raid.sh against the fakes, with state in `tmp`."""
     tmp = Path(tmp)
     bin_ = tmp / "bin"
-    bin_.mkdir(exist_ok=True)
-    (bin_ / "claude").write_text(FAKE_CLAUDE)
-    (bin_ / "claude").chmod(0o755)
+    install_fake_claude(bin_)
     (tmp / "stream.json").write_text(json.dumps(stream_json()))
     env = {**os.environ,
            "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}",

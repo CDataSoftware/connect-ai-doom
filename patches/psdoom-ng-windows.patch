@@ -1,0 +1,58 @@
+diff --git a/trunk/src/pr_process.c b/trunk/src/pr_process.c
+index 5210210..e2f374a 100644
+--- a/trunk/src/pr_process.c
++++ b/trunk/src/pr_process.c
+@@ -965,6 +965,44 @@ void P_MobjThinker(mobj_t *mobj);
+ 
+ static char *agent_dir = NULL;
+ static int agent_seq = 0, agent_done_seq = 0, agent_tics = 0, agent_clock = 0;
++
++// The launcher is gone: on Unix the game was adopted by init; on Windows, the launcher's pid
++// (PSDOOM_LAUNCHER_PID) no longer names a running process. Without a valid pid there is no
++// launcher to watch, and the game never quits on its own. windows.h clashes with doomtype.h's
++// boolean, so the kernel32 calls are declared here.
++#ifdef _WIN32
++__declspec(dllimport) void *__stdcall OpenProcess(unsigned long, int, unsigned long);
++__declspec(dllimport) unsigned long __stdcall WaitForSingleObject(void *, unsigned long);
++__declspec(dllimport) int __stdcall CloseHandle(void *);
++__declspec(dllimport) int __stdcall MoveFileExA(const char *, const char *, unsigned long);
++// Windows' rename() won't replace an existing file. If a reader has it open the move fails too;
++// the next write, four tics later, tries again.
++#define rename(from, to) (MoveFileExA((from), (to), 1 /* MOVEFILE_REPLACE_EXISTING */) ? 0 : -1)
++static int pr_launcher_gone(void)
++{
++    const char *env = getenv("PSDOOM_LAUNCHER_PID");
++    char *end;
++    unsigned long pid;
++    void *h;
++    int gone;
++    if (!env)
++        return 0;
++    pid = strtoul(env, &end, 10);
++    if (end == env || *end || !pid)
++        return 0;
++    h = OpenProcess(0x00100000 /* SYNCHRONIZE */, 0, pid);
++    if (!h)
++        return 1;
++    gone = WaitForSingleObject(h, 0) == 0 /* WAIT_OBJECT_0 */;
++    CloseHandle(h);
++    return gone;
++}
++#else
++static int pr_launcher_gone(void)
++{
++    return getppid() == 1;
++}
++#endif
+ static char agent_verb[16] = "", agent_result[64] = "idle";
+ static int agent_x, agent_y, agent_pid, agent_deg;
+ static int agent_last_dist, agent_stuck;
+@@ -1182,7 +1220,7 @@ void PR_AgentTiccmd(ticcmd_t *cmd)
+     // connect-doom: raid.sh (the launcher) gone means nothing serves the records or the panel
+     // any more, and a game left behind would sit frozen on the screen: quit. Its exit trap
+     // kills the game too; this covers the times the trap never runs (kill -9, a crash).
+-    if (agent_clock % TICRATE == 0 && getppid() == 1)
++    if (agent_clock % TICRATE == 0 && pr_launcher_gone())
+     {
+         extern int show_endoom;
+         show_endoom = 0;               // nobody is there to press a key on the ENDOOM screen

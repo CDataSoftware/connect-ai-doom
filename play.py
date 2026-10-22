@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 import claude_run
+import compat
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
@@ -59,7 +60,7 @@ class Game:
         for _ in range(20):
             try:
                 return json.loads((AGENT / "state.json").read_text())
-            except (FileNotFoundError, json.JSONDecodeError):
+            except (FileNotFoundError, PermissionError, json.JSONDecodeError):  # PermissionError: Windows, mid-replace
                 time.sleep(0.1)
         raise RuntimeError("the game isn't running in Claude-plays mode")
 
@@ -70,7 +71,7 @@ class Game:
         self.seq = max(self.seq, self.state()["command"].get("seq", 0)) + 1
         tmp = AGENT / "cmd.tmp"
         tmp.write_text(f"{self.seq} {verb} {' '.join(str(int(a)) for a in args)}\n")
-        tmp.replace(AGENT / "cmd")
+        compat.replace(tmp, AGENT / "cmd")
         end = time.time() + timeout
         while time.time() < end:
             s = self.state()
@@ -568,7 +569,7 @@ def set_game(**fields):
         game = {"mode": "player", "started": time.time()}
     tmp = STATE / "game.json.tmp"
     tmp.write_text(json.dumps({**game, **fields}) + "\n")
-    tmp.replace(path)
+    compat.replace(tmp, path)
 
 
 def save_options(opts):
@@ -576,7 +577,7 @@ def save_options(opts):
     (raid.sh reads them)."""
     tmp = STATE / "options.json.tmp"
     tmp.write_text(json.dumps(opts) + "\n")
-    tmp.replace(STATE / "options.json")
+    compat.replace(tmp, STATE / "options.json")
 
 
 def online():
@@ -696,11 +697,7 @@ class Supervisor:
         self.proc, self.started, self.ended_at = self.start(self.player), self.clock(), None
 
     def stop(self):
-        self.proc.terminate()
-        try:
-            self.proc.wait(10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        compat.stop(self.proc)   # with its claude: on Windows terminate() alone would leave that running
         self.proc = None
         self.game.do_nowait("STOP")
 
@@ -719,7 +716,7 @@ class Supervisor:
 
 def supervise():
     sup = Supervisor(Game())
-    signal.signal(signal.SIGTERM, lambda *_: (sup.proc and sup.proc.terminate(), sys.exit(0)))
+    signal.signal(signal.SIGTERM, lambda *_: (sup.proc and compat.stop(sup.proc), sys.exit(0)))
     while True:
         sup.tick()
         time.sleep(0.5)

@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from helpers import PAT, ROOT, USER, FAKE_CLAUDE
+from helpers import PAT, ROOT, USER, install_fake_claude
 
 import play
 
@@ -659,9 +659,7 @@ class RunTest(StateDirTest):
 
     def play(self, creds, fail=False):
         bin_ = self.state / "bin"
-        bin_.mkdir(exist_ok=True)
-        (bin_ / "claude").write_text(FAKE_CLAUDE)
-        (bin_ / "claude").chmod(0o755)
+        install_fake_claude(bin_)
         (self.state / "stream.json").write_text(json.dumps(self.STREAM if not fail else []))
         env = {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}",
                "CONNECT_DOOM_STATE": str(self.state), "FAKE_CLAUDE_LOG": str(self.state / "call.json"),

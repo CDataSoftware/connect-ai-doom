@@ -8,9 +8,12 @@ the final result. connect_ai_server() is the Connect AI MCP server, read-only to
 import csv
 import io
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
+from pathlib import Path
 
 import connect_ai_mcp
 
@@ -74,7 +77,27 @@ def run(cmd, log, *, env=None, cwd=None, on_start=None):
 
     Returns {"result": the final text, "finished": whether a result arrived, "calls": every MCP
     call as {server, tool, args, text, error}, "returncode", "stderr"}."""
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=cwd)
+    prompt = None
+    if os.name == "nt":
+        # npm installs claude as claude.cmd, which Popen won't find by name. A batch file also
+        # cuts an argument at its first newline, so through one the prompt goes in on stdin
+        # (claude -p reads it there) and the system prompt in a file. claude.exe, from the
+        # native installer, takes them as they are.
+        cmd = [shutil.which(cmd[0]) or cmd[0], *cmd[1:]]
+        if cmd[0].lower().endswith((".cmd", ".bat")):
+            if "-p" in cmd[:-1]:
+                i = cmd.index("-p") + 1
+                prompt, cmd = cmd[i], cmd[:i] + cmd[i + 1:]
+            if "--append-system-prompt" in cmd[:-1]:
+                i = cmd.index("--append-system-prompt")
+                path = Path(cwd or ".") / "system-prompt.txt"
+                path.write_text(cmd[i + 1], encoding="utf-8")
+                cmd[i:i + 2] = ["--append-system-prompt-file", str(path)]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE if prompt is not None else None, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", env=env, cwd=cwd)
+    if prompt is not None:
+        proc.stdin.write(prompt)
+        proc.stdin.close()
     if on_start:
         on_start(proc)
     calls, pending, final, finished = [], {}, "", False

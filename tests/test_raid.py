@@ -51,9 +51,11 @@ esac
 '''
 FAKE_OP = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/op.txt"\nprintf "%s\\n" "$FAKE_OP_SECRET"\n'
 
-SOURCES = ["raid.sh", "connect_doom.py", "connect_ai_mcp.py", "claude_run.py", "brief.py", "tools", "panel"]
+SOURCES = ["raid.sh", "compat.py", "connect_doom.py", "connect_ai_mcp.py", "claude_run.py", "brief.py", "tools",
+           "panel"]
 
 
+@unittest.skipIf(os.name == "nt", "raid.sh is the Mac's launcher; Windows runs raid.py (test_raid_py.py)")
 class RaidTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

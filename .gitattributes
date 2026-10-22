@@ -1,0 +1,6 @@
+# Patches and scripts run under MSYS2 and must keep LF endings, whatever core.autocrlf says.
+*.patch text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+# cmd.exe misreads batch files with LF endings.
+*.cmd text eol=crlf

@@ -17,6 +17,7 @@ from unittest import mock
 
 from helpers import PAT, ROOT, USER, FakeMCP, TempState, free_port, query
 
+import compat
 import connect_ai_mcp
 import connect_doom as cd
 from brief import DEFAULT_QUESTION
@@ -407,9 +408,14 @@ class AskTest(unittest.TestCase):
     def test_ask_ends_the_game_for_the_new_level(self):
         self.assertEqual(cd.ask("Who owes us?"), (409, {"error": "Wait for the game to start, then ask."}))
         cd.GAME.write_text('{"mode": "player", "started": 1}')
+        (cd.STATE / "psdoom.pid").write_text("5151\n")             # raid.py's note of the game, on Windows
         with mock.patch.object(cd.subprocess, "run") as run:
             self.assertEqual(cd.ask("Who owes us?"), (202, {"question": "Who owes us?"}))
-        run.assert_called_once_with(["pkill", "-9", "-P", "4242", "-x", "psdoom"], check=False)
+        if compat.WINDOWS:
+            run.assert_called_once_with(["taskkill", "/F", "/PID", "5151"], stdout=cd.subprocess.DEVNULL,
+                                        stderr=cd.subprocess.DEVNULL, check=False)
+        else:
+            run.assert_called_once_with(["pkill", "-9", "-P", "4242", "-x", "psdoom"], check=False)
         self.assertEqual(json.loads(cd.ASK.read_text())["question"], "Who owes us?")
         self.assertEqual(cd.ask_state()["pending"], "Who owes us?")
         self.assertEqual(cd.ask("Again?")[0], 409)                  # one briefing at a time
@@ -422,8 +428,8 @@ class AskTest(unittest.TestCase):
         self.assertEqual(cd.ask(""), (400, {"error": "Type a question first."}))
         self.assertEqual(cd.ask("x" * 501)[0], 400)
         with mock.patch.dict(os.environ, {"CONNECT_AI_PAT": ""}):
-            self.assertIn("./raid.sh login", cd.ask("Who owes us?")[1]["error"])
-            self.assertIn("./raid.sh login", cd.ask_state()["unavailable"])
+            self.assertIn(f"{cd.RAID} login", cd.ask("Who owes us?")[1]["error"])
+            self.assertIn(f"{cd.RAID} login", cd.ask_state()["unavailable"])
         self.assertFalse(cd.ASK.exists())
 
     def test_a_failed_briefing_shows_for_two_minutes(self):
@@ -501,7 +507,7 @@ class PanelServerTest(unittest.TestCase):
                                              "game": None, "kills": [], "kill_total": 0, "hits": [],
                                              "rooms_live": [], "records": {"source": None, "fetched_at": None},
                                              "vault": [], "vault_checking": None, "standing": 0,
-                                             "ask": {"unavailable": "New questions work while ./raid.sh runs the game.",
+                                             "ask": {"unavailable": f"New questions work while {cd.RAID} runs the game.",
                                                      "default": DEFAULT_QUESTION, "pending": None, "failed": None}})
 
     def test_a_question_needs_raid_sh(self):
@@ -510,7 +516,7 @@ class PanelServerTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as e:
             urllib.request.urlopen(req, timeout=5)
         self.assertEqual(e.exception.code, 409)
-        self.assertEqual(json.loads(e.exception.read()), {"error": "New questions work while ./raid.sh runs the game."})
+        self.assertEqual(json.loads(e.exception.read()), {"error": f"New questions work while {cd.RAID} runs the game."})
         e.exception.close()
         self.assertFalse((self.state / "ask.json").exists())
 

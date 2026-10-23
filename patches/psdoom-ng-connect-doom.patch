@@ -773,7 +773,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..5210210 100644
+index fa4fe83..f49ffed 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -912,7 +912,7 @@ index fa4fe83..5210210 100644
  }
  
  // pr_renice
-@@ -890,3 +933,488 @@ void pr_renice(int pid) {
+@@ -890,3 +933,489 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -952,7 +952,7 @@ index fa4fe83..5210210 100644
 +static int agent_x, agent_y, agent_pid, agent_deg;
 +static int agent_last_dist, agent_stuck;
 +// The Options menu's switches, -1 until read from the env: Claude plays, auto replay, god mode
-+// (for people; Claude always has it), saved data (the bridge stops asking Connect AI) and offline
++// (Claude plays switches it on; switched off, Claude can die too), saved data (the bridge stops asking Connect AI) and offline
 +// Claude (play.py's scripted player instead of Claude: no AI tokens).
 +#define AGENT_NOPTIONS 7
 +static int agent_options[AGENT_NOPTIONS] = {-1, -1, -1, -1, -1, -1, -1};
@@ -1007,7 +1007,9 @@ index fa4fe83..5210210 100644
 +    p->message = agent_option_msg[option][agent_options[option]];
 +    if (option == 5 || option == 6)
 +        S_SoundSwitched();
-+    if ((option == 0 || option == 2) && !PR_AgentOption(0) && !PR_AgentOption(2))
++    if (option == 0 && agent_options[0] && !PR_AgentOption(2))
++        agent_options[2] = 1;          // Claude thinks slowly: don't let it die mid-thought
++    if (!PR_AgentOption(2))
 +        p->cheats &= ~CF_GODMODE;      // nobody's god mode any more
 +    if (option == 0 && !agent_options[0] && agent_verb[0])
 +        agent_finish("stopped");
@@ -1142,19 +1144,18 @@ index fa4fe83..5210210 100644
 +
 +    if (PR_AgentOption(0))
 +    {
-+        // Claude thinks slowly: don't let it die mid-thought, and keep it on a
-+        // full chaingun (hitscan, so aiming is reliable; rockets splash and run dry).
++        // Keep Claude on a full chaingun (hitscan, so aiming is reliable; rockets splash
++        // and run dry). God mode is the switch's, below.
 +        int i;
-+        p->cheats |= CF_GODMODE;
 +        p->weaponowned[wp_chaingun] = true;
 +        for (i = 0; i < NUMAMMO; i++)
 +            p->ammo[i] = p->maxammo[i];
 +        if (p->readyweapon != wp_chaingun && p->pendingweapon == wp_nochange)
 +            p->pendingweapon = wp_chaingun;
 +    }
-+    else if (PR_AgentOption(2))
++    if (PR_AgentOption(2))
 +    {
-+        // The Options menu's god mode: people can't die, and never run out of ammo.
++        // The Options menu's god mode: nobody dies, and nobody runs out of ammo.
 +        int i;
 +        p->cheats |= CF_GODMODE;
 +        for (i = 0; i < NUMAMMO; i++)

@@ -361,6 +361,28 @@ class SupervisorTest(StateDirTest):
         self.tick()
         self.assertEqual(self.players, ["claude", "replay", "claude"])      # and back to Claude
 
+    def test_offline_claude_switch_after_a_run_ended(self):
+        """With auto replay off, a finished run waits; flipping the switch still starts the other player."""
+        self.switches(True)
+        self.tick()
+        self.procs[0].returncode = 0
+        self.now += 60
+        self.tick()
+        self.tick()
+        self.assertEqual(self.players, ["claude"])                          # ended: nobody plays
+        self.game.s["options"]["offline_claude"] = 1
+        self.tick()
+        self.assertEqual(self.players, ["claude", "replay"])
+
+    def test_offline_claude_off_gives_a_failed_claude_another_try(self):
+        self.switches(True)
+        self.game.s["options"]["offline_claude"] = 1
+        self.tick()
+        self.sup.claude_failed_at = self.now                                 # an earlier Claude run failed
+        self.game.s["options"]["offline_claude"] = 0
+        self.tick()
+        self.assertEqual(self.players, ["replay", "claude"])
+
     def test_switches_are_saved_for_the_next_booth_game(self):
         self.switches(True, replay=True)
         self.game.s["options"]["god_mode"] = 1

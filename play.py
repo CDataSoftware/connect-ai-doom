@@ -621,9 +621,14 @@ class Supervisor:
         opts = s.get("options", {})
         if opts != self.opts:
             save_options(opts)
-            if self.proc and opts.get("offline_claude") != self.opts.get("offline_claude"):
-                self.stop()            # the offline Claude switch: swap players where the marine stands
+            if self.opts and opts.get("offline_claude") != self.opts.get("offline_claude"):
+                # the offline Claude switch: swap players where the marine stands, mid-run or after
+                # one ended; switched off, give Claude another try even if its last run failed
+                if self.proc:
+                    self.stop()
                 self.ended_at = None
+                if not opts.get("offline_claude"):
+                    self.claude_failed_at = None
             self.opts = dict(opts)
         now = self.clock()
         alive = [m for m in s["monsters"] if m["health"] > 0]

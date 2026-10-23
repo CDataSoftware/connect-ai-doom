@@ -166,6 +166,8 @@ print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mod
       2>/dev/null || true)
     # '%s': macOS's bash 3.2 assigns nothing for printf -v with an empty format, so every switch flipped
     for v in PLAYS LOOP GOD SAVED OFFLINE NOMUSIC NOSFX; do [[ "${!v}" == - ]] && printf -v "$v" '%s' ''; done
+  elif [[ -n "$PLAYS" ]]; then
+    GOD=1   # Claude starts in god mode, as switching Claude plays on in the menu does
   fi
   export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
   PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1

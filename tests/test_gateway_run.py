@@ -52,7 +52,8 @@ class RunTest(unittest.TestCase):
             reply(None, [("c3", "doom__attack", {"pid": 7}), ("c4", "doom__fly", {})]),
             reply("Cleared 2 records.", prompt_tokens=30, completion_tokens=8),
         ])
-        self.assertEqual(out, {"result": "Cleared 2 records.", "turns": 3, "tokens": {"input": 50, "output": 18}})
+        self.assertEqual(out, {"result": "Cleared 2 records.", "turns": 3, "tokens": {"input": 50, "output": 18},
+                               "empty_replies": 0})
         kinds = [e["kind"] for e in self.events]
         self.assertEqual(kinds[0], "session")
         self.assertEqual(self.events[0]["tools"],
@@ -92,6 +93,14 @@ class RunTest(unittest.TestCase):
         self.assertEqual([len(c) for c in sent[-gateway_run.KEEP_RESULTS:]], [gateway_run.RESULT_CHARS] * 6)
         self.assertTrue(all(c.endswith("[trimmed]") and len(c) < 400 for c in sent[:3]), [len(c) for c in sent])
         self.assertEqual(self.sent[-1]["messages"][1]["tool_calls"][0]["id"], "c0")   # the model's own turns stay
+
+    def test_an_empty_reply_is_asked_again(self):
+        """No text and no tool call isn't the model stopping: the same request goes again, twice at most."""
+        out = self.run_loop([reply(None, [("c1", "doom__look", {})]), reply(None), reply(None, [("c2", "doom__look", {})]),
+                             reply(None), reply(None), reply(None)])
+        self.assertEqual((out["turns"], out["empty_replies"]), (3, 2))       # the third empty one ends it
+        self.assertEqual(self.sent[1]["messages"], self.sent[2]["messages"])  # asked again, unchanged
+        self.assertEqual([e["turn"] for e in self.events if e["kind"] == "empty_reply"], [2, 3])
 
     def test_stops_at_max_turns(self):
         out = self.run_loop([reply(None, [(f"c{i}", "doom__look", {})]) for i in range(5)], max_turns=3)

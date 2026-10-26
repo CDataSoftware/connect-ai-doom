@@ -26,6 +26,9 @@ RETRY_WAITS = (2, 5, 10)   # seconds before each retry of a rate limit or a serv
 # last KEEP_RESULTS go in full (up to RESULT_CHARS), earlier ones as their first TRIMMED_CHARS.
 # A long run otherwise sends hundreds of thousands of tokens of stale looks and query results.
 KEEP_RESULTS, RESULT_CHARS, TRIMMED_CHARS = 6, 8000, 300
+# A reply with no text and no tool call is a glitch, not the model stopping (Sonnet through the
+# gateway sends one now and then, right after a "Blocked" result): ask again, up to this many times.
+EMPTY_RETRIES = 2
 
 
 class GatewayError(RuntimeError):
@@ -93,16 +96,20 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
              for name, (_, desc, schema) in tools.items()]
     messages = [{"role": "user", "content": prompt}]
     log("session", model=model, tools=sorted(f"mcp__{name}" for name in tools))
-    started, turns, final = time.time(), 0, ""
+    started, turns, final, empty = time.time(), 0, "", 0
     tokens = {"input": 0, "output": 0}
     while turns < max_turns:
         compact(messages)
         reply = post(key, {"model": model, "max_tokens": MAX_TOKENS, "messages": messages, "tools": specs})
-        turns += 1
         usage = reply.get("usage") or {}
         tokens["input"] += usage.get("prompt_tokens") or 0
         tokens["output"] += usage.get("completion_tokens") or 0
         msg = reply["choices"][0]["message"]
+        if not (msg.get("content") or "").strip() and not msg.get("tool_calls") and empty < EMPTY_RETRIES:
+            empty += 1                  # not a turn the model played: the same request again
+            log("empty_reply", turn=turns + 1, finish_reason=reply["choices"][0].get("finish_reason"))
+            continue
+        turns += 1
         text = (msg.get("content") or "").strip()
         if text:
             log("text_delta", text=text)
@@ -132,8 +139,8 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
                 ms=round((time.time() - start) * 1000))
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": out[:RESULT_CHARS]})
     log("done", cost_usd=None, duration_ms=round((time.time() - started) * 1000), turns=turns, text=final,
-        tokens=tokens)
-    return {"result": final, "turns": turns, "tokens": tokens}
+        tokens=tokens, empty_replies=empty)
+    return {"result": final, "turns": turns, "tokens": tokens, "empty_replies": empty}
 
 
 PLAIN_PROMPT_TOKENS = 100   # a one-line prompt costs a few dozen; past this the gateway added context

@@ -580,6 +580,7 @@ class SupervisorTest(StateDirTest):
         self.assertEqual((row["model"], row["harness"], row["ended"]),
                          ("claude-sonnet-5-5 (Claude Code)", "claude-code", "done"))
         self.assertEqual((row["records"], row["killed"], row["cleared"], row["urgent_first"]), (2, 1, False, 1.0))
+        self.assertEqual((self.state / row["feed"]).read_text(), (self.state / "play.jsonl").read_text())   # kept
 
     def test_a_cleared_level_scores_the_run_as_it_stops_it(self):
         with mock.patch.object(play, "GATEWAY_MODEL", "gemini-3.7-flash"):

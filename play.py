@@ -816,7 +816,11 @@ class Supervisor:
             row = leaderboard.score(events, mission(), snap["urgent"], snap["alive"], alive, model=name,
                                     harness=harness, data=snap["data"], ended=ended, limit_s=TIME_LIMIT)
             if row["doom_calls"]:     # a run that never got going (say, claude signed out) isn't a game
-                leaderboard.record(row)
+                # its feed, kept for a look at how it played (the next run starts play.jsonl over)
+                feed = Path("runs") / row["level"] / f"{row['t']}-{re.sub(r'[^A-Za-z0-9.-]+', '_', name)}.jsonl"
+                (STATE / feed).parent.mkdir(parents=True, exist_ok=True)
+                (STATE / feed).write_text(PLAY_LOG.read_text())
+                leaderboard.record({**row, "feed": str(feed)})
         except (OSError, ValueError, KeyError, RuntimeError) as e:
             print(f"play.py: couldn't score the run: {e}", file=sys.stderr)
 

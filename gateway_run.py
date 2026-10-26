@@ -10,6 +10,8 @@ with a gateway virtual key (cgw_sk_...), not the Connect AI token.
 """
 import json
 import os
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -20,6 +22,10 @@ import claude_run
 GATEWAY_URL = os.environ.get("CONNECT_AI_GATEWAY_URL", "https://cloud.cdata.com/gateway/v1")
 MAX_TOKENS = 4096          # per reply; thinking models (Gemini) spend some of it before they answer
 RETRY_WAITS = (2, 5, 10)   # seconds before each retry of a rate limit or a server error
+# Each turn sends the whole conversation again, so the older tool results are cut short: the
+# last KEEP_RESULTS go in full (up to RESULT_CHARS), earlier ones as their first TRIMMED_CHARS.
+# A long run otherwise sends hundreds of thousands of tokens of stale looks and query results.
+KEEP_RESULTS, RESULT_CHARS, TRIMMED_CHARS = 6, 8000, 300
 
 
 class GatewayError(RuntimeError):
@@ -67,6 +73,15 @@ def models(key, cache, timeout=4):
             return []
 
 
+def compact(messages):
+    """Cut the tool results before the last KEEP_RESULTS short, in place. The model's own
+    messages stay as they were (Gemini keeps its reasoning in its tool call ids)."""
+    results = [m for m in messages if m["role"] == "tool"]
+    for m in results[:-KEEP_RESULTS] if len(results) > KEEP_RESULTS else []:
+        if len(m["content"]) > TRIMMED_CHARS and not m["content"].endswith("[trimmed]"):
+            m["content"] = m["content"][:TRIMMED_CHARS] + " ... [trimmed]"
+
+
 def run(prompt, model, tools, log, *, key, max_turns, post=complete):
     """Play one run: send `prompt`, run each tool the model calls, and send the results back
     until it answers without calling a tool or `max_turns` replies are used up.
@@ -81,6 +96,7 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
     started, turns, final = time.time(), 0, ""
     tokens = {"input": 0, "output": 0}
     while turns < max_turns:
+        compact(messages)
         reply = post(key, {"model": model, "max_tokens": MAX_TOKENS, "messages": messages, "tools": specs})
         turns += 1
         usage = reply.get("usage") or {}
@@ -114,13 +130,76 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
             log("result", id=call["id"], tool=tool, connection=claude_run.catalog_of(args), error=error,
                 rows=0 if error else claude_run.count_rows(out), text=out[:4000],
                 ms=round((time.time() - start) * 1000))
-            messages.append({"role": "tool", "tool_call_id": call["id"], "content": out})
+            messages.append({"role": "tool", "tool_call_id": call["id"], "content": out[:RESULT_CHARS]})
     log("done", cost_usd=None, duration_ms=round((time.time() - started) * 1000), turns=turns, text=final,
         tokens=tokens)
     return {"result": final, "turns": turns, "tokens": tokens}
 
 
-if __name__ == "__main__":
-    # gateway_run.py models: the key's models, comma-separated (raid.sh, for the Options menu)
+PLAIN_PROMPT_TOKENS = 100   # a one-line prompt costs a few dozen; past this the gateway added context
+
+
+def check(key, post=complete, timeout=10):
+    """`./raid.sh doctor`'s look at the gateway: (status, text) lines, status ok, error or note.
+    The key and its models, a one-line prompt to each (a model the project lists may still be
+    refused), and whether the gateway pads prompts with context (the routing rule's Workspace
+    Context, User Context, Search Context or Data Source Instructions): then every model's
+    prompt differs from the game's, and costs more."""
+    req = urllib.request.Request(f"{GATEWAY_URL}/models", headers={"Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            names = [m["id"] for m in json.loads(resp.read()).get("data", []) if m.get("id")]
+    except urllib.error.HTTPError as e:
+        with e:
+            return [("error", f"the LLM Gateway refused the key (HTTP {e.code}): issue a new one, see the README")]
+    except (OSError, ValueError) as e:
+        return [("note", f"the LLM Gateway didn't answer ({e}); --model and the menu's models need it")]
+    lines = [("ok", f"LLM Gateway key: {len(names)} models ({', '.join(names)})")]
+    padded = None
+    for name in names:
+        try:
+            reply = post(key, {"model": name, "max_tokens": 2000, "messages": [{"role": "user", "content": "Reply with: ok"}]})
+        except GatewayError as e:
+            why = str(e).split(": ", 1)[-1].split(". ")[0].rstrip(".")   # the gateway's first sentence
+            lines.append(("note", f"{name} is refused ({why}). Leave it off a bench"))
+            continue
+        lines.append(("ok", f"{name} answers"))
+        tokens = (reply.get("usage") or {}).get("prompt_tokens") or 0
+        if tokens > PLAIN_PROMPT_TOKENS:
+            padded = tokens
+    if padded:
+        lines.append(("note", f"the gateway adds context to every prompt ({padded} tokens for one line): turn off the "
+                              "routing rule's Workspace Context, User Context, Search Context and Data Source "
+                              "Instructions, so every model gets the game's prompt alone"))
+    return lines
+
+
+def main(args):
+    """gateway_run.py models: the key's models, comma-separated, for the Options menu's Model row
+    (raid.sh). The last list comes back at once, and a fresh one is fetched in the background for
+    the next game, so a launch never waits on the network; only the first one waits, 4 s at most.
+    gateway_run.py refresh: just the fetch. gateway_run.py check: check() for ./raid.sh doctor,
+    one tab-separated status and text a line."""
     state = Path(os.environ.get("CONNECT_DOOM_STATE", Path(__file__).resolve().parent / "state"))
-    print(",".join(models(os.environ["CONNECT_AI_GATEWAY_KEY"], state / "gateway-models.json")))
+    cache, key = state / "gateway-models.json", os.environ["CONNECT_AI_GATEWAY_KEY"]
+    if args == ["refresh"]:
+        models(key, cache)
+        return
+    if args == ["check"]:
+        for status, text in check(key):
+            print(f"{status}\t{text}")
+        return
+    try:
+        names = json.loads(cache.read_text())
+    except (OSError, ValueError):
+        names = None
+    if names is None:
+        names = models(key, cache)
+    else:
+        subprocess.Popen([sys.executable, __file__, "refresh"], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(",".join(names))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

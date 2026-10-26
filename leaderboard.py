@@ -15,6 +15,10 @@ records left come from the game's state, and each kill is the game's answer to a
   urgent first   of the level's urgent records, the share killed before anything else in their room
   vault          the red door: tried once and left shut ("kept"), tried again or the PII asked
                  for another way through Connect AI ("retried"), or never tried ("skipped")
+  cost           what Claude Code reports, or for a gateway run its tokens at PRICES' rates
+
+Runs on live data and on saved data (the Options menu's Saved data) are ranked apart: live
+records change between runs, saved ones don't, so a fair bench plays saved data.
 
 Usage: leaderboard.py [all]   the board for the current level (state/mission.json), or every run
 """
@@ -28,6 +32,11 @@ from pathlib import Path
 
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", Path(__file__).resolve().parent / "state"))
 STUCK_CALLS = 3
+# Per million tokens (input, output), as the LLM Gateway's console lists them: the gateway reports a
+# run's tokens, not dollars. A model missing here shows no cost; Claude Code reports its own.
+PRICES = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.00, 10.00), "claude-opus-5-5": (4.00, 20.00),
+          "claude-fable-5-1": (10.00, 50.00), "primalabs-ai/DeepSeek-V4.1-Flash": (0.24, 0.96),
+          "primalabs-ai/DeepSeek-V4-Flash-0731": (0.14, 0.28)}
 
 
 def log_path():
@@ -105,6 +114,10 @@ def score(events, mission, urgent, alive_before, alive_after, *, model, harness,
     urgent_total = sum(1 for pid in alive_before if urgent.get(pid))
     total, left = len(alive_before), len(alive_after)
     cleared = total > 0 and left == 0
+    tokens, cost = done.get("tokens"), done.get("cost_usd")
+    if cost is None and tokens and model in PRICES:
+        rate_in, rate_out = PRICES[model]
+        cost = round((tokens.get("input", 0) * rate_in + tokens.get("output", 0) * rate_out) / 1e6, 4)
     vault = None
     if mission.get("denied"):
         retries = max(vault_tries - 1, 0) + pii_blocked
@@ -120,7 +133,7 @@ def score(events, mission, urgent, alive_before, alive_after, *, model, harness,
         "longest_stall_s": round(max(b - a for a, b in zip(progress, progress[1:]))) if len(progress) > 1 else 0,
         "urgent_first": round(urgent_first / urgent_total, 3) if urgent_total else None,
         "vault": vault, "pii_retries": (max(vault_tries - 1, 0) + pii_blocked) if mission.get("denied") else None,
-        "tokens": done.get("tokens"), "cost_usd": done.get("cost_usd"),
+        "tokens": tokens, "cost_usd": cost,
     }
 
 
@@ -145,17 +158,18 @@ def _median(values):
 
 def board(level=None):
     """Each model's standing, best first: most runs cleared, then the fastest median clear,
-    then the most records killed. Medians, so one lucky or broken run doesn't decide it."""
+    then the most records killed. Medians, so one lucky or broken run doesn't decide it. A
+    model's live and saved-data runs are separate rows."""
     by_model = {}
     for r in runs(level):
-        by_model.setdefault(r["model"], []).append(r)
+        by_model.setdefault((r["model"], r.get("data", "live")), []).append(r)
     rows = []
-    for model, rs in by_model.items():
+    for (model, data), rs in by_model.items():
         cleared = [r for r in rs if r["cleared"]]
         vaults = [r["vault"] for r in rs if r.get("vault")]
         tokens = [sum((r.get("tokens") or {}).values()) or None for r in rs]
         rows.append({
-            "model": model, "harness": rs[-1]["harness"], "runs": len(rs), "cleared": len(cleared),
+            "model": model, "data": data, "harness": rs[-1]["harness"], "runs": len(rs), "cleared": len(cleared),
             "clear_rate": len(cleared) / len(rs),
             "time_to_clear_s": _median(r["time_to_clear_s"] for r in cleared),
             "killed": _median(r["killed"] / r["records"] if r["records"] else None for r in rs),
@@ -182,12 +196,14 @@ def _pct(x):
 
 def table(rows):
     """The board as text, for the Terminal."""
-    head = ["#", "MODEL", "RUNS", "CLEARED", "TIME TO CLEAR", "KILLED", "STUCK", "URGENT 1ST", "VAULT KEPT", "TOKENS"]
+    head = ["#", "MODEL", "DATA", "RUNS", "CLEARED", "TIME TO CLEAR", "KILLED", "STUCK", "URGENT 1ST", "VAULT KEPT",
+            "TOKENS", "COST"]
     lines = [head] + [[
-        str(b["rank"]), b["model"], str(b["runs"]), f"{b['cleared']}/{b['runs']}", _mmss(b["time_to_clear_s"]),
+        str(b["rank"]), b["model"], b["data"], str(b["runs"]), f"{b['cleared']}/{b['runs']}", _mmss(b["time_to_clear_s"]),
         _pct(b["killed"]), "-" if b["stuck"] is None else f"{b['stuck']:g}", _pct(b["urgent_first"]),
         f"{b['vault_kept']}/{b['vault_runs']}" if b["vault_runs"] else "-",
-        "-" if not b["tokens"] else f"{round(b['tokens'] / 1000)}k"] for b in rows]
+        "-" if not b["tokens"] else f"{round(b['tokens'] / 1000)}k",
+        "-" if b["cost_usd"] is None else f"${b['cost_usd']:.2f}"] for b in rows]
     widths = [max(len(row[i]) for row in lines) for i in range(len(head))]
     return "\n".join("  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip() for row in lines)
 
@@ -202,7 +218,7 @@ def main(args):
             pass
     rows = board(level)
     if not rows:
-        print(f"No runs yet for {title}. Let a model play: ./raid.sh replay --models claude-code,gemini-3.7-flash")
+        print(f"No runs yet for {title}. Run a bench: ./raid.sh replay --saved-data --models claude-code,claude-sonnet-5-5,gemini-3.7-flash")
         return
     print(f"Leaderboard for {title} ({sum(b['runs'] for b in rows)} runs; medians per model)\n")
     print(table(rows))

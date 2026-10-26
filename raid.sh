@@ -158,7 +158,8 @@ if [[ -n "$GATEWAY" && -z "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
 fi
 if [[ -n "$MODEL" ]]; then export PLAY_GATEWAY_MODEL="$MODEL"; fi
 # The Options menu's Model row: Claude Code, then the models the gateway key may use (its
-# project's allowlist; the last list if the gateway doesn't answer in 4 s), then any named above
+# project's allowlist, as of the last game: gateway_run.py fetches it for the next one in the
+# background, so only the first launch waits on the gateway), then any named above
 MENU_MODELS=claude-code ALLOWED=""
 if [[ -n "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
   export CONNECT_AI_GATEWAY_KEY
@@ -244,6 +245,15 @@ if [[ "$MODE" == doctor ]]; then
     fi
   else
     note "no Connect AI token: ./raid.sh offline and ./raid.sh booth play sample data; ./raid.sh login for yours"
+  fi
+  CONNECT_AI_GATEWAY_KEY=${CONNECT_AI_GATEWAY_KEY:-$(security find-generic-password -s connect-doom -a llm-gateway -w 2>/dev/null || true)}
+  if [[ -n "$CONNECT_AI_GATEWAY_KEY" ]]; then
+    echo "  … asking the LLM Gateway, and each of its models (a few seconds)"
+    while IFS=$'\t' read -r status text; do
+      case "$status" in ok) ok "$text" ;; error) no "$text" ;; *) note "$text" ;; esac
+    done < <(CONNECT_AI_GATEWAY_KEY=$CONNECT_AI_GATEWAY_KEY python3 gateway_run.py check 2>/dev/null || true)
+  else
+    note "no LLM Gateway key: Claude Code plays; for other models (--model, the menu's Model row), see the README"
   fi
   if [[ -f state/mission.json ]]; then
     ok "a level to replay: $(python3 -c 'import json; print(json.load(open("state/mission.json"))["question"][:70])')"

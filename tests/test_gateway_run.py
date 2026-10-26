@@ -1,8 +1,13 @@
 """gateway_run.py: the agent loop over Connect AI's LLM Gateway, against scripted replies and a fake gateway."""
 import http.server
+import io
 import json
+import os
+import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 from unittest import mock
 
 import helpers  # noqa: F401  (puts the repo on sys.path)
@@ -77,6 +82,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual(tool, {"role": "tool", "tool_call_id": "call_1__thought__abc",
                                 "content": json.dumps({"you_are_in": "lobby"})})
 
+    def test_older_tool_results_are_cut_short(self):
+        """Each turn resends the conversation: the last few results go in full, earlier ones trimmed."""
+        big = "x" * 20_000
+        self.tools["doom__look"] = (lambda args: big, "Look around.", {"type": "object", "properties": {}})
+        self.run_loop([reply(None, [(f"c{i}", "doom__look", {})]) for i in range(9)] + [reply("Done.")])
+        sent = [m["content"] for m in self.sent[-1]["messages"] if m["role"] == "tool"]
+        self.assertEqual(len(sent), 9)
+        self.assertEqual([len(c) for c in sent[-gateway_run.KEEP_RESULTS:]], [gateway_run.RESULT_CHARS] * 6)
+        self.assertTrue(all(c.endswith("[trimmed]") and len(c) < 400 for c in sent[:3]), [len(c) for c in sent])
+        self.assertEqual(self.sent[-1]["messages"][1]["tool_calls"][0]["id"], "c0")   # the model's own turns stay
+
     def test_stops_at_max_turns(self):
         out = self.run_loop([reply(None, [(f"c{i}", "doom__look", {})]) for i in range(5)], max_turns=3)
         self.assertEqual((out["turns"], out["result"]), (3, ""))
@@ -94,6 +110,13 @@ class FakeGateway:
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *a):
                 pass
+
+            def do_GET(self):
+                status, body = fake.answers.pop(0)
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode())
 
             def do_POST(self):
                 fake.requests.append((self.path, self.headers.get("Authorization"),
@@ -140,6 +163,40 @@ class CompleteTest(unittest.TestCase):
         with self.assertRaisesRegex(gateway_run.GatewayError, "HTTP 403: The requested model 'x' is not available"):
             gateway_run.complete("k", {}, sleep=waits.append)
         self.assertEqual(waits, [])
+
+    def test_models_and_their_cache(self):
+        cache = Path(tempfile.mkdtemp()) / "gateway-models.json"
+        self.gateway([(200, {"data": [{"id": "claude-haiku-5-5"}, {"id": "gemini-3.7-flash"}]}), (500, {})])
+        self.assertEqual(gateway_run.models("k", cache), ["claude-haiku-5-5", "gemini-3.7-flash"])
+        self.assertEqual(gateway_run.models("k", cache), ["claude-haiku-5-5", "gemini-3.7-flash"])   # down: the last list
+
+    def test_models_for_the_menu_never_wait_once_cached(self):
+        state = Path(tempfile.mkdtemp())
+        (state / "gateway-models.json").write_text('["claude-haiku-5-5"]')
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"CONNECT_DOOM_STATE": str(state), "CONNECT_AI_GATEWAY_KEY": "k"}), \
+                mock.patch.object(gateway_run.subprocess, "Popen") as popen, redirect_stdout(out):
+            gateway_run.main(["models"])
+        self.assertEqual(out.getvalue(), "claude-haiku-5-5\n")
+        self.assertEqual(popen.call_args.args[0][-1], "refresh")              # the fresh list, for next time
+
+    def test_check_for_the_doctor(self):
+        self.gateway([(200, {"data": [{"id": "claude-haiku-5-5"}, {"id": "deepseek"}]})])
+
+        def post(key, body):
+            if body["model"] == "deepseek":
+                raise gateway_run.GatewayError("HTTP 403: The requested model 'deepseek' is not available. Check it.")
+            return {"usage": {"prompt_tokens": 900}}            # the routing rule's context, added
+        lines = gateway_run.check("k", post=post)
+        self.assertEqual(lines[:3], [("ok", "LLM Gateway key: 2 models (claude-haiku-5-5, deepseek)"),
+                                     ("ok", "claude-haiku-5-5 answers"),
+                                     ("note", "deepseek is refused (The requested model 'deepseek' is not available). "
+                                              "Leave it off a bench")])
+        self.assertIn("adds context to every prompt (900 tokens", lines[3][1])
+
+    def test_check_with_a_refused_key(self):
+        self.gateway([(401, {"error": {"message": "Incorrect API key"}})])
+        self.assertEqual(gateway_run.check("k")[0][0], "error")
 
     def test_gives_up_after_the_last_retry(self):
         self.gateway([(500, {"error": {"message": "down"}})] * 4)

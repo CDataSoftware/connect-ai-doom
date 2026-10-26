@@ -60,6 +60,9 @@ class ScoreTest(unittest.TestCase):
         self.assertEqual(row["urgent_first"], 1.0)
         self.assertEqual((row["vault"], row["pii_retries"]), ("kept", 0))
         self.assertEqual((row["turns"], row["tokens"]), (20, {"input": 900, "output": 100}))
+        self.assertIsNone(row["cost_usd"])                         # "m" has no rate
+        priced = score(f, model="claude-sonnet-5-5")
+        self.assertEqual(priced["cost_usd"], round((900 * 2 + 100 * 10) / 1e6, 4))
         self.assertEqual(row["level"], leaderboard.level_key(MISSION))
 
     def test_stuck_counts_each_stretch_without_progress_once(self):
@@ -99,11 +102,12 @@ class BoardTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.state = Path(tmp.name)
 
-    def run_(self, model, cleared, time_to_clear=None, killed=4, stuck=0, level="L1", vault="kept", tokens=1000):
-        leaderboard.record({"t": 1, "model": model, "harness": "gateway", "level": level, "records": 4,
+    def run_(self, model, cleared, time_to_clear=None, killed=4, stuck=0, level="L1", vault="kept", tokens=1000,
+             data="saved", cost=None):
+        leaderboard.record({"t": 1, "model": model, "harness": "gateway", "level": level, "data": data, "records": 4,
                             "killed": killed, "cleared": cleared, "time_to_clear_s": time_to_clear, "stuck": stuck,
                             "urgent_first": 1.0, "vault": vault, "tokens": {"input": tokens, "output": 0},
-                            "cost_usd": None})
+                            "cost_usd": cost})
 
     def test_ranks_by_clears_then_time_then_kills(self):
         self.run_("slow", True, 300)
@@ -121,19 +125,26 @@ class BoardTest(unittest.TestCase):
         self.assertEqual((fast["vault_kept"], fast["vault_runs"]), (2, 3))
         self.assertEqual(len(leaderboard.board()), 4)            # every level
 
+    def test_live_and_saved_runs_are_ranked_apart(self):
+        self.run_("gemini", True, 100, data="live")
+        self.run_("gemini", True, 300)
+        rows = leaderboard.board("L1")
+        self.assertEqual([(b["model"], b["data"], b["time_to_clear_s"]) for b in rows],
+                         [("gemini", "live", 100), ("gemini", "saved", 300)])
+
     def test_table_and_main(self):
         out = io.StringIO()
         with redirect_stdout(out):
             leaderboard.main([])
         self.assertIn("No runs yet", out.getvalue())
         (self.state / "mission.json").write_text(json.dumps(MISSION))
-        self.run_("gemini-3.7-flash", True, 125, level=leaderboard.level_key(MISSION), tokens=493_000)
+        self.run_("gemini-3.7-flash", True, 125, level=leaderboard.level_key(MISSION), tokens=493_000, cost=0.4)
         out = io.StringIO()
         with redirect_stdout(out):
             leaderboard.main([])
         text = out.getvalue()
         self.assertIn("Leaderboard for Who is at risk? (1 runs", text)
-        self.assertRegex(text, r"1\s+gemini-3.7-flash\s+1\s+1/1\s+2:05\s+100%\s+0\s+100%\s+1/1\s+493k")
+        self.assertRegex(text, r"1\s+gemini-3.7-flash\s+saved\s+1\s+1/1\s+2:05\s+100%\s+0\s+100%\s+1/1\s+493k\s+\$0.40")
 
 
 if __name__ == "__main__":

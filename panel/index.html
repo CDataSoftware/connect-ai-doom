@@ -259,6 +259,7 @@
   #board .note { margin-top: 10px; font-size: 12px; color: var(--balance); line-height: 1.5; }
   #board .empty { color: var(--balance); }
   .board tr.now td { background: var(--depth-3); }
+  .board .data { font: 7px/1 var(--pixel); color: var(--balance); border: 1px solid var(--line); border-radius: 3px; padding: 2px 4px; }
   .board tr.now td.model::after { content: " ◀ PLAYING"; font: 7px/1 var(--pixel); color: var(--agility); }
   .rl .live.fresh::before { animation: pulse .8s 3; }
   .rl .live.err { color: #FFB4AC; } .rl .live.err::before { background: var(--key-red); }
@@ -506,7 +507,7 @@
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
   <section class="grow" id="board"><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div>
-    <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Scored from the game, not from what the model says. Pick the model in Esc &gt; Options &gt; Model.</div></section>
+    <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Cost: Claude Code's own, or the gateway's tokens at the console's rates. Runs on live data rank apart from saved data, whose records don't change. Scored from the game, not from what the model says. Pick the model in Esc &gt; Options &gt; Model.</div></section>
   <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
@@ -998,17 +999,18 @@ function renderBoard(rows, game) {
   const bench = game?.bench;
   setText($("board-meta"), bench ? `BENCH: RUN ${bench[0]} OF ${bench[1]}` : rows.length ? `${rows.reduce((n, b) => n + b.runs, 0)} RUNS` : "");
   if (!rows.length) {
-    setHTML($("board-rows"), `<div class="empty">No model has played this level yet. Pick one in Esc &gt; Options &gt; Model and turn Claude plays on, or run a bench: <code>./raid.sh replay --saved-data --models claude-code,gemini-3.7-flash</code></div>`);
+    setHTML($("board-rows"), `<div class="empty">No model has played this level yet. Pick one in Esc &gt; Options &gt; Model and turn Claude plays on, or run a bench: <code>./raid.sh replay --saved-data --models claude-code,claude-sonnet-5-5,gemini-3.7-flash</code></div>`);
     return;
   }
   // the row for whoever is playing now: a gateway model by name, else Claude Code's
   const playing = claudePlays(game) && game.mode === "claude"
     ? (game.model || rows.find(b => b.harness === "claude-code")?.model) : null;
-  setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th class="opt">KILLED</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th><th class="opt">TOKENS</th></tr>${
-    rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank}</td><td class="model">${esc(b.model)}</td>
+  setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th class="opt">KILLED</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th><th class="opt">TOKENS</th><th class="opt">COST</th></tr>${
+    rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank}</td><td class="model">${esc(b.model)}${b.data === "live" ? ' <span class="data">LIVE DATA</span>' : ""}</td>
       <td>${b.cleared}/${b.runs}</td><td>${mmss(b.time_to_clear_s)}</td><td class="opt">${pct(b.killed)}</td><td>${b.stuck == null ? "-" : b.stuck}</td>
       <td>${pct(b.urgent_first)}</td><td>${b.vault_runs ? `${b.vault_kept}/${b.vault_runs}` : "-"}</td>
-      <td class="opt">${b.tokens ? `${Math.round(b.tokens / 1000)}k` : "-"}</td></tr>`).join("")}</table>`);
+      <td class="opt">${b.tokens ? `${Math.round(b.tokens / 1000)}k` : "-"}</td>
+      <td class="opt">${b.cost_usd == null ? "-" : `$${b.cost_usd.toFixed(2)}`}</td></tr>`).join("")}</table>`);
 }
 
 // ---------- the automap: the level drawing itself while Claude briefs ----------
@@ -1357,6 +1359,8 @@ async function tick() {
     $("play").hidden = !play.length || !claudePlays(s.game);
     if (play.length) playFeed.apply(play);
     setText($("play-who"), playFeed.who);
+    // while a model plays (say, Gemini through the LLM Gateway), the MODEL tile names it, not the briefing's
+    if (!$("play").hidden && playFeed.model) setText($("s-model"), playFeed.model.replace(/^claude-/, "").toUpperCase());
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
     renderBoard(s.leaderboard, s.game);

@@ -66,6 +66,9 @@ class StateDirTest(unittest.TestCase):
             patcher = mock.patch.object(play, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
+        board = mock.patch.object(play.leaderboard, "STATE", self.state)
+        board.start()
+        self.addCleanup(board.stop)
         sleep = mock.patch.object(play.time, "sleep")     # door waits
         sleep.start()
         self.addCleanup(sleep.stop)
@@ -313,11 +316,12 @@ class SupervisorTest(StateDirTest):
         self.game = FakeGame(game_state(monsters=[monster(1002), monster(1003)]))
         self.game.do_nowait = lambda verb: self.game.commands.append((verb,))
         self.net = True
-        self.players = []
-        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now, online=lambda: self.net)
+        self.players, self.models = [], []
+        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now, online=lambda *_: self.net)
 
-    def start(self, player):
+    def start(self, player, model=None):
         self.players.append(player)
+        self.models.append(model)
         self.procs.append(FakeProc())
         return self.procs[-1]
 
@@ -544,13 +548,93 @@ class SupervisorTest(StateDirTest):
         self.game.s["monsters"] = []
         self.switches(True, replay=True)
         self.tick()
-        self.tick(600)
+        self.tick(300)     # long past REPLAY_GRACE, short of the run's time limit
         self.assertEqual((len(self.procs), self.game.commands), (1, []))
 
     def test_waits_for_the_game(self):
         self.game.state = mock.Mock(side_effect=RuntimeError("not yet"))
         self.tick()
         self.assertEqual(self.procs, [])
+
+    def feed(self, *kills, model="claude-sonnet-5-5"):
+        """The run's feed: a session, then an attack that killed each of `kills`, and the game to match."""
+        events = [{"t": self.now, "kind": "session", "model": model}]
+        for i, pid in enumerate(kills):
+            events += [{"t": self.now, "kind": "call", "id": f"c{i}", "server": "doom", "tool": "attack",
+                        "args": {"pid": pid}},
+                       {"t": self.now + i + 1, "kind": "result", "id": f"c{i}", "tool": "attack", "error": False,
+                        "text": json.dumps({"result": "killed"})}]
+            next(m for m in self.game.s["monsters"] if m["pid"] == pid)["health"] = 0
+        (self.state / "play.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
+
+    def board(self):
+        return play.leaderboard.runs()
+
+    def test_a_finished_run_goes_on_the_leaderboard(self):
+        self.switches(True)
+        self.tick()
+        self.feed(1002)
+        self.procs[0].returncode = 0
+        self.tick(60)
+        [row] = self.board()
+        self.assertEqual((row["model"], row["harness"], row["ended"]),
+                         ("claude-sonnet-5-5 (Claude Code)", "claude-code", "done"))
+        self.assertEqual((row["records"], row["killed"], row["cleared"], row["urgent_first"]), (2, 1, False, 1.0))
+
+    def test_a_cleared_level_scores_the_run_as_it_stops_it(self):
+        with mock.patch.object(play, "GATEWAY_MODEL", "gemini-3.7-flash"):
+            self.switches(True, replay=True)
+            self.tick()
+            self.feed(1002, 1003, model="gemini-3.7-flash")
+            self.tick()
+            self.tick(play.REPLAY_GRACE)
+        [row] = self.board()
+        self.assertEqual((row["model"], row["harness"], row["cleared"], row["time_to_clear_s"]),
+                         ("gemini-3.7-flash", "gateway", True, 2))
+        self.assertEqual(json.loads((self.state / "game.json").read_text())["model"], "gemini-3.7-flash")
+
+    def test_a_run_a_person_stopped_doesnt_count(self):
+        self.switches(True)
+        self.tick()
+        self.feed(1002)
+        self.switches(False)
+        self.tick()
+        self.assertEqual(self.board(), [])
+
+    def test_a_run_past_the_time_limit_ends_unfinished(self):
+        self.switches(True)
+        self.tick()
+        self.feed(1002)
+        self.tick(play.TIME_LIMIT)
+        self.assertEqual(self.procs[0].returncode, -15)
+        self.assertEqual([(r["ended"], r["cleared"]) for r in self.board()], [("time limit", False)])
+
+    def test_a_run_that_never_got_going_isnt_scored(self):
+        self.switches(True)
+        self.tick()
+        self.feed()
+        self.procs[0].returncode = 1
+        self.tick()
+        self.assertEqual(self.board(), [])
+
+    def test_a_bench_takes_turns_then_stops(self):
+        self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now, online=lambda *_: self.net,
+                                   schedule=["claude-code", "gemini-3.7-flash"])
+        self.switches(True, replay=True)
+        self.tick()
+        self.assertEqual(self.models, ["claude-code"])
+        self.assertEqual(json.loads((self.state / "game.json").read_text())["bench"], [1, 2])
+        self.procs[0].returncode = 1                      # a failed run: no offline player, the next model plays
+        self.tick()
+        self.tick(60)
+        self.assertEqual((self.players, self.models), (["claude", "claude"], ["claude-code", "gemini-3.7-flash"]))
+        self.assertEqual(json.loads((self.state / "game.json").read_text())["bench"], [2, 2])
+        self.game.commands.clear()
+        self.procs[1].returncode = 0
+        self.tick()
+        self.tick(60)                                     # a run that ended this quickly waits a minute
+        self.assertEqual(self.game.commands[-2:], [("OPTION", 0, 0), ("OPTION", 1, 0)])   # done: nobody plays on
+        self.assertEqual(len(self.procs), 2)
 
 
 class AutopilotTest(StateDirTest):
@@ -815,7 +899,7 @@ class GatewayRunTest(StateDirTest):
     def test_the_supervisor_names_the_player_and_checks_the_gateways_network(self):
         game = FakeGame(game_state(monsters=[monster(1002)]))
         game.s["options"] = {"claude_plays": 1}
-        play.Supervisor(game, start=lambda player: FakeProc(), online=lambda: True).tick()
+        play.Supervisor(game, start=lambda player, model: FakeProc(), online=lambda *_: True).tick()
         self.assertEqual(json.loads((self.state / "game.json").read_text())["model"], "gemini-3.7-flash")
         with mock.patch.object(play.socket, "create_connection") as connect:
             play.online()

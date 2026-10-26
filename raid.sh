@@ -10,6 +10,7 @@
 #   ./raid.sh brief-only [question]  only ask Claude, no game (for rehearsing)
 #   ./raid.sh login               save your Connect AI email and token in the Keychain
 #   ./raid.sh doctor              check this Mac is ready to play (build, token, network, screen)
+#   ./raid.sh leaderboard [all]   how each model has played this level (or every level)
 #   --claude-plays                Claude plays instead of you; add it to any mode above,
 #                                 e.g. ./raid.sh replay --claude-plays
 #   --loop                        auto replay (on unless --no-loop): once the level is clear, you
@@ -23,6 +24,9 @@
 #   --model <name>                another model plays instead of Claude Code, through Connect AI's
 #                                 LLM Gateway, e.g. --model gemini-3.7-flash (implies --claude-plays;
 #                                 the gateway key comes from the Keychain, see the README)
+#   --models <a,b,...> [--runs N] a bench for the leaderboard: the models take turns, N rounds
+#                                 (default 3), each run scored; claude-code is Claude Code, e.g.
+#                                 ./raid.sh replay --saved-data --models claude-code,gemini-3.7-flash
 #   --god-mode                    players can't die
 #   --saved-data                  play the level's last saved records; nothing asks Connect AI
 #   --no-music, --no-sound-effects  start with Freedoom's soundtrack, or the sound effects, off
@@ -43,7 +47,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE="" NOMUSIC="" NOSFX="" MODEL=""
+MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE="" NOMUSIC="" NOSFX="" MODEL="" MODELS="" RUNS=3
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -62,6 +66,9 @@ while [[ $# -gt 0 ]]; do
     --claude-plays) PLAYS=1; shift ;;
     --offline-plays) PLAYS=1 OFFLINE=1; shift ;;
     --model) PLAYS=1 MODEL="${2:?--model needs a model name, e.g. --model gemini-3.7-flash}"; shift 2 ;;
+    --models) PLAYS=1 LOOP=1 MODELS="${2:?--models needs a list, e.g. --models claude-code,gemini-3.7-flash}"; shift 2 ;;
+    --runs) RUNS="${2:?--runs needs a number}"; shift 2 ;;
+    leaderboard) shift; exec python3 leaderboard.py "$@" ;;
     --god-mode) GOD=1; shift ;;
     --saved-data) SAVED=1; shift ;;
     --no-music) NOMUSIC=1; shift ;;
@@ -72,7 +79,7 @@ while [[ $# -gt 0 ]]; do
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     # The rest go to psdoom (e.g. -warp 2). A mistyped mode or help stops here: falling
     # through to `new` would start a paid briefing and take over the screen.
-    -h|--help|help|[!-]*) sed -n '4,37p' "$0" | sed 's/^# \{0,1\}//'
+    -h|--help|help|[!-]*) sed -n '4,41p' "$0" | sed 's/^# \{0,1\}//'
       [[ "$1" == -h || "$1" == --help || "$1" == help ]] && exit 0
       echo "Unknown mode: $1" >&2; exit 2 ;;
     *) break ;;
@@ -133,18 +140,25 @@ if [[ "$MODE" != demo ]]; then
   export CONNECT_AI_USER CONNECT_AI_PAT
 fi
 
-if [[ -n "$MODEL" ]]; then
-  # --model: play.py sends that model's turns through Connect AI's LLM Gateway, which takes
-  # a gateway virtual key (cgw_sk_...), not the Connect AI token
+GATEWAY=$MODEL   # a model that plays through Connect AI's LLM Gateway, so the gateway key is needed
+if [[ -n "$MODELS" ]]; then
+  # --models: play.py's supervisor hands each run to the next model and scores it (leaderboard.py)
+  export PLAY_MODELS="$MODELS" PLAY_RUNS="$RUNS"
+  for m in ${MODELS//,/ }; do [[ "$m" != claude-code ]] && GATEWAY=$m; done
+fi
+if [[ -n "$GATEWAY" ]]; then
+  # play.py sends its turns through the LLM Gateway, which takes a gateway virtual key
+  # (cgw_sk_...), not the Connect AI token
   if [[ -z "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
     CONNECT_AI_GATEWAY_KEY=$(security find-generic-password -s connect-doom -a llm-gateway -w 2>/dev/null || true)
   fi
   if [[ -z "$CONNECT_AI_GATEWAY_KEY" ]]; then
-    echo "No LLM Gateway key for --model. Issue a virtual key in Connect AI (LLM Gateway > Routing >" >&2
+    echo "No LLM Gateway key for $GATEWAY. Issue a virtual key in Connect AI (LLM Gateway > Routing >" >&2
     echo "Virtual Keys), then save it: security add-generic-password -U -s connect-doom -a llm-gateway -w" >&2
     exit 1
   fi
-  export PLAY_GATEWAY_MODEL="$MODEL" CONNECT_AI_GATEWAY_KEY
+  export CONNECT_AI_GATEWAY_KEY
+  [[ -n "$MODEL" ]] && export PLAY_GATEWAY_MODEL="$MODEL"
 fi
 
 if [[ -n "$BOOTH" ]]; then

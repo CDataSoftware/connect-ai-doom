@@ -502,7 +502,8 @@ class PanelServerTest(unittest.TestCase):
                                              "rooms_live": [], "records": {"source": None, "fetched_at": None},
                                              "vault": [], "vault_checking": None, "standing": 0,
                                              "ask": {"unavailable": "New questions work while ./raid.sh runs the game.",
-                                                     "default": DEFAULT_QUESTION, "pending": None, "failed": None}})
+                                                     "default": DEFAULT_QUESTION, "pending": None, "failed": None},
+                                             "leaderboard": []})
 
     def test_a_question_needs_raid_sh(self):
         req = urllib.request.Request(self.base + "/ask", data=json.dumps({"question": "Who owes us?"}).encode(),

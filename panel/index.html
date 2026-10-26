@@ -236,6 +236,16 @@
   .rl.done { opacity: .6; }
   .rl .live { font: 12px/1.4 var(--mono); color: var(--ok); display: flex; align-items: center; gap: 6px; }
   .rl .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+  /* the model leaderboard: one row per model, best first; the model playing now is highlighted */
+  .board { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .board th { font: 8px/1.4 var(--pixel); color: var(--balance); text-align: right; padding: 0 6px 6px; white-space: nowrap; }
+  .board td { font: 13px/1.3 var(--mono); color: var(--clarity); text-align: right; padding: 6px; border-top: 1px solid var(--line); white-space: nowrap; }
+  .board th:nth-child(2), .board td:nth-child(2) { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .board td.rank { font: 18px/1 var(--digits); color: var(--agility); text-align: left; }
+  .board td.model { font-weight: 600; font-family: inherit; }
+  #board[hidden] { display: none; }
+  .board tr.now td { background: var(--depth-3); }
+  .board tr.now td.model::after { content: " ◀ PLAYING"; font: 7px/1 var(--pixel); color: var(--agility); }
   .rl .live.fresh::before { animation: pulse .8s 3; }
   .rl .live.err { color: #FFB4AC; } .rl .live.err::before { background: var(--key-red); }
   .ev.vault { border-left: 4px solid var(--key-red); background: #2E0F0B; }
@@ -480,6 +490,7 @@
     <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
+  <section class="ingame" id="board" hidden><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div></section>
   <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
@@ -963,6 +974,24 @@ if (STAGED) {
 
 function setText(el, text) { if (el.textContent !== text) el.textContent = text; }
 
+// ---------- the model leaderboard (leaderboard.py): how each model has played this level ----------
+const mmss = s => s == null ? "-" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+const pct = x => x == null ? "-" : `${Math.round(x * 100)}%`;
+function renderBoard(rows, game) {
+  rows = rows || [];
+  $("board").hidden = !rows.length;
+  const bench = game?.bench;
+  setText($("board-meta"), bench ? `BENCH: RUN ${bench[0]} OF ${bench[1]}` : rows.length ? `${rows.reduce((n, b) => n + b.runs, 0)} RUNS` : "");
+  if (!rows.length) return;
+  // the row for whoever is playing now: a gateway model by name, else Claude Code's
+  const playing = claudePlays(game) && game.mode === "claude"
+    ? (game.model || rows.find(b => b.harness === "claude-code")?.model) : null;
+  setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th></tr>${
+    rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank}</td><td class="model">${esc(b.model)}</td>
+      <td>${b.cleared}/${b.runs}</td><td>${mmss(b.time_to_clear_s)}</td><td>${b.stuck == null ? "-" : b.stuck}</td>
+      <td>${pct(b.urgent_first)}</td><td>${b.vault_runs ? `${b.vault_kept}/${b.vault_runs}` : "-"}</td></tr>`).join("")}</table>`);
+}
+
 // ---------- the automap: the level drawing itself while Claude briefs ----------
 // Each app Claude touches becomes a room off the lobby, its walls traced in like Doom's automap.
 // Records it reads spawn as monsters; a room Connect AI blocks turns red. Only the stage runs it.
@@ -1302,6 +1331,7 @@ async function tick() {
     setText($("play-who"), playFeed.who);
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
+    renderBoard(s.leaderboard, s.game);
     renderAsk(s);
     if (STAGED) renderStage(s, events);
   } catch (e) { /* the bridge restarts between runs; try again next tick */ }

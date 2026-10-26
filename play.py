@@ -15,7 +15,6 @@ The game side is the agent channel patched into psdoom (pr_process.c): we write 
 command to state/agent/cmd and read state/agent/state.json. Tools are high level
 (go to a room, attack a monster) because Claude thinks in seconds, not tics.
 """
-import hashlib
 import json
 import os
 import random
@@ -30,6 +29,7 @@ from pathlib import Path
 import claude_run
 import connect_ai_mcp
 import gateway_run
+import leaderboard
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
@@ -44,6 +44,11 @@ DEATH_PAUSE = float(os.environ.get("DEATH_PAUSE", "3"))      # with auto replay:
 OFFLINE_AFTER = float(os.environ.get("OFFLINE_AFTER", "20"))  # seconds without a network before Claude is swapped out
 IDLE_SECONDS = float(os.environ.get("IDLE_SECONDS", "60"))   # with auto replay: no input this long, Claude plays
 PLAYER = os.environ.get("PLAYER", "claude")                  # "replay": always the offline player
+TIME_LIMIT = float(os.environ.get("PLAY_TIME_LIMIT", "600"))  # a run's seconds; past it, it ends unfinished
+# A bench: these models take turns, PLAY_RUNS rounds of one run each ("claude-code" is Claude Code),
+# each scored for the leaderboard; then Claude plays and Auto replay go off
+MODELS = [m.strip() for m in os.environ.get("PLAY_MODELS", "").split(",") if m.strip()]
+RUNS = int(os.environ.get("PLAY_RUNS", "1"))
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
 
 
@@ -438,11 +443,7 @@ def run_gateway(m, prompt):
 
 # ---------------------------------------------------------------- offline: Claude plays, replayed
 
-def level_key(m):
-    """Which level a recording is for: the question and its rooms (a new briefing, a new key)."""
-    rooms = [(r["app"], r["title"]) for r in m["rooms"]]
-    return hashlib.sha1(json.dumps([m["question"], rooms]).encode()).hexdigest()[:12]
-
+level_key = leaderboard.level_key    # which level a recording is for
 
 def save_recording(m):
     """Keep a finished run's feed in state/recordings/<level>/, so the offline player can narrate
@@ -631,10 +632,11 @@ def save_options(opts):
     tmp.replace(STATE / "options.json")
 
 
-def online():
-    """Can the player reach its model: Anthropic's API, or the LLM Gateway for a gateway model?
-    A plain TCP connect, three seconds at most."""
-    host = "cloud.cdata.com" if GATEWAY_MODEL else "api.anthropic.com"
+def online(model=None):
+    """Can the player reach its model (default: PLAY_GATEWAY_MODEL's, else Claude Code's):
+    Anthropic's API, or the LLM Gateway for a gateway model? A plain TCP connect, three seconds at most."""
+    model = model or GATEWAY_MODEL
+    host = "cloud.cdata.com" if model and model != "claude-code" else "api.anthropic.com"
     try:
         socket.create_connection((host, 443), timeout=3).close()
         return True
@@ -655,12 +657,21 @@ class Supervisor:
     a new run; and with Claude plays off, IDLE_SECONDS without a key or the mouse hands the
     game to Claude. The menu's offline Claude switch (or PLAYER=replay) always picks the offline
     player, and flipping it mid-run swaps the player where the marine stands. The switches are
-    saved for a booth's next game. One step per tick()."""
+    saved for a booth's next game.
 
-    def __init__(self, game, start=None, clock=time.time, online=online):
+    Every run by a model (not the offline player's) goes on the leaderboard (leaderboard.py)
+    when it ends: it finished, failed, ran past TIME_LIMIT, or the level was clear. A run a
+    person stopped (Claude plays off, or the offline Claude switch) doesn't count. With a bench
+    (PLAY_MODELS), each run is the next model in turn; a failed one doesn't hand the game to the
+    offline player, the next model just plays; after the last, Claude plays and Auto replay go
+    off. One step per tick()."""
+
+    def __init__(self, game, start=None, clock=time.time, online=online, schedule=None):
         self.game, self.clock, self.online = game, clock, online
-        self.start = start or (lambda player: subprocess.Popen(
-            [sys.executable, str(ROOT / "play.py"), "run" if player == "claude" else "replay"]))
+        self.start = start or start_player
+        self.schedule = list(schedule if schedule is not None else [m for _ in range(RUNS) for m in MODELS])
+        self.bench_total = len(self.schedule)
+        self.scoring = self.model = None   # the run being scored: what the game looked like at its start
         self.proc = self.mode = self.player = self.claude_failed_at = None
         self.started = self.cleared_at = self.ended_at = self.offline_since = self.died_at = None
         self.checked = 0           # when the network was last checked during a Claude run
@@ -693,13 +704,17 @@ class Supervisor:
             self.cleared_at = None
         if self.proc and self.proc.poll() is not None:
             failed = self.proc.returncode != 0 or now - self.started < 30
+            self.score_run("failed" if self.proc.returncode != 0 else "done")
             self.proc, self.ended_at = None, now
-            if self.player == "claude" and failed:
+            if self.player == "claude" and failed and not self.bench_total:
                 self.claude_failed_at, self.ended_at = now, None    # straight to the offline player
+        if self.proc and self.player == "claude" and now - self.started >= TIME_LIMIT:
+            self.stop(score="time limit")
+            self.ended_at = now
         if self.proc and self.player == "claude" and now - self.checked >= 10:
             # claude retries a dead network for minutes; don't leave the marine standing that long
             self.checked = now
-            self.offline_since = None if self.online() else self.offline_since or now
+            self.offline_since = None if self.online(self.model) else self.offline_since or now
             if self.offline_since and now - self.offline_since >= OFFLINE_AFTER:
                 self.stop()
                 self.claude_failed_at, self.offline_since = now, None
@@ -744,17 +759,51 @@ class Supervisor:
             offline_level = all("rows" in r for r in mission()["rooms"])   # connect_doom.is_offline
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             offline_level = False
-        if PLAYER == "replay" or self.opts.get("offline_claude") or failed or offline_level or not self.online():
+        model = self.schedule[0] if self.schedule else GATEWAY_MODEL
+        if PLAYER == "replay" or self.opts.get("offline_claude") or failed or offline_level or not self.online(model):
             return "replay"
         return "claude"
 
     def launch(self):
         self.player = self.choose()
+        self.model = None
+        if self.player == "claude":
+            self.model = self.schedule.pop(0) if self.schedule else GATEWAY_MODEL
         self.mode = "claude" if self.player == "claude" else "replay"
-        set_game(mode=self.mode, model=GATEWAY_MODEL if self.player == "claude" else None)   # the panel's name for the player
-        self.proc, self.started, self.ended_at = self.start(self.player), self.clock(), None
+        bench = [self.bench_total - len(self.schedule), self.bench_total] if self.bench_total else None
+        set_game(mode=self.mode, model=None if self.model == "claude-code" else self.model, bench=bench)   # for the panel
+        self.scoring = self.snapshot() if self.player == "claude" else None
+        self.proc, self.started, self.ended_at = self.start(self.player, self.model), self.clock(), None
 
-    def stop(self):
+    def snapshot(self):
+        """The game as a scored run starts: the records alive, which are urgent, and the data."""
+        s = self.game.state()
+        return {"alive": [m["pid"] for m in s["monsters"] if m["health"] > 0],
+                "urgent": {pid: bool(r.get("demon")) for pid, r in records().items()},
+                "data": "saved" if s.get("options", {}).get("saved_data") else "live", "model": self.model}
+
+    def score_run(self, ended):
+        """Put the run that just ended on the leaderboard, scored from its feed and the game."""
+        snap, self.scoring = self.scoring, None
+        if not snap or not PLAY_LOG.exists():
+            return
+        try:
+            events = [json.loads(line) for line in PLAY_LOG.read_text().splitlines() if line.strip()]
+            alive = [m["pid"] for m in self.game.state()["monsters"] if m["health"] > 0]
+            if snap["model"] and snap["model"] != "claude-code":
+                name, harness = snap["model"], "gateway"
+            else:
+                session = next((e["model"] for e in events if e["kind"] == "session"), MODEL)
+                name, harness = f"{session} (Claude Code)", "claude-code"
+            row = leaderboard.score(events, mission(), snap["urgent"], snap["alive"], alive, model=name,
+                                    harness=harness, data=snap["data"], ended=ended, limit_s=TIME_LIMIT)
+            if row["doom_calls"]:     # a run that never got going (say, claude signed out) isn't a game
+                leaderboard.record(row)
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
+            print(f"play.py: couldn't score the run: {e}", file=sys.stderr)
+
+    def stop(self, score=None):
+        """Stop the run; score it as ended for `score`, or leave it off the leaderboard."""
         self.proc.terminate()
         try:
             self.proc.wait(10)
@@ -762,18 +811,37 @@ class Supervisor:
             self.proc.kill()
         self.proc = None
         self.game.do_nowait("STOP")
+        if score:
+            self.score_run(score)
+        self.scoring = None
 
     def replay(self):
         if self.proc:
-            self.stop()
+            self.stop(score="done" if self.cleared_at else None)    # a clear level: the run won
         set_game(started=time.time())   # the kill log starts over: the bridge lists every record
         time.sleep(0.5)
         self.game.do("RESTART")
         self.cleared_at = self.ended_at = self.died_at = None
         self.seen_alive = False
         time.sleep(2)                   # the level loads and spawns the records
-        if self.opts.get("claude_plays"):
+        if self.opts.get("claude_plays") and self.bench_total and not self.schedule:
+            self.bench_total = 0        # the bench is done: nobody plays on, and the board stays up
+            self.game.do("OPTION", 0, 0)
+            self.game.do("OPTION", 1, 0)
+            set_game(bench=None)
+        elif self.opts.get("claude_plays"):
             self.launch()
+
+
+def start_player(player, model=None):
+    """`play.py run` (with `model` playing: "claude-code" for Claude Code, else a gateway model),
+    or `play.py replay`, the offline player."""
+    env = dict(os.environ)
+    if model == "claude-code":
+        env.pop("PLAY_GATEWAY_MODEL", None)
+    elif model:
+        env["PLAY_GATEWAY_MODEL"] = model
+    return subprocess.Popen([sys.executable, str(ROOT / "play.py"), "run" if player == "claude" else "replay"], env=env)
 
 
 def supervise():

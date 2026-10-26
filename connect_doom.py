@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 import connect_ai_mcp
+import leaderboard
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
 from themes import MONSTERS, room_themes  # noqa: E402  (each room's look and monsters)
@@ -604,6 +605,8 @@ def cmd_panel(args):
                 "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
                 "standing": len([m for m in monsters if m["id"] not in dead]),
                 "ask": ask_state(),
+                # how each model has played this level (leaderboard.py), best first
+                "leaderboard": leaderboard.board(leaderboard.level_key(mission)) if mission and mission.get("rooms") else [],
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

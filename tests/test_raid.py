@@ -51,7 +51,7 @@ esac
 '''
 FAKE_OP = '#!/bin/bash\necho "$@" >> "$FAKE_LOG_DIR/op.txt"\nprintf "%s\\n" "$FAKE_OP_SECRET"\n'
 
-SOURCES = ["raid.sh", "connect_doom.py", "connect_ai_mcp.py", "claude_run.py", "brief.py", "tools", "panel"]
+SOURCES = ["raid.sh", "connect_doom.py", "connect_ai_mcp.py", "leaderboard.py", "claude_run.py", "brief.py", "tools", "panel"]
 
 
 class RaidTest(unittest.TestCase):
@@ -163,8 +163,28 @@ class RaidTest(unittest.TestCase):
     def test_another_model_needs_a_gateway_key(self):
         r = self.raid("offline", "--model", "gemini-3.7-flash", env=dict(os.environ))
         self.assertEqual(r.returncode, 1)
-        self.assertIn("No LLM Gateway key for --model", r.stderr)
+        self.assertIn("No LLM Gateway key for gemini-3.7-flash", r.stderr)
         self.assertIn("security add-generic-password -U -s connect-doom -a llm-gateway -w", r.stderr)
+
+    def test_a_bench_needs_the_gateway_key_only_for_gateway_models(self):
+        r = self.raid("offline", "--models", "claude-code", "--no-loop", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 0 1 0 0 1 1\n")
+        self.assertFalse((self.logs / "security.txt").exists())
+        r = self.raid("offline", "--models", "claude-code,gemini-3.7-flash", env=dict(os.environ))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("No LLM Gateway key for gemini-3.7-flash", r.stderr)
+
+    def test_a_bench_turns_claude_plays_and_auto_replay_on(self):
+        (self.logs / "keychain").write_text("cgw_sk_test")
+        r = self.raid("offline", "--models", "claude-code,gemini-3.7-flash", "--runs", "2", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 1 0 0 1 1\n")
+
+    def test_leaderboard(self):
+        r = self.raid("leaderboard", env=dict(os.environ))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("No runs yet", r.stdout)
 
     def test_claude_plays_once_with_no_loop(self):
         """Auto replay is on by default (a cleared level or a death starts over); --no-loop plays it once."""

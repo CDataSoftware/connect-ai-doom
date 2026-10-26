@@ -84,6 +84,12 @@ class FakeMCP:
     def answer(self, method, params):
         if method == "initialize":
             return {"result": {"protocolVersion": "2025-06-18", "capabilities": {}}}
+        if method == "tools/list":
+            return {"result": {"tools": [
+                {"name": "queryData", "description": "Run a SQL query.",
+                 "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+                {"name": "search_context", "description": "Search the account's context.",
+                 "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}}]}}
         if method != "tools/call":
             return {"error": {"code": -32601, "message": f"no method {method}"}}
         name, args = params["name"], params["arguments"]

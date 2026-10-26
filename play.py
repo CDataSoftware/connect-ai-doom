@@ -4,7 +4,9 @@
   play.py loop    started by raid.sh with every game: follows the Options menu's
                   "Claude plays" and "Auto replay" switches (see supervise())
   play.py run     start Claude Code with two MCP servers, Doom (this file) and Connect AI,
-                  and stream what it does to state/play.jsonl for the side panel
+                  and stream what it does to state/play.jsonl for the side panel; with
+                  PLAY_GATEWAY_MODEL set, that model plays instead, through Connect AI's
+                  LLM Gateway, with the same tools and feed (see run_gateway())
   play.py replay  the offline stand-in for `run`, with no Claude and no network: a scripted
                   player that narrates with Claude's own lines from earlier runs (see Autopilot)
   play.py mcp     the Doom MCP server (stdio), started by Claude Code
@@ -26,12 +28,15 @@ import time
 from pathlib import Path
 
 import claude_run
+import connect_ai_mcp
+import gateway_run
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", ROOT / "state"))
 AGENT = STATE / "agent"
 PLAY_LOG = STATE / "play.jsonl"
 MODEL = os.environ.get("PLAY_MODEL", "sonnet")
+GATEWAY_MODEL = os.environ.get("PLAY_GATEWAY_MODEL")        # a model behind Connect AI's LLM Gateway plays instead
 MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
 REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
 REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
@@ -362,6 +367,8 @@ def run():
     prompt = PROMPT.format(question=m["question"], rooms=rooms, vault=vault)
 
     claude_run.EventLog(PLAY_LOG).reset()
+    if GATEWAY_MODEL:
+        return run_gateway(m, prompt)
     servers = {"doom": {"type": "stdio", "command": sys.executable, "args": [str(ROOT / "play.py"), "mcp"]}}
     env = dict(os.environ)
     if os.environ.get("CONNECT_AI_USER") and os.environ.get("CONNECT_AI_PAT"):   # offline: Doom tools only
@@ -382,6 +389,51 @@ def run():
         sys.exit(2)    # the supervisor hands the game to the offline player
     elif out["finished"]:
         save_recording(m)
+
+
+def gateway_tools(game):
+    """The tools for a gateway run, as gateway_run.run() takes them: the Doom tools, run here
+    rather than over MCP, and Connect AI's read-only tools when there's an account (offline,
+    Doom only; if Connect AI can't be reached, the model plays without it)."""
+    tools = {f"doom__{name}": (lambda args, fn=fn: json.dumps(fn(game, args)), desc,
+                               {"type": "object", "properties": props, "required": list(props)})
+             for name, (fn, desc, props) in TOOLS.items()}
+    if not (os.environ.get("CONNECT_AI_USER") and os.environ.get("CONNECT_AI_PAT")):
+        return tools
+    try:
+        client = connect_ai_mcp.Client(f"{connect_ai_mcp.MCP_URL}?ops={claude_run.READ_ONLY_OPS}", timeout=30)
+        listed = client.tools()
+    except (connect_ai_mcp.MCPError, OSError) as e:
+        print(f"play.py: Connect AI's tools are out this run: {e}", file=sys.stderr)
+        return tools
+
+    def call(tool):
+        def fn(args):
+            try:
+                return client.call(tool, **args)
+            except connect_ai_mcp.MCPError as e:
+                return f"Error: {e}"
+        return fn
+    for t in listed:
+        tools[f"connectai__{t['name']}"] = (call(t["name"]), t.get("description", ""),
+                                            t.get("inputSchema") or {"type": "object", "properties": {}})
+    return tools
+
+
+def run_gateway(m, prompt):
+    """`play.py run` with PLAY_GATEWAY_MODEL: that model plays through Connect AI's LLM Gateway
+    (gateway_run.py), with the gateway virtual key in CONNECT_AI_GATEWAY_KEY. Its lines aren't
+    kept as recordings: the offline player narrates in Claude's words."""
+    key = os.environ.get("CONNECT_AI_GATEWAY_KEY")
+    if not key:
+        event("failed", text="No LLM Gateway key (CONNECT_AI_GATEWAY_KEY).")
+        sys.exit(2)
+    event("question", text=f"{GATEWAY_MODEL} plays: " + m["question"])
+    try:
+        gateway_run.run(prompt, GATEWAY_MODEL, gateway_tools(Game()), event, key=key, max_turns=int(MAX_TURNS))
+    except gateway_run.GatewayError as e:
+        event("failed", text=str(e)[-500:])
+        sys.exit(2)    # the supervisor hands the game to the offline player
 
 
 # ---------------------------------------------------------------- offline: Claude plays, replayed
@@ -580,9 +632,11 @@ def save_options(opts):
 
 
 def online():
-    """Can Claude Code reach Anthropic's API? A plain TCP connect, three seconds at most."""
+    """Can the player reach its model: Anthropic's API, or the LLM Gateway for a gateway model?
+    A plain TCP connect, three seconds at most."""
+    host = "cloud.cdata.com" if GATEWAY_MODEL else "api.anthropic.com"
     try:
-        socket.create_connection(("api.anthropic.com", 443), timeout=3).close()
+        socket.create_connection((host, 443), timeout=3).close()
         return True
     except OSError:
         return False
@@ -697,7 +751,7 @@ class Supervisor:
     def launch(self):
         self.player = self.choose()
         self.mode = "claude" if self.player == "claude" else "replay"
-        set_game(mode=self.mode)
+        set_game(mode=self.mode, model=GATEWAY_MODEL if self.player == "claude" else None)   # the panel's name for the player
         self.proc, self.started, self.ended_at = self.start(self.player), self.clock(), None
 
     def stop(self):

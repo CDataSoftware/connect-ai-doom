@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import helpers
 from helpers import PAT, ROOT, USER, FAKE_CLAUDE
 
 import play
@@ -745,6 +746,80 @@ class RunTest(StateDirTest):
         self.assertEqual(events[-1]["kind"], "failed")
         self.assertIn("boom", events[-1]["text"])
         self.assertFalse((self.state / "recordings").exists())
+
+
+class GatewayRunTest(StateDirTest):
+    """`play.py run` with PLAY_GATEWAY_MODEL: another model plays through Connect AI's LLM Gateway."""
+
+    def setUp(self):
+        super().setUp()
+        env = mock.patch.dict(os.environ, {"CONNECT_AI_GATEWAY_KEY": "cgw_sk_test"})
+        env.start()
+        self.addCleanup(env.stop)
+        for var in ("CONNECT_AI_USER", "CONNECT_AI_PAT"):
+            os.environ.pop(var, None)
+        model = mock.patch.object(play, "GATEWAY_MODEL", "gemini-3.7-flash")
+        model.start()
+        self.addCleanup(model.stop)
+
+    def events(self):
+        return [json.loads(line) for line in (self.state / "play.jsonl").read_text().splitlines()]
+
+    def test_the_model_plays_with_the_same_prompt_and_feed(self):
+        with mock.patch.object(play.gateway_run, "run") as run:
+            play.run()
+        prompt, model, tools = run.call_args.args[:3]
+        self.assertIn("Who is at risk?", prompt)
+        self.assertIn("Before EVERY tool call", prompt)
+        self.assertEqual(model, "gemini-3.7-flash")
+        self.assertEqual(sorted(tools), ["doom__attack", "doom__go_to", "doom__look"])   # offline: Doom only
+        self.assertEqual(run.call_args.kwargs["key"], "cgw_sk_test")
+        self.assertEqual(run.call_args.kwargs["max_turns"], int(play.MAX_TURNS))
+        self.assertEqual(self.events()[0]["text"], "gemini-3.7-flash plays: Who is at risk?")
+        self.assertFalse((self.state / "recordings").exists())     # the offline player narrates in Claude's words
+
+    def test_a_refused_request_hands_over_to_the_offline_player(self):
+        with mock.patch.object(play.gateway_run, "run", side_effect=play.gateway_run.GatewayError("HTTP 403: no")), \
+                self.assertRaises(SystemExit) as exit_:
+            play.run()
+        self.assertEqual(exit_.exception.code, 2)
+        self.assertEqual((self.events()[-1]["kind"], self.events()[-1]["text"]), ("failed", "HTTP 403: no"))
+
+    def test_no_key(self):
+        del os.environ["CONNECT_AI_GATEWAY_KEY"]
+        with mock.patch.object(play.gateway_run, "run") as run, self.assertRaises(SystemExit):
+            play.run()
+        run.assert_not_called()
+        self.assertIn("No LLM Gateway key", self.events()[-1]["text"])
+
+    def test_tools_with_connect_ai(self):
+        game = FakeGame(game_state())
+        with helpers.FakeMCP() as mcp, mock.patch.object(play.connect_ai_mcp, "MCP_URL", mcp.url), \
+                mock.patch.dict(os.environ, {"CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}):
+            tools = play.gateway_tools(game)
+            self.assertEqual(sorted(tools), ["connectai__queryData", "connectai__search_context",
+                                             "doom__attack", "doom__go_to", "doom__look"])
+            self.assertEqual(json.loads(tools["doom__look"][0]({}))["you_are_in"], "lobby")
+            self.assertTrue(tools["connectai__queryData"][0]({"query": helpers.query("Zendesk1")}).startswith("Id,Label"))
+            self.assertTrue(tools["connectai__queryData"][0]({"query": helpers.PII_SQL})
+                            .startswith("Error: Request blocked"))   # Data Security still says no
+        self.assertEqual(tools["connectai__queryData"][2]["required"], ["query"])
+
+    def test_tools_when_connect_ai_is_out(self):
+        with mock.patch.object(play.connect_ai_mcp, "MCP_URL", "http://127.0.0.1:9/mcp"), \
+                mock.patch.dict(os.environ, {"CONNECT_AI_USER": USER, "CONNECT_AI_PAT": PAT}), \
+                mock.patch("sys.stderr"):
+            tools = play.gateway_tools(FakeGame(game_state()))
+        self.assertEqual(sorted(tools), ["doom__attack", "doom__go_to", "doom__look"])
+
+    def test_the_supervisor_names_the_player_and_checks_the_gateways_network(self):
+        game = FakeGame(game_state(monsters=[monster(1002)]))
+        game.s["options"] = {"claude_plays": 1}
+        play.Supervisor(game, start=lambda player: FakeProc(), online=lambda: True).tick()
+        self.assertEqual(json.loads((self.state / "game.json").read_text())["model"], "gemini-3.7-flash")
+        with mock.patch.object(play.socket, "create_connection") as connect:
+            play.online()
+        self.assertEqual(connect.call_args.args[0], ("cloud.cdata.com", 443))
 
 
 if __name__ == "__main__":

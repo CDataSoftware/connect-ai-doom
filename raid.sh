@@ -20,6 +20,9 @@
 #                                 Claude's lines from earlier runs, no network, no AI tokens. Claude
 #                                 plays also falls back to it when Claude can't run (no network,
 #                                 signed out).
+#   --model <name>                another model plays instead of Claude Code, through Connect AI's
+#                                 LLM Gateway, e.g. --model gemini-3.7-flash (implies --claude-plays;
+#                                 the gateway key comes from the Keychain, see the README)
 #   --god-mode                    players can't die
 #   --saved-data                  play the level's last saved records; nothing asks Connect AI
 #   --no-music, --no-sound-effects  start with Freedoom's soundtrack, or the sound effects, off
@@ -40,7 +43,7 @@ BRIDGE="$PWD/connect_doom.py"
 ZDBSP=vendor/src/zdbsp/build/zdbsp
 mkdir -p state
 
-MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE="" NOMUSIC="" NOSFX=""
+MODE=live QUESTION="" PLAYS="" LOOP="" BOOTH="" GOD="" SAVED="" OFFLINE="" NOMUSIC="" NOSFX="" MODEL=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     login)
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     booth) BOOTH=1; shift ;;
     --claude-plays) PLAYS=1; shift ;;
     --offline-plays) PLAYS=1 OFFLINE=1; shift ;;
+    --model) PLAYS=1 MODEL="${2:?--model needs a model name, e.g. --model gemini-3.7-flash}"; shift 2 ;;
     --god-mode) GOD=1; shift ;;
     --saved-data) SAVED=1; shift ;;
     --no-music) NOMUSIC=1; shift ;;
@@ -68,7 +72,7 @@ while [[ $# -gt 0 ]]; do
     brief-only|brief) MODE=brief; shift; QUESTION="$*"; set -- ;;
     # The rest go to psdoom (e.g. -warp 2). A mistyped mode or help stops here: falling
     # through to `new` would start a paid briefing and take over the screen.
-    -h|--help|help|[!-]*) sed -n '4,34p' "$0" | sed 's/^# \{0,1\}//'
+    -h|--help|help|[!-]*) sed -n '4,37p' "$0" | sed 's/^# \{0,1\}//'
       [[ "$1" == -h || "$1" == --help || "$1" == help ]] && exit 0
       echo "Unknown mode: $1" >&2; exit 2 ;;
     *) break ;;
@@ -129,6 +133,20 @@ if [[ "$MODE" != demo ]]; then
   export CONNECT_AI_USER CONNECT_AI_PAT
 fi
 
+if [[ -n "$MODEL" ]]; then
+  # --model: play.py sends that model's turns through Connect AI's LLM Gateway, which takes
+  # a gateway virtual key (cgw_sk_...), not the Connect AI token
+  if [[ -z "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
+    CONNECT_AI_GATEWAY_KEY=$(security find-generic-password -s connect-doom -a llm-gateway -w 2>/dev/null || true)
+  fi
+  if [[ -z "$CONNECT_AI_GATEWAY_KEY" ]]; then
+    echo "No LLM Gateway key for --model. Issue a virtual key in Connect AI (LLM Gateway > Routing >" >&2
+    echo "Virtual Keys), then save it: security add-generic-password -U -s connect-doom -a llm-gateway -w" >&2
+    exit 1
+  fi
+  export PLAY_GATEWAY_MODEL="$MODEL" CONNECT_AI_GATEWAY_KEY
+fi
+
 if [[ -n "$BOOTH" ]]; then
   # Back-to-back games for a booth. The screen stays awake between games; Ctrl-C in this
   # Terminal stops it. BOOTH_PAUSE sets the seconds between games, BOOTH_GAMES a limit.
@@ -147,7 +165,7 @@ if [[ -n "$BOOTH" ]]; then
   while :; do
     "$PWD/raid.sh" "$GAME" ${PLAYS:+--claude-plays} "$([[ -n "$LOOP" ]] && echo --loop || echo --no-loop)" ${GOD:+--god-mode} ${SAVED:+--saved-data} \
       ${NOMUSIC:+--no-music} ${NOSFX:+--no-sound-effects} \
-      ${OFFLINE:+--offline-plays} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
+      ${OFFLINE:+--offline-plays} ${MODEL:+--model "$MODEL"} "$@" || { echo "The game didn't start, so booth mode stopped." >&2; exit 1; }
     games=$((games + 1))
     if [[ -n "${BOOTH_GAMES:-}" ]] && ((games >= BOOTH_GAMES)); then exit; fi
     echo "Next game in ${BOOTH_PAUSE:-10} seconds. Ctrl-C to stop."

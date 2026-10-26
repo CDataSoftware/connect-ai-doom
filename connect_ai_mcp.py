@@ -69,6 +69,10 @@ class Client:
             raise MCPError(reply["error"].get("message", str(reply["error"])))
         return reply["result"]
 
+    def tools(self):
+        """[{name, description, inputSchema}] for every tool this server offers."""
+        return self._rpc("tools/list")["tools"]
+
     def call(self, tool, **args):
         """Call a tool; return its text output. Tool errors raise MCPError with the server's text."""
         result = self._rpc("tools/call", {"name": tool, "arguments": args})

@@ -480,7 +480,7 @@
     <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
-  <section id="play" class="grow big" hidden><h2>CLAUDE'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
+  <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
     <details class="legend" id="legend" open>
@@ -706,7 +706,7 @@ class Feed {
     c.el.querySelector(".what").innerHTML = describe(c) + signature(c);  // Doom steps name their target once the result is in
     c.el.querySelector(".detail").innerHTML = detail(c, this.model);
   }
-  live(text, who = "CLAUDE IS THINKING") {
+  live(text, who = `${this.who} IS THINKING`) {
     this.liveText += text;
     const plan = /^\s*(\{|```)/.test(this.liveText);
     if (!this.liveEl) {
@@ -718,12 +718,14 @@ class Feed {
     this.liveEl.innerHTML = `<span class="who">${who}</span>${esc(shown)}<span class="caret"></span>`;
   }
   endLive() { if (this.liveEl) this.liveEl.remove(); this.liveEl = null; this.liveText = ""; }
+  // Who's talking: Claude, or the model playing through Connect AI's LLM Gateway instead
+  get who() { return whoPlays(this.model); }
   apply(events) {
     if (events.length < this.seen) this.reset();      // a new run started
     for (const e of events.slice(this.seen)) {
       if (e.kind === "session") this.model = e.model;
       else if (e.kind === "text_delta") this.live(e.text);
-      else if (e.kind === "reasoning_delta") this.live(e.text, "CLAUDE IS REASONING");
+      else if (e.kind === "reasoning_delta") this.live(e.text, `${this.who} IS REASONING`);
       else if (e.kind === "reasoning") {
         this.endLive();
         const t = e.text.trim();
@@ -734,7 +736,7 @@ class Feed {
         const t = e.text.trim();
         if (t && !/^(\{|```)/.test(t)) this.lastThought = t;
         if (/^(\{|```)/.test(t)) this.item("thought", "CLAUDE", "claude", "Wrote the level plan for the map builder", "", `<pre class="code">${esc(t)}</pre>`);
-        else if (t) this.item("thought", "CLAUDE", "claude", esc(t.length > 160 ? t.slice(0, 157) + "..." : t), "",
+        else if (t) this.item("thought", esc(this.who), "claude", esc(t.length > 160 ? t.slice(0, 157) + "..." : t), "",
           `<dl class="kv"><dt>MODEL</dt><dd>${esc(this.model || "unknown")}</dd></dl><pre class="code">${esc(t)}</pre>`);
       } else if (e.kind === "call") {
         this.endLive();
@@ -853,6 +855,8 @@ function vaultRequest(v) {
 
 // replay: the offline player (play.py replay), narrating with Claude's lines from earlier runs
 const claudePlays = game => game?.mode === "claude" || game?.mode === "replay";
+// The player's name: CLAUDE, or the model playing through Connect AI's LLM Gateway (say, GEMINI-3.7-FLASH)
+const whoPlays = model => !model || /^(claude|offline)/i.test(model) ? "CLAUDE" : model.toUpperCase();
 // Where this game's records come from: Connect AI, the offline sample level, or saved records.
 function dataText(s) {
   const rooms = s.mission?.rooms || [];
@@ -860,7 +864,7 @@ function dataText(s) {
   return ["saved", "saved-data"].includes(s.records?.source) ? "SAVED DATA" : "LIVE";
 }
 const modeText = (game, s) => game.mode === "replay" ? "CLAUDE PLAYS · OFFLINE REPLAY"
-  : `${game.mode === "claude" ? "CLAUDE IS PLAYING" : "YOU'RE PLAYING"} · ${dataText(s)}`;
+  : `${game.mode === "claude" ? `${whoPlays(game.model)} IS PLAYING` : "YOU'RE PLAYING"} · ${dataText(s)}`;
 
 let lastGame = null;
 function renderGame(s) {
@@ -1222,7 +1226,7 @@ function renderStage(s, events) {
   let say = "";
   if (claudePlays(game)) {
     const line = playFeed.liveText.trim() || playFeed.lastThought;
-    if (line) say = `<span class="tag">CLAUDE</span><span class="txt">${esc(line)}</span>`;
+    if (line) say = `<span class="tag">${esc(playFeed.who)}</span><span class="txt">${esc(line)}</span>`;
   } else if (game)
     say = `<span class="tag">CONTROLS</span><span><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</span>`;
   setHTML($("stage-say"), say);
@@ -1295,6 +1299,7 @@ async function tick() {
     const play = s.play_events || [];
     $("play").hidden = !play.length || !claudePlays(s.game);
     if (play.length) playFeed.apply(play);
+    setText($("play-who"), playFeed.who);
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
     renderAsk(s);

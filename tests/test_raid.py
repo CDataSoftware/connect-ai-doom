@@ -153,6 +153,19 @@ class RaidTest(unittest.TestCase):
         self.assert_played(r)
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 1 0 1 1 1\n")   # loops too
 
+    def test_another_model_plays_through_the_llm_gateway(self):
+        (self.logs / "keychain").write_text("cgw_sk_test")
+        r = self.raid("offline", "--model", "gemini-3.7-flash", env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 1 0 0 1 1\n")   # it plays
+        self.assertIn("find-generic-password -s connect-doom -a llm-gateway -w", (self.logs / "security.txt").read_text())
+
+    def test_another_model_needs_a_gateway_key(self):
+        r = self.raid("offline", "--model", "gemini-3.7-flash", env=dict(os.environ))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("No LLM Gateway key for --model", r.stderr)
+        self.assertIn("security add-generic-password -U -s connect-doom -a llm-gateway -w", r.stderr)
+
     def test_claude_plays_once_with_no_loop(self):
         """Auto replay is on by default (a cleared level or a death starts over); --no-loop plays it once."""
         r = self.raid("offline", "--claude-plays", "--no-loop", env=dict(os.environ))

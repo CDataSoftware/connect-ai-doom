@@ -84,6 +84,14 @@ Each is off unless its flag turned it on: `--claude-plays`, `--loop` (*Auto repl
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 
+**Other models play, through Connect AI's LLM Gateway.** `--model` hands the marine to another model instead of Claude Code: `./raid.sh replay --model gemini-3.7-flash`. It gets the same prompt, the same Doom tools and Connect AI's read-only tools, and the panel shows its feed under its own name. Its requests go through the [LLM Gateway](https://docs.cloud.cdata.com/en/LLM-Gateway/LLM-Gateway.md), so the models you can name are the ones your gateway project allows. To set one up, in Connect AI under *LLM Gateway → Routing*:
+
+1. Add a routing rule of type **Model Allowlist** with the models you want to play, and leave its prompt enrichment and CData MCP switches off, so every model gets the same prompt.
+2. Add a project with that rule, and a monthly budget with a hard limit.
+3. Issue a virtual key for the project (it starts with `cgw_sk_`), and save it in the Keychain: `security add-generic-password -U -s connect-doom -a llm-gateway -w` (paste the key at both prompts).
+
+A model's run that the gateway refuses (say, a model the project doesn't allow) hands the game to the offline player, as a failed Claude run does.
+
 **At a booth**, run `./raid.sh doctor` and then `new` once before the doors open, then `./raid.sh booth`. For a family-friendly floor, `NOGORE=1 ./raid.sh booth` swaps blood for bullet puffs and leaves no corpses: a killed record vanishes in green teleport fog. Each player's game ends with Esc → *Quit Game* → Y, and the next one starts 10 seconds later with all the records back, on the same full screen (`BOOTH_PAUSE` changes the wait). Ctrl-C in the Terminal stops it. The screen stays awake while `raid.sh` runs. On a Mac with no Connect AI account, or no level yet, `booth` plays offline with sample data; `./raid.sh booth offline` does that on purpose.
 
 - **On a display or projector**, move the Terminal window onto that screen before you run `raid.sh`: the game and the panel fill whichever screen the Terminal is on.
@@ -121,7 +129,7 @@ Doom never talks to Connect AI directly. Two programs do: Claude Code, before th
 
 Doom's game loop can't wait on the network, so these calls run in the background and the game only reads local files.
 
-**3. Claude can play, too.** With `--claude-plays`, `play.py` gives Claude a second MCP server next to Connect AI: Doom itself, with the tools `look`, `go_to` and `attack`. Claude reads the records it's about to fight and narrates why each one matters.
+**3. Claude can play, too.** With `--claude-plays`, `play.py` gives Claude a second MCP server next to Connect AI: Doom itself, with the tools `look`, `go_to` and `attack`. Claude reads the records it's about to fight and narrates why each one matters. With `--model`, another model plays instead, through Connect AI's LLM Gateway (`gateway_run.py`), with the same tools.
 
 More detail: [docs/internals.md](docs/internals.md).
 

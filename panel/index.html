@@ -507,7 +507,7 @@
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
   <section class="grow" id="board"><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div>
-    <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Cost: Claude Code's own, or the gateway's tokens at the console's rates. Runs on live data rank apart from saved data, whose records don't change. Blocked: runs the gateway's content filter stopped before the model could play on, left out of the rest. Scored from the game, not from what the model says. Pick the model in Esc &gt; Options &gt; Model.</div></section>
+    <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Cost: Claude Code's own, or the gateway's tokens at the console's rates. Runs on live data rank apart from saved data, whose records don't change. Blocked: runs the gateway's content filter stopped before the model could play on, left out of the rest. Scored from the game, not from what the model says. Every model gets the same prompt, tools and moves (a look, go_to or attack is one; Connect AI calls are free). REF: Claude Code, the same rules through its own harness, shown for reference. Pick the model in Esc &gt; Options &gt; Model.</div></section>
   <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
@@ -997,7 +997,8 @@ const pct = x => x == null ? "-" : `${Math.round(x * 100)}%`;
 function renderBoard(rows, game) {
   rows = rows || [];
   const bench = game?.bench;
-  setText($("board-meta"), bench ? `BENCH: RUN ${bench[0]} OF ${bench[1]}` : rows.length ? `${rows.reduce((n, b) => n + b.runs, 0)} RUNS` : "");
+  setText($("board-meta"), bench ? `BENCH: RUN ${bench[0]} OF ${bench[1]}`
+    : rows.length ? `${rows.reduce((n, b) => n + b.runs, 0)} RUNS${rows[0].earlier_rules ? " · EARLIER RULES" : ""}` : "");
   if (!rows.length) {
     setHTML($("board-rows"), `<div class="empty">No model has played this level yet. Pick one in Esc &gt; Options &gt; Model and turn Claude plays on, or run a bench: <code>./raid.sh replay --saved-data --models claude-code,claude-sonnet-5-5,gemini-3.7-flash</code></div>`);
     return;
@@ -1006,7 +1007,7 @@ function renderBoard(rows, game) {
   const playing = claudePlays(game) && game.mode === "claude"
     ? (game.model || rows.find(b => b.harness === "claude-code")?.model) : null;
   setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th class="opt">KILLED</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th><th class="opt">TOKENS</th><th class="opt">COST</th></tr>${
-    rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank}</td><td class="model">${esc(b.model)}${b.data === "live" ? ' <span class="data">LIVE DATA</span>' : ""}${b.blocked ? ` <span class="data">${b.blocked} BLOCKED</span>` : ""}</td>
+    rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank ?? "REF"}</td><td class="model">${esc(b.model)}${b.data === "live" ? ' <span class="data">LIVE DATA</span>' : ""}${b.blocked ? ` <span class="data">${b.blocked} BLOCKED</span>` : ""}</td>
       <td>${b.cleared}/${b.runs}</td><td>${mmss(b.time_to_clear_s)}</td><td class="opt">${pct(b.killed)}</td><td>${b.stuck == null ? "-" : b.stuck}</td>
       <td>${pct(b.urgent_first)}</td><td>${b.vault_runs ? `${b.vault_kept}/${b.vault_runs}` : "-"}</td>
       <td class="opt">${b.tokens ? `${Math.round(b.tokens / 1000)}k` : "-"}</td>

@@ -529,6 +529,15 @@ def ask(question):
     return 202, {"question": question}
 
 
+def leaderboard_state(mission):
+    """The panel's board for this level: under the current rules, else every run's, marked."""
+    if not (mission and mission.get("rooms")):
+        return []
+    level = leaderboard.level_key(mission)
+    rows = leaderboard.board(level)
+    return rows or [{**b, "earlier_rules": True} for b in leaderboard.board(level, None)]
+
+
 def cmd_panel(args):
     """Serve the side panel (panel/index.html) and the run's state on localhost."""
     import http.server
@@ -605,8 +614,9 @@ def cmd_panel(args):
                 "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
                 "standing": len([m for m in monsters if m["id"] not in dead]),
                 "ask": ask_state(),
-                # how each model has played this level (leaderboard.py), best first
-                "leaderboard": leaderboard.board(leaderboard.level_key(mission)) if mission and mission.get("rooms") else [],
+                # how each model has played this level (leaderboard.py), best first: under the
+                # current rules, or until a run plays by them, every run (marked earlier_rules)
+                "leaderboard": leaderboard_state(mission),
             }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

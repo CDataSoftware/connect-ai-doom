@@ -359,6 +359,10 @@ class PanelTest(unittest.TestCase):
         ids = self.render(leaderboard=board, game={"mode": "claude", "started": 1})   # Claude Code plays
         self.assertIn('<tr class="now"><td class="rank">1</td>', ids["board-rows"]["html"])
         self.assertEqual(ids["board-meta"]["text"], "5 RUNS")
+        board = [{**board[0], "rank": None, "earlier_rules": True}, {**board[1], "earlier_rules": True}]
+        ids = self.render(leaderboard=board, game=None)
+        self.assertIn('<td class="rank">REF</td>', ids["board-rows"]["html"])   # Claude Code: a reference
+        self.assertEqual(ids["board-meta"]["text"], "5 RUNS · EARLIER RULES")
 
     def test_tabs(self):
         """The leaderboard is a tab of its own: the body's tab-board class hides the live feed (CSS)."""

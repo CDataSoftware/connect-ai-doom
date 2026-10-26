@@ -85,7 +85,7 @@ def compact(messages):
             m["content"] = m["content"][:TRIMMED_CHARS] + " ... [trimmed]"
 
 
-def run(prompt, model, tools, log, *, key, max_turns, post=complete):
+def run(prompt, model, tools, log, *, key, max_turns, post=complete, system=None):
     """Play one run: send `prompt`, run each tool the model calls, and send the results back
     until it answers without calling a tool or `max_turns` replies are used up.
 
@@ -94,7 +94,7 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
     {"result": the final text, "turns", "tokens": {"input", "output"}}."""
     specs = [{"type": "function", "function": {"name": name, "description": desc, "parameters": schema}}
              for name, (_, desc, schema) in tools.items()]
-    messages = [{"role": "user", "content": prompt}]
+    messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
     log("session", model=model, tools=sorted(f"mcp__{name}" for name in tools))
     started, turns, final, empty, stop = time.time(), 0, "", 0, None
     tokens = {"input": 0, "output": 0}

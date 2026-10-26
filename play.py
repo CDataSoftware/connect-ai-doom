@@ -37,7 +37,11 @@ AGENT = STATE / "agent"
 PLAY_LOG = STATE / "play.jsonl"
 MODEL = os.environ.get("PLAY_MODEL", "sonnet")
 GATEWAY_MODEL = os.environ.get("PLAY_GATEWAY_MODEL")        # a model behind Connect AI's LLM Gateway plays instead
-MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "60")
+# A run's budget is its moves, the same for every model: each look, go_to or attack is one
+# (Connect AI calls are free). Turns don't do: a model that makes several calls a turn would get
+# more moves out of the same turns. The supervisor ends a run at the limit; MAX_TURNS is a backstop.
+MAX_MOVES = int(os.environ.get("PLAY_MAX_MOVES", "100"))
+MAX_TURNS = os.environ.get("PLAY_MAX_TURNS", "200")
 REPLAY_GRACE = float(os.environ.get("REPLAY_GRACE", "45"))   # seconds Claude gets after the last kill
 REPLAY_PAUSE = float(os.environ.get("REPLAY_PAUSE", "6"))    # between a run's summary and the restart
 DEATH_PAUSE = float(os.environ.get("DEATH_PAUSE", "3"))      # with auto replay: from a person's death to the restart
@@ -356,7 +360,13 @@ matters (for example: "Desert Power's renewal ticket is urgent, taking it down."
 say where and why (for example: "Salesforce is cleared, heading to Zendesk next."). After a few
 kills in a room, you may use the Connect AI tools once to check something related in another app.
 {vault}
-Keep going until the rooms are clear or you run out of turns. End with a two-line summary."""
+You have {moves} moves: each look, go_to or attack is one (the Connect AI tools are free). Keep
+going until the rooms are clear or the moves run out. End with a two-line summary."""
+
+# The system prompt every player gets, Claude Code included (in place of its own), so every model
+# plays by the same words and tools
+SYSTEM = ("You play a game through the tools you're given, narrating each step for an audience "
+          "watching live. Use only those tools.")
 
 
 def event(kind, **data):
@@ -370,7 +380,7 @@ def run():
                       for i, r in enumerate(m["rooms"]))
     vault = ("There is also a PII vault behind a red door. Try it once, near the end, "
              "to see what Connect AI does.") if m.get("denied") else ""
-    prompt = PROMPT.format(question=m["question"], rooms=rooms, vault=vault)
+    prompt = PROMPT.format(question=m["question"], rooms=rooms, vault=vault, moves=MAX_MOVES)
 
     claude_run.EventLog(PLAY_LOG).reset()
     if GATEWAY_MODEL:
@@ -383,6 +393,7 @@ def run():
     config = STATE / "play-mcp.json"
     config.write_text(json.dumps({"mcpServers": servers}))
     cmd = ["claude", "-p", prompt, "--model", MODEL, "--max-turns", MAX_TURNS,
+           "--system-prompt", SYSTEM, "--tools", "",     # the game's words and tools only, as a gateway model gets
            "--mcp-config", str(config), "--strict-mcp-config",
            "--allowedTools", "mcp__doom", "mcp__connectai",
            "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
@@ -436,7 +447,8 @@ def run_gateway(m, prompt):
         sys.exit(2)
     event("question", text=f"{GATEWAY_MODEL} plays: " + m["question"])
     try:
-        gateway_run.run(prompt, GATEWAY_MODEL, gateway_tools(Game()), event, key=key, max_turns=int(MAX_TURNS))
+        gateway_run.run(prompt, GATEWAY_MODEL, gateway_tools(Game()), event, key=key, max_turns=int(MAX_TURNS),
+                        system=SYSTEM)
     except gateway_run.GatewayError as e:
         event("failed", text=str(e)[-500:])
         sys.exit(2)    # the supervisor hands the game to the offline player
@@ -673,6 +685,7 @@ class Supervisor:
         self.schedule = list(schedule if schedule is not None else [m for _ in range(RUNS) for m in MODELS])
         self.bench_total = len(self.schedule)
         self.scoring = self.model = None   # the run being scored: what the game looked like at its start
+        self.feed_seen = self.moves_made = 0   # how far moves() has read the run's feed, and its moves
         self.proc = self.mode = self.player = self.claude_failed_at = None
         self.started = self.cleared_at = self.ended_at = self.offline_since = self.died_at = None
         self.checked = 0           # when the network was last checked during a Claude run
@@ -720,6 +733,9 @@ class Supervisor:
                 self.claude_failed_at, self.ended_at = now, None    # straight to the offline player
         if self.proc and self.player == "claude" and now - self.started >= TIME_LIMIT:
             self.stop(score="time limit")
+            self.ended_at = now
+        if self.proc and self.player == "claude" and self.moves() > MAX_MOVES:
+            self.stop(score="move limit")     # its next move began: the budget is spent
             self.ended_at = now
         if self.proc and self.player == "claude" and now - self.checked >= 10:
             # claude retries a dead network for minutes; don't leave the marine standing that long
@@ -791,7 +807,27 @@ class Supervisor:
         bench = [self.bench_total - len(self.schedule), self.bench_total] if self.bench_total else None
         set_game(mode=self.mode, model=None if self.model == "claude-code" else self.model, bench=bench)   # for the panel
         self.scoring = self.snapshot() if self.player == "claude" else None
+        claude_run.EventLog(PLAY_LOG).reset()   # a new feed: the last run's moves don't count against this one
+        self.feed_seen = self.moves_made = 0
         self.proc, self.started, self.ended_at = self.start(self.player, self.model), self.clock(), None
+
+    def moves(self):
+        """The Doom tool calls the run has made so far (Connect AI calls are free): read from
+        state/play.jsonl as it grows."""
+        try:
+            with PLAY_LOG.open("rb") as f:
+                if f.seek(0, 2) < self.feed_seen:         # the feed started over
+                    self.feed_seen = self.moves_made = 0
+                f.seek(self.feed_seen)
+                new = f.read()
+        except FileNotFoundError:
+            return self.moves_made
+        whole = new[:new.rfind(b"\n") + 1]           # a line still being written waits for the next tick
+        self.feed_seen += len(whole)
+        for line in whole.splitlines():
+            if b'"kind": "call"' in line and b'"server": "doom"' in line:
+                self.moves_made += 1
+        return self.moves_made
 
     def snapshot(self):
         """The game as a scored run starts: the records alive, which are urgent, and the data."""
@@ -815,6 +851,7 @@ class Supervisor:
                 name, harness = f"{session} (Claude Code)", "claude-code"
             row = leaderboard.score(events, mission(), snap["urgent"], snap["alive"], alive, model=name,
                                     harness=harness, data=snap["data"], ended=ended, limit_s=TIME_LIMIT)
+            row["rules"] = leaderboard.RULES
             if row["doom_calls"]:     # a run that never got going (say, claude signed out) isn't a game
                 # its feed, kept for a look at how it played (the next run starts play.jsonl over)
                 feed = Path("runs") / row["level"] / f"{row['t']}-{re.sub(r'[^A-Za-z0-9.-]+', '_', name)}.jsonl"

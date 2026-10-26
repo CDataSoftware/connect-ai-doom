@@ -77,11 +77,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual((second["model"], second["max_tokens"]), ("gemini-3.7-flash", gateway_run.MAX_TOKENS))
         self.assertEqual([t["function"]["name"] for t in second["tools"]],
                          ["doom__look", "connectai__queryData", "doom__attack"])
-        user, assistant, tool = second["messages"]
+        user, assistant, tool = second["messages"]          # no system prompt asked for: none sent
         self.assertEqual(user, {"role": "user", "content": "Clear the level."})
         self.assertEqual(assistant["tool_calls"][0]["id"], "call_1__thought__abc")   # Gemini's reasoning rides in the id
         self.assertEqual(tool, {"role": "tool", "tool_call_id": "call_1__thought__abc",
                                 "content": json.dumps({"you_are_in": "lobby"})})
+
+    def test_a_system_prompt(self):
+        gateway_run.run("Play.", "m", self.tools, lambda *a, **k: None, key="k", max_turns=1, system="Be brief.",
+                        post=lambda key, body: self.sent.append(body) or reply("Done."))
+        self.assertEqual(self.sent[0]["messages"][:2], [{"role": "system", "content": "Be brief."},
+                                                         {"role": "user", "content": "Play."}])
 
     def test_older_tool_results_are_cut_short(self):
         """Each turn resends the conversation: the last few results go in full, earlier ones trimmed."""

@@ -21,9 +21,13 @@ records left come from the game's state, and each kill is the game's answer to a
                  they're counted apart and left out of the medians
 
 Runs on live data and on saved data (the Options menu's Saved data) are ranked apart: live
-records change between runs, saved ones don't, so a fair bench plays saved data.
+records change between runs, saved ones don't, so a fair bench plays saved data. Only runs
+under the current RULES are ranked (each run keeps the rules it played by). Claude Code is
+listed after the ranked models, as a reference: it plays by the same prompt, tools and moves,
+but through its own harness, not the gateway's.
 
-Usage: leaderboard.py [all]   the board for the current level (state/mission.json), or every run
+Usage: leaderboard.py [all] [any-rules]   this level (or every level), under these rules (or any)
+
 """
 import hashlib
 import json
@@ -35,6 +39,8 @@ from pathlib import Path
 
 STATE = Path(os.environ.get("CONNECT_DOOM_STATE", Path(__file__).resolve().parent / "state"))
 STUCK_CALLS = 3
+# The rules a run plays by: its move budget (play.py's MAX_MOVES), the same for every model
+RULES = f"moves-{os.environ.get('PLAY_MAX_MOVES', '100')}"
 # Per million tokens (input, output), as the LLM Gateway's console lists them: the gateway reports a
 # run's tokens, not dollars. A model missing here shows no cost; Claude Code reports its own.
 PRICES = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.00, 10.00), "claude-opus-5-5": (4.00, 20.00),
@@ -163,12 +169,15 @@ def _median(values):
     return statistics.median(values) if values else None
 
 
-def board(level=None):
+def board(level=None, rules=RULES):
     """Each model's standing, best first: most runs cleared, then the fastest median clear,
     then the most records killed. Medians, so one lucky or broken run doesn't decide it. A
-    model's live and saved-data runs are separate rows."""
+    model's live and saved-data runs are separate rows. Claude Code's rows come last, unranked
+    (rank None): a reference. rules=None: every run, whatever its rules."""
     by_model = {}
     for r in runs(level):
+        if rules is not None and r.get("rules") != rules:
+            continue
         by_model.setdefault((r["model"], r.get("data", "live")), []).append(r)
     rows = []
     for (model, data), all_runs in by_model.items():
@@ -190,8 +199,10 @@ def board(level=None):
         })
     rows.sort(key=lambda b: (-b["clear_rate"], b["time_to_clear_s"] if b["time_to_clear_s"] is not None else 1e9,
                              -(b["killed"] or 0), b["stuck"] or 0))
+    rows.sort(key=lambda b: b["harness"] == "claude-code")    # stable: each part keeps its order
+    ranked = [b for b in rows if b["harness"] != "claude-code"]
     for i, b in enumerate(rows):
-        b["rank"] = i + 1
+        b["rank"] = i + 1 if b in ranked else None
     return rows
 
 
@@ -208,7 +219,7 @@ def table(rows):
     head = ["#", "MODEL", "DATA", "RUNS", "CLEARED", "TIME TO CLEAR", "KILLED", "STUCK", "URGENT 1ST", "VAULT KEPT",
             "TOKENS", "COST", "BLOCKED"]
     lines = [head] + [[
-        str(b["rank"]), b["model"], b["data"], str(b["runs"]), f"{b['cleared']}/{b['runs']}", _mmss(b["time_to_clear_s"]),
+        str(b["rank"] or "ref"), b["model"], b["data"], str(b["runs"]), f"{b['cleared']}/{b['runs']}", _mmss(b["time_to_clear_s"]),
         _pct(b["killed"]), "-" if b["stuck"] is None else f"{b['stuck']:g}", _pct(b["urgent_first"]),
         f"{b['vault_kept']}/{b['vault_runs']}" if b["vault_runs"] else "-",
         "-" if not b["tokens"] else f"{round(b['tokens'] / 1000)}k",
@@ -226,12 +237,17 @@ def main(args):
             level, title = level_key(m), m["question"]
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             pass
-    rows = board(level)
+    rules = None if "any-rules" in args else RULES
+    rows = board(level, rules)
+    earlier = sum(b["runs"] + b["blocked"] for b in board(level, None)) - sum(b["runs"] + b["blocked"] for b in rows)
+    note = f"\n{earlier} runs under earlier rules aren't counted: ./raid.sh leaderboard any-rules" if earlier else ""
     if not rows:
-        print(f"No runs yet for {title}. Run a bench: ./raid.sh replay --saved-data --models claude-code,claude-sonnet-5-5,gemini-3.7-flash")
+        print(f"No runs yet for {title}. Run a bench: ./raid.sh replay --saved-data --models "
+              f"claude-code,claude-sonnet-5-5,gemini-3.7-flash{note}")
         return
-    print(f"Leaderboard for {title} ({sum(b['runs'] for b in rows)} runs; medians per model)\n")
-    print(table(rows))
+    print(f"Leaderboard for {title} ({sum(b['runs'] for b in rows)} runs; medians per model; "
+          f"{'any rules' if rules is None else RULES.replace('-', ' ', 1).split(' ')[1] + ' moves a run'})\n")
+    print(table(rows) + note)
 
 
 if __name__ == "__main__":

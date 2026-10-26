@@ -114,9 +114,9 @@ class BoardTest(unittest.TestCase):
         self.state = Path(tmp.name)
 
     def run_(self, model, cleared, time_to_clear=None, killed=4, stuck=0, level="L1", vault="kept", tokens=1000,
-             data="saved", cost=None, ended="done"):
-        leaderboard.record({"t": 1, "model": model, "harness": "gateway", "level": level, "data": data, "records": 4,
-                            "ended": ended,
+             data="saved", cost=None, ended="done", harness="gateway", rules=leaderboard.RULES):
+        leaderboard.record({"t": 1, "model": model, "harness": harness, "level": level, "data": data, "records": 4,
+                            "ended": ended, "rules": rules,
                             "killed": killed, "cleared": cleared, "time_to_clear_s": time_to_clear, "stuck": stuck,
                             "urgent_first": 1.0, "vault": vault, "tokens": {"input": tokens, "output": 0},
                             "cost_usd": cost})
@@ -136,6 +136,17 @@ class BoardTest(unittest.TestCase):
         self.assertEqual((fast["cleared"], fast["time_to_clear_s"], fast["stuck"]), (2, 130, 0))   # medians
         self.assertEqual((fast["vault_kept"], fast["vault_runs"]), (2, 3))
         self.assertEqual(len(leaderboard.board()), 4)            # every level
+
+    def test_only_the_current_rules_rank_and_claude_code_is_a_reference(self):
+        self.run_("old", True, 10, rules=None)                                 # under the old turn limit
+        self.run_("haiku", True, 200)
+        self.run_("claude-sonnet-5-5 (Claude Code)", True, 100, harness="claude-code")
+        self.run_("gemini", False, killed=2)
+        rows = leaderboard.board("L1")
+        self.assertEqual([(b["rank"], b["model"]) for b in rows],
+                         [(1, "haiku"), (2, "gemini"), (None, "claude-sonnet-5-5 (Claude Code)")])  # REF last, faster or not
+        self.assertEqual(len(leaderboard.board("L1", None)), 4)                 # any rules
+        self.assertIn("\nref  claude-sonnet-5-5 (Claude Code)", leaderboard.table(rows))
 
     def test_blocked_runs_are_counted_apart(self):
         self.run_("sonnet", True, 150)
@@ -159,6 +170,13 @@ class BoardTest(unittest.TestCase):
         with redirect_stdout(out):
             leaderboard.main([])
         self.assertIn("No runs yet", out.getvalue())
+        (self.state / "mission.json").write_text(json.dumps(MISSION))
+        self.run_("old", True, 10, level=leaderboard.level_key(MISSION), rules=None)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            leaderboard.main([])
+        self.assertIn("1 runs under earlier rules aren't counted: ./raid.sh leaderboard any-rules", out.getvalue())
+        (self.state / "leaderboard.jsonl").unlink()
         (self.state / "mission.json").write_text(json.dumps(MISSION))
         self.run_("gemini-3.7-flash", True, 125, level=leaderboard.level_key(MISSION), tokens=493_000, cost=0.4)
         out = io.StringIO()

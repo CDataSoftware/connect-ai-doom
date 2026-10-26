@@ -610,6 +610,26 @@ class SupervisorTest(StateDirTest):
         self.assertEqual(self.procs[0].returncode, -15)
         self.assertEqual([(r["ended"], r["cleared"]) for r in self.board()], [("time limit", False)])
 
+    def test_a_run_ends_when_its_moves_run_out(self):
+        """The same budget for every model, counted from the feed: Connect AI calls are free."""
+        self.switches(True)
+        self.tick()
+        self.feed(1002)
+        with (self.state / "play.jsonl").open("a") as f:
+            for i in range(play.MAX_MOVES):
+                f.write(json.dumps({"t": self.now, "kind": "call", "id": f"m{i}", "server": "doom" if i % 2 else "connectai",
+                                    "tool": "look", "args": {}}) + "\n")
+        self.tick()
+        self.assertEqual(self.procs[0].returncode, None)                  # 1 attack + 50 looks: moves left
+        with (self.state / "play.jsonl").open("a") as f:
+            for i in range(play.MAX_MOVES // 2):
+                f.write(json.dumps({"t": self.now, "kind": "call", "id": f"n{i}", "server": "doom", "tool": "look",
+                                    "args": {}}) + "\n")
+        self.tick()
+        self.assertEqual(self.procs[0].returncode, -15)
+        [row] = self.board()
+        self.assertEqual((row["ended"], row["rules"]), ("move limit", play.leaderboard.RULES))
+
     def test_a_run_that_never_got_going_isnt_scored(self):
         self.switches(True)
         self.tick()
@@ -831,6 +851,10 @@ class RunTest(StateDirTest):
         self.assertEqual(argv[argv.index("--allowedTools") + 1:argv.index("--allowedTools") + 3],
                          ["mcp__doom", "mcp__connectai"])
         self.assertIn("--strict-mcp-config", argv)
+        # the same words and tools a gateway model gets: no Claude Code system prompt or built-in tools
+        self.assertEqual(argv[argv.index("--system-prompt") + 1], play.SYSTEM)
+        self.assertEqual(argv[argv.index("--tools") + 1], "")
+        self.assertIn(f"You have {play.MAX_MOVES} moves", prompt)
         servers = self.config["mcpServers"]
         self.assertEqual(servers["doom"]["args"][1], "mcp")
         self.assertIn("?ops=", servers["connectai"]["url"])
@@ -892,6 +916,7 @@ class GatewayRunTest(StateDirTest):
         self.assertEqual(sorted(tools), ["doom__attack", "doom__go_to", "doom__look"])   # offline: Doom only
         self.assertEqual(run.call_args.kwargs["key"], "cgw_sk_test")
         self.assertEqual(run.call_args.kwargs["max_turns"], int(play.MAX_TURNS))
+        self.assertEqual(run.call_args.kwargs["system"], play.SYSTEM)
         self.assertEqual(self.events()[0]["text"], "gemini-3.7-flash plays: Who is at risk?")
         self.assertFalse((self.state / "recordings").exists())     # the offline player narrates in Claude's words
 

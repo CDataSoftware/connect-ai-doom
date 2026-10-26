@@ -19,6 +19,7 @@ FAKE_PSDOOM = r'''#!/bin/bash
 set -euo pipefail
 printf '%s\n' "$@" > state/psdoom-args.txt
 echo "${PSDOOM_AGENT_DIR#"$PWD/"} ${PSDOOM_AGENT_CLAUDE:-} ${PSDOOM_AGENT_LOOP:-} ${PSDOOM_OPT_GOD:-} ${PSDOOM_OPT_SAVED:-} ${PSDOOM_OPT_OFFLINE:-} ${PSDOOM_OPT_MUSIC:-} ${PSDOOM_OPT_SFX:-}" > state/psdoom-agent.txt
+echo "${PSDOOM_AGENT_MODELS:-} ${PSDOOM_AGENT_MODEL:-}" > state/psdoom-models.txt
 echo "${PSDOOM_FRAMELESS:-} ${SDL_VIDEO_WINDOW_POS:-}" > state/psdoom-env.txt
 echo "${PSDOOM_STAGE_PID:-}" > state/psdoom-stage.txt
 for f in state/level.wad state/brand.wad state/level.deh wads/freedoom2.wad; do [[ -s $f ]] || exit 9; done
@@ -160,6 +161,19 @@ class RaidTest(unittest.TestCase):
         self.assertEqual((self.state / "psdoom-agent.txt").read_text(), "state/agent 1 1 1 0 0 1 1\n")   # it plays
         self.assertIn("find-generic-password -s connect-doom -a llm-gateway -w", (self.logs / "security.txt").read_text())
 
+    def test_the_menus_model_row(self):
+        """Claude Code, then the models named, with --model's first; the last booth game's pick wins."""
+        (self.logs / "keychain").write_text("cgw_sk_test")
+        r = self.raid("offline", "--model", "gemini-3.7-flash", "--models", "claude-code,claude-haiku-5-5",
+                      env=dict(os.environ))
+        self.assert_played(r)
+        self.assertEqual((self.state / "psdoom-models.txt").read_text(),
+                         "claude-code,gemini-3.7-flash,claude-haiku-5-5 gemini-3.7-flash\n")
+        (self.state / "options.json").write_text(json.dumps({"claude_plays": 1, "model": "claude-haiku-5-5"}))
+        r = self.raid("offline", "--model", "gemini-3.7-flash", env={**os.environ, "CONNECT_DOOM_BOOTH": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((self.state / "psdoom-models.txt").read_text().split()[1], "claude-haiku-5-5")
+
     def test_another_model_needs_a_gateway_key(self):
         r = self.raid("offline", "--model", "gemini-3.7-flash", env=dict(os.environ))
         self.assertEqual(r.returncode, 1)
@@ -252,7 +266,9 @@ class RaidTest(unittest.TestCase):
         self.assertFalse((self.state / "game.json").exists(), "the game view ends with the game")
         self.assertEqual(panel["events"][-1]["kind"], "mission")
         self.assertIn("http://localhost:", (self.logs / "open.txt").read_text())
-        self.assertFalse((self.logs / "security.txt").exists(), "a PAT in the environment wins")
+        looked_up = (self.logs / "security.txt").read_text()
+        self.assertNotIn(f"-a {USER}", looked_up, "a PAT in the environment wins")
+        self.assertIn("-a llm-gateway", looked_up)                     # the gateway key, for the menu's Model row
         cache = json.loads((self.state / "cache.json").read_text())
         self.assertEqual(cache["source"], "connect-ai-mcp")
 

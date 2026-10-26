@@ -74,13 +74,14 @@ The raid takes over the whole screen, for booths and screen recordings: the game
 **Switch things mid-game** in the Options menu (Esc → Options):
 
 - *Claude plays* hands the marine to Claude or takes it back.
+- *Model* picks who plays when *Claude plays* is on: left and right step through Claude Code and the models your LLM Gateway key allows (below). A new pick takes over where the marine stands.
 - *Auto replay* (on by default) restarts the level with every record back once it's clear, a few seconds after you die, or when Claude's run ends, then lets Claude play again if it was playing. With it on, a minute with nobody at the keyboard or mouse hands the game to Claude (`IDLE_SECONDS`).
 - *God mode*: players can't die and never run out of ammo, so nobody's turn ends early.
 - *Saved data* plays the level's last saved records and calls Connect AI for nothing: no refresh, no live read on a kill, no live check at the red door. For when the Wi-Fi is up but slow.
 - *Offline Claude*: Claude's turns use the scripted offline player (below) instead of Claude, so they cost no AI tokens. Flipping it mid-run swaps players where the marine stands.
 - *Music* plays Freedoom's soundtrack, and *Sound effects* the gunfire, doors and monsters. Turning either off keeps its level on the Sound Volume sliders for when it's back on.
 
-Each is off unless its flag turned it on: `--claude-plays`, `--loop` (*Auto replay*, on anyway unless `--no-loop`), `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. In a booth, the switches carry over from one game to the next.
+Each is off unless its flag turned it on: `--claude-plays`, `--loop` (*Auto replay*, on anyway unless `--no-loop`), `--god-mode`, `--saved-data`, `--offline-plays`; *Music* and *Sound effects* are on unless `--no-music` or `--no-sound-effects` turned them off. *Model* starts on `--model`'s model, or Claude Code. In a booth, the switches and the model carry over from one game to the next.
 
 **Claude plays offline.** When Claude can't run (no network, or `claude` isn't signed in), on the offline level, or with `--offline-plays`, a scripted player takes Claude's place. It uses the same Doom tools in the same order (keycards, urgent records first, room by room, then the red door) and writes the same kind of feed to the panel, narrating each kill with the line Claude wrote for that record in an earlier real run of the level, or a line built from the record. Real runs are kept in `state/recordings/` for this, so let Claude play each level once while you have a network. The panel labels these runs *CLAUDE PLAYS · OFFLINE REPLAY*.
 
@@ -92,7 +93,7 @@ Each is off unless its flag turned it on: `--claude-plays`, `--loop` (*Auto repl
 
 A model's run that the gateway refuses (say, a model the project doesn't allow) hands the game to the offline player, as a failed Claude run does.
 
-**The model leaderboard.** Every run by a model is scored and kept in `state/leaderboard.jsonl`, and the panel shows the board for the level being played. To fill it, run a bench: the models take turns on the same level, three rounds by default, and when the last run ends nobody plays on.
+**The model leaderboard.** Every run by a model is scored and kept in `state/leaderboard.jsonl`, and the panel's *Leaderboard* tab shows the board for the level being played (click it after P frees the mouse; *Live feed* goes back). To fill it, run a bench: the models take turns on the same level, three rounds by default, and when the last run ends nobody plays on.
 
 ```bash
 ./raid.sh replay --saved-data --models claude-code,claude-sonnet-5-5,gemini-3.7-flash --runs 3

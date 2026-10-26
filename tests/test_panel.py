@@ -336,24 +336,34 @@ class PanelTest(unittest.TestCase):
         self.assertEqual((left, msg), ("  Who owes us?  ", "Claude is already building a level."))
 
     def test_model_leaderboard(self):
-        self.assertTrue(self.render(leaderboard=[])["board"]["hidden"])
+        self.assertIn("No model has played this level yet", self.render(leaderboard=[])["board-rows"]["html"])
         board = [{"rank": 1, "model": "claude-sonnet-5-5 (Claude Code)", "harness": "claude-code", "runs": 3,
-                  "cleared": 3, "time_to_clear_s": 248, "stuck": 0, "urgent_first": 0.93, "vault_kept": 3,
-                  "vault_runs": 3},
+                  "cleared": 3, "time_to_clear_s": 248, "killed": 1.0, "stuck": 0, "urgent_first": 0.93,
+                  "vault_kept": 3, "vault_runs": 3, "tokens": 410_000},
                  {"rank": 2, "model": "gemini-3.7-flash", "harness": "gateway", "runs": 2, "cleared": 0,
-                  "time_to_clear_s": None, "stuck": 4.5, "urgent_first": None, "vault_kept": 0, "vault_runs": 0}]
+                  "time_to_clear_s": None, "killed": 0.4, "stuck": 4.5, "urgent_first": None, "vault_kept": 0,
+                  "vault_runs": 0, "tokens": None}]
         ids = self.render(leaderboard=board, game={"mode": "claude", "started": 1, "model": "gemini-3.7-flash",
                                                    "bench": [4, 6]})
-        self.assertFalse(ids["board"]["hidden"])
         self.assertEqual(ids["board-meta"]["text"], "BENCH: RUN 4 OF 6")
         html = ids["board-rows"]["html"]
-        self.assertRegex(html, r"claude-sonnet-5-5 \(Claude Code\)</td>\s*<td>3/3</td><td>4:08</td><td>0</td>\s*<td>93%</td><td>3/3</td>")
+        self.assertRegex(html, r"claude-sonnet-5-5 \(Claude Code\)</td>\s*<td>3/3</td><td>4:08</td><td class=\"opt\">100%</td><td>0</td>"
+                               r"\s*<td>93%</td><td>3/3</td>\s*<td class=\"opt\">410k</td>")
         self.assertRegex(html, r'<tr class="now"><td class="rank">2</td><td class="model">gemini-3.7-flash</td>')
-        self.assertIn("<td>0/2</td><td>-</td><td>4.5</td>", html)
+        self.assertIn("<td>0/2</td><td>-</td><td class=\"opt\">40%</td><td>4.5</td>", html)
         self.assertEqual(ids["now-mode"]["text"], "GEMINI-3.7-FLASH IS PLAYING · LIVE")
         ids = self.render(leaderboard=board, game={"mode": "claude", "started": 1})   # Claude Code plays
         self.assertIn('<tr class="now"><td class="rank">1</td>', ids["board-rows"]["html"])
         self.assertEqual(ids["board-meta"]["text"], "5 RUNS")
+
+    def test_tabs(self):
+        """The leaderboard is a tab of its own: the body's tab-board class hides the live feed (CSS)."""
+        _, cls = self.render('(showTab("board"), document.body.className)')
+        self.assertIn("tab-board", cls)
+        _, cls = self.render('(showTab("board"), showTab("live"), document.body.className)')
+        self.assertNotIn("tab-board", cls)
+        self.assertIn("body.tab-board main > :not(.tabs):not(#board) { display: none !important; }",
+                      (ROOT / "panel/index.html").read_text())
 
     def test_state_keys_match_the_server(self):
         """Every key the panel reads from /state.json is one connect_doom.py serves."""

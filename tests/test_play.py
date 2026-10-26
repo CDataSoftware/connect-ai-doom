@@ -617,6 +617,38 @@ class SupervisorTest(StateDirTest):
         self.tick()
         self.assertEqual(self.board(), [])
 
+    def test_picking_a_model_in_the_menu(self):
+        """The Options menu's Model row: the pick takes over where the marine stands; the run it cut short doesn't count."""
+        self.switches(True)
+        self.game.s["options"]["model"] = "claude-code"
+        self.tick()
+        self.feed(1002)
+        self.assertEqual(self.models, ["claude-code"])
+        self.game.s["options"]["model"] = "gemini-3.7-flash"
+        self.tick()
+        self.assertEqual(self.procs[0].returncode, -15)
+        self.tick()
+        self.assertEqual(self.models, ["claude-code", "gemini-3.7-flash"])
+        self.assertEqual(json.loads((self.state / "game.json").read_text())["model"], "gemini-3.7-flash")
+        self.assertEqual(self.board(), [])
+
+    def test_picking_a_model_ends_a_bench(self):
+        with mock.patch.object(play, "MENU_MODELS", ["claude-code", "gemini-3.7-flash", "claude-haiku-5-5"]):
+            self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now,
+                                       online=lambda *_: self.net, schedule=["gemini-3.7-flash", "claude-code"])
+            self.switches(True, replay=True)
+            self.game.s["options"]["model"] = "claude-code"
+            self.tick()
+            self.assertIn(("MODEL", 1), self.game.commands)            # the menu shows the bench's model
+            self.game.s["options"]["model"] = "gemini-3.7-flash"       # what the game reports back: no change
+            self.tick()
+            self.assertEqual(self.procs[0].returncode, None)
+            self.game.s["options"]["model"] = "claude-haiku-5-5"       # a person's pick
+            self.tick()
+            self.tick()
+        self.assertEqual(self.models, ["gemini-3.7-flash", "claude-haiku-5-5"])
+        self.assertEqual((self.sup.schedule, json.loads((self.state / "game.json").read_text())["bench"]), ([], None))
+
     def test_a_bench_takes_turns_then_stops(self):
         self.sup = play.Supervisor(self.game, start=self.start, clock=lambda: self.now, online=lambda *_: self.net,
                                    schedule=["claude-code", "gemini-3.7-flash"])

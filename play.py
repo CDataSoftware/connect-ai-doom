@@ -49,6 +49,7 @@ TIME_LIMIT = float(os.environ.get("PLAY_TIME_LIMIT", "600"))  # a run's seconds;
 # each scored for the leaderboard; then Claude plays and Auto replay go off
 MODELS = [m.strip() for m in os.environ.get("PLAY_MODELS", "").split(",") if m.strip()]
 RUNS = int(os.environ.get("PLAY_RUNS", "1"))
+MENU_MODELS = os.environ.get("PSDOOM_AGENT_MODELS", "").split(",")   # the Options menu's Model row
 ARENA_X = (0, 2048, 4096)          # tools/make_arena.py
 
 
@@ -694,6 +695,15 @@ class Supervisor:
                 self.ended_at = None
                 if not opts.get("offline_claude"):
                     self.claude_failed_at = None
+            if self.opts and opts.get("model") != self.opts.get("model") and opts.get("model") != self.model:
+                # a person picked a model in the menu (not a bench's MODEL): it takes over where the
+                # marine stands, the run it cut short doesn't count, and any bench is over
+                if self.proc:
+                    self.stop()
+                self.ended_at = self.claude_failed_at = None
+                if self.bench_total:
+                    self.schedule, self.bench_total = [], 0
+                    set_game(bench=None)
             self.opts = dict(opts)
         now = self.clock()
         alive = [m for m in s["monsters"] if m["health"] > 0]
@@ -759,16 +769,24 @@ class Supervisor:
             offline_level = all("rows" in r for r in mission()["rooms"])   # connect_doom.is_offline
         except (FileNotFoundError, json.JSONDecodeError, KeyError):
             offline_level = False
-        model = self.schedule[0] if self.schedule else GATEWAY_MODEL
-        if PLAYER == "replay" or self.opts.get("offline_claude") or failed or offline_level or not self.online(model):
+        if PLAYER == "replay" or self.opts.get("offline_claude") or failed or offline_level \
+                or not self.online(self.next_model()):
             return "replay"
         return "claude"
+
+    def next_model(self):
+        """Who plays next: the bench's next model, else the menu's Model row, else PLAY_GATEWAY_MODEL's."""
+        return self.schedule[0] if self.schedule else self.opts.get("model") or GATEWAY_MODEL
 
     def launch(self):
         self.player = self.choose()
         self.model = None
         if self.player == "claude":
-            self.model = self.schedule.pop(0) if self.schedule else GATEWAY_MODEL
+            self.model = self.next_model()
+            if self.schedule:
+                self.schedule.pop(0)
+                if self.model in MENU_MODELS:       # the menu's Model row shows whose turn it is
+                    self.game.do("MODEL", MENU_MODELS.index(self.model))
         self.mode = "claude" if self.player == "claude" else "replay"
         bench = [self.bench_total - len(self.schedule), self.bench_total] if self.bench_total else None
         set_game(mode=self.mode, model=None if self.model == "claude-code" else self.model, bench=bench)   # for the panel

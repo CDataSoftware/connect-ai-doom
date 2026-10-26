@@ -347,10 +347,10 @@ index 15e4a6b..2e7d77c 100644
      // Set up title and icon.  Windows cares about the ordering; this
      // has to be done before the call to SDL_SetVideoMode.
 diff --git i/trunk/src/m_menu.c w/trunk/src/m_menu.c
-index 7144f71..4b99ee1 100644
+index 7144f71..f9563fc 100644
 --- i/trunk/src/m_menu.c
 +++ w/trunk/src/m_menu.c
-@@ -220,6 +220,15 @@ void M_ReadThis2(int choice);
+@@ -220,6 +220,18 @@ void M_ReadThis2(int choice);
  void M_QuitDOOM(int choice);
  
  void M_ChangeMessages(int choice);
@@ -361,12 +361,15 @@ index 7144f71..4b99ee1 100644
 +void M_ChangeOfflineClaude(int choice);
 +void M_ChangeMusic(int choice);
 +void M_ChangeSoundEffects(int choice);
++void M_ChangeModel(int choice);
 +int PR_AgentOption(int option);       // connect-doom (pr_process.c)
 +void PR_AgentToggle(int option);
++const char *PR_AgentModelLabel(void);
++void PR_AgentModelStep(int step);
  void M_ChangeSensitivity(int choice);
  void M_SfxVol(int choice);
  void M_MusicVol(int choice);
-@@ -366,24 +375,31 @@ menu_t  NewDef =
+@@ -366,24 +378,33 @@ menu_t  NewDef =
  //
  enum
  {
@@ -376,6 +379,7 @@ index 7144f71..4b99ee1 100644
 -    scrnsize,
 -    option_empty1,
 +    claudeplays,  // connect-doom: the booth's switches, in PR_AgentOption's order
++    modelrow,     // ...but for the Model row: who plays when Claude plays is on
 +    autoreplay,
 +    godmode,
 +    saveddata,
@@ -400,6 +404,7 @@ index 7144f71..4b99ee1 100644
 -    {2,"M_SCRNSZ",	M_SizeDisplay,'s'},
 -    {-1,"",0,'\0'},
 +    {1,"M_CLAUDE",	M_ChangeClaudePlays,'c'},
++    {2,"M_MODEL",	M_ChangeModel,'l'},
 +    {1,"M_AUTORP",	M_ChangeAutoReplay,'a'},
 +    {1,"M_GODMOD",	M_ChangeGodMode,'g'},
 +    {1,"M_SAVED",	M_ChangeSavedData,'d'},
@@ -409,38 +414,46 @@ index 7144f71..4b99ee1 100644
      {2,"M_MSENS",	M_ChangeSensitivity,'m'},
      {-1,"",0,'\0'},
      {1,"M_SVOL",	M_Sound,'s'}
-@@ -395,7 +411,7 @@ menu_t  OptionsDef =
+@@ -395,7 +416,7 @@ menu_t  OptionsDef =
      &MainDef,
      OptionsMenu,
      M_DrawOptions,
 -    60,37,
-+    60,33,      // connect-doom: up from 37, so Sound Volume stays clear of the bottom edge
++    60,24,      // connect-doom: up from 37, so Sound Volume stays clear of the bottom edge
      0
  };
  
-@@ -1011,21 +1027,24 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
+@@ -1011,21 +1032,31 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
  
  void M_DrawOptions(void)
  {
-+    int i;
-+
-     V_DrawPatchDirect (108,15,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));
- 	
+-    V_DrawPatchDirect (108,15,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));
+-	
 -    V_DrawPatchDirect (OptionsDef.x + 175,OptionsDef.y+LINEHEIGHT*detail,0,
 -		       W_CacheLumpName(DEH_String(detailNames[detailLevel]),
 -			               PU_CACHE));
--
++    int i;
+ 
 -    V_DrawPatchDirect (OptionsDef.x + 120,OptionsDef.y+LINEHEIGHT*messages,0,
 -		       W_CacheLumpName(DEH_String(msgNames[showMessages]),
 -				       PU_CACHE));
-+    // connect-doom: ON / OFF just right of each switch's label
++    V_DrawPatchDirect (108,4,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));  // connect-doom: up from 15
++	
++    // connect-doom: ON / OFF just right of each switch's label, and the Model row's model
 +    for (i = claudeplays; i <= sfxon; i++)
 +    {
 +        patch_t *label, *onoff;
++        char model[64];
 +        if (!OptionsMenu[i].name[0])
 +            continue;
 +        label = W_CacheLumpName(OptionsMenu[i].name, PU_CACHE);
-+        onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(i - claudeplays)]), PU_CACHE);
++        if (i == modelrow)
++        {
++            snprintf(model, sizeof(model), "< %s >", PR_AgentModelLabel());
++            M_WriteText(OptionsDef.x + SHORT(label->width) + 6, OptionsDef.y + LINEHEIGHT*i + 3, model);
++            continue;
++        }
++        onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(i - claudeplays - (i > modelrow))]), PU_CACHE);
 +        V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
 +                           OptionsDef.y+LINEHEIGHT*i,0,onoff);
 +    }
@@ -453,7 +466,7 @@ index 7144f71..4b99ee1 100644
  }
  
  void M_Options(int choice)
-@@ -1053,6 +1072,43 @@ void M_ChangeMessages(int choice)
+@@ -1053,6 +1084,49 @@ void M_ChangeMessages(int choice)
  }
  
  
@@ -493,11 +506,17 @@ index 7144f71..4b99ee1 100644
 +    PR_AgentToggle(6);
 +}
 +
++// The Model row: left for the model before, right (or Enter) for the next
++void M_ChangeModel(int choice)
++{
++    PR_AgentModelStep(choice ? 1 : -1);
++}
++
 +
  //
  // M_EndGame
  //
-@@ -2009,6 +2065,8 @@ void M_Ticker (void)
+@@ -2009,6 +2083,8 @@ void M_Ticker (void)
  //
  void M_Init (void)
  {
@@ -506,7 +525,7 @@ index 7144f71..4b99ee1 100644
      currentMenu = &MainDef;
      menuactive = 0;
      itemOn = currentMenu->lastOn;
-@@ -2020,6 +2078,16 @@ void M_Init (void)
+@@ -2020,6 +2096,16 @@ void M_Init (void)
      messageLastMenuActive = menuactive;
      quickSaveSlot = -1;
  
@@ -773,7 +792,7 @@ index 90d0bb7..e965768 100644
  	    P_SpawnGlowingLight(sector);
  	    break;
 diff --git i/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index fa4fe83..f49ffed 100644
+index fa4fe83..86d15dd 100644
 --- i/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -6,6 +6,7 @@
@@ -912,7 +931,7 @@ index fa4fe83..f49ffed 100644
  }
  
  // pr_renice
-@@ -890,3 +933,489 @@ void pr_renice(int pid) {
+@@ -890,3 +933,565 @@ void pr_renice(int pid) {
    sprintf(buf, "%s %d", cmd, pid);
    system(buf);
  }
@@ -921,13 +940,15 @@ index fa4fe83..f49ffed 100644
 +// connect-doom "Claude plays": an external agent steers the player.
 +// Enabled when PSDOOM_AGENT_DIR is set. The agent writes one command line to
 +// <dir>/cmd ("<seq> MOVE x y" | "<seq> USE" | "<seq> ATTACK pid" | "<seq> TURN deg"
-+// | "<seq> KEY code" | "<seq> RESTART" | "<seq> OPTION n 0|1" | "<seq> STOP"); KEY presses a key,
-+// e.g. to screenshot the menus; RESTART starts the level over; OPTION sets a switch. The game
++// | "<seq> KEY code" | "<seq> RESTART" | "<seq> OPTION n 0|1" | "<seq> MODEL n" | "<seq> STOP"); KEY
++// presses a key, e.g. to screenshot the menus; RESTART starts the level over; OPTION sets a switch;
++// MODEL picks the Options menu's model (the n-th of PSDOOM_AGENT_MODELS). The game
 +// writes <dir>/state.json every few tics with the player, the process monsters, the last
 +// finished command, the Options menu's two switches (Claude plays, which PSDOOM_AGENT_CLAUDE
 +// sets at launch, and auto replay, PSDOOM_AGENT_LOOP) and how long since a person last
 +// touched a key or the mouse. While Claude plays is off, the commands that steer are refused.
 +
++#include <ctype.h>
 +#include "d_event.h"
 +#include "d_player.h"
 +#include "d_ticcmd.h"
@@ -1015,6 +1036,70 @@ index fa4fe83..f49ffed 100644
 +        agent_finish("stopped");
 +}
 +
++// The Options menu's Model row: who plays while Claude plays is on. PSDOOM_AGENT_MODELS lists
++// them ("claude-code" is Claude Code, the rest play through Connect AI's LLM Gateway) and
++// PSDOOM_AGENT_MODEL names the first pick; play.py's supervisor follows state.json's "model".
++#define AGENT_NMODELS 16
++static char agent_models[AGENT_NMODELS][48];
++static int agent_nmodels = -1, agent_model = 0;
++
++static void agent_read_models(void)
++{
++    const char *list = getenv("PSDOOM_AGENT_MODELS"), *first = getenv("PSDOOM_AGENT_MODEL");
++    int i;
++    agent_nmodels = 0;
++    while (list && *list && agent_nmodels < AGENT_NMODELS)
++    {
++        size_t n = strcspn(list, ",");
++        char *name = agent_models[agent_nmodels];
++        int ok = n > 0 && n < sizeof(agent_models[0]);
++        for (i = 0; ok && i < (int) n; i++)    // it goes into state.json as is: no quotes, no escapes
++            ok = isalnum((unsigned char) list[i]) || strchr("-._/:", list[i]) != NULL;
++        if (ok)
++        {
++            memcpy(name, list, n);
++            name[n] = '\0';
++            ++agent_nmodels;
++        }
++        list += n + (list[n] == ',');
++    }
++    if (!agent_nmodels)
++        snprintf(agent_models[agent_nmodels++], sizeof(agent_models[0]), "claude-code");
++    for (i = 0; first && i < agent_nmodels; i++)
++        if (!strcmp(agent_models[i], first))
++            agent_model = i;
++}
++
++const char *PR_AgentModel(void)
++{
++    if (agent_nmodels < 0)
++        agent_read_models();
++    return agent_models[agent_model];
++}
++
++// The row as the menu shows it: "CLAUDE CODE", or the gateway model's name
++const char *PR_AgentModelLabel(void)
++{
++    static char label[48];
++    const char *m = PR_AgentModel();
++    int i;
++    snprintf(label, sizeof(label), "%s", strcmp(m, "claude-code") ? m : "claude code");
++    for (i = 0; label[i]; i++)
++        label[i] = toupper((unsigned char) label[i]);
++    return label;
++}
++
++// From the Options menu's Model row: the next model (step 1) or the one before (-1)
++void PR_AgentModelStep(int step)
++{
++    static char msg[80];
++    PR_AgentModel();
++    agent_model = (agent_model + step + agent_nmodels) % agent_nmodels;
++    snprintf(msg, sizeof(msg), "MODEL: %s%s", PR_AgentModelLabel(),
++             PR_AgentOption(0) ? " TAKES OVER" : " PLAYS WHEN CLAUDE PLAYS IS ON");
++    players[consoleplayer].message = msg;
++}
++
 +static void agent_finish(const char *result)
 +{
 +    agent_done_seq = agent_seq;
@@ -1083,14 +1168,16 @@ index fa4fe83..f49ffed 100644
 +    fprintf(f, "{\"tic\": %d, \"player\": {\"x\": %d, \"y\": %d, \"angle\": %d, \"health\": %d, "
 +               "\"armor\": %d, \"ammo\": %d, \"keys\": {\"blue\": %d, \"yellow\": %d, \"red\": %d}, "
 +               "\"kills\": %d},\n \"options\": {\"claude_plays\": %d, \"auto_replay\": %d, \"god_mode\": %d, "
-+               "\"saved_data\": %d, \"offline_claude\": %d, \"music\": %d, \"sound_effects\": %d}, "
++               "\"saved_data\": %d, \"offline_claude\": %d, \"music\": %d, \"sound_effects\": %d, "
++               "\"model\": \"%s\"}, "
 +               "\"idle_seconds\": %d,\n",
 +            agent_clock, mo->x >> FRACBITS, mo->y >> FRACBITS,
 +            (int) (mo->angle / AGENT_ANG1), p->health, p->armorpoints,
 +            weaponinfo[p->readyweapon].ammo < NUMAMMO ? p->ammo[weaponinfo[p->readyweapon].ammo] : -1,
 +            p->cards[it_bluecard], p->cards[it_yellowcard], p->cards[it_redcard], p->killcount,
 +            PR_AgentOption(0), PR_AgentOption(1), PR_AgentOption(2), PR_AgentOption(3),
-+            PR_AgentOption(4), PR_AgentOption(5), PR_AgentOption(6), (gametic - agent_last_input) / TICRATE);
++            PR_AgentOption(4), PR_AgentOption(5), PR_AgentOption(6), PR_AgentModel(),
++            (gametic - agent_last_input) / TICRATE);
 +    fprintf(f, " \"command\": {\"seq\": %d, \"done_seq\": %d, \"verb\": \"%s\", \"result\": \"%s\"},\n",
 +            agent_seq, agent_done_seq, agent_verb, agent_result);
 +    fprintf(f, " \"monsters\": [");
@@ -1190,6 +1277,14 @@ index fa4fe83..f49ffed 100644
 +        // play.py's idle takeover: the same as choosing it in the Options menu
 +        if (agent_x >= 0 && agent_x < AGENT_NOPTIONS && PR_AgentOption(agent_x) != !!agent_y)
 +            PR_AgentToggle(agent_x);
++        agent_finish("set");
++    }
++    else if (!strcmp(agent_verb, "MODEL"))
++    {
++        // play.py's bench: the menu's Model row shows the model whose turn it is
++        PR_AgentModel();
++        if (agent_x >= 0 && agent_x < agent_nmodels)
++            agent_model = agent_x;
 +        agent_finish("set");
 +    }
 +    else if (!PR_AgentOption(0) && strcmp(agent_verb, "KEY") && strcmp(agent_verb, "SHOT")

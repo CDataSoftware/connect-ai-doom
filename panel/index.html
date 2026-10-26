@@ -238,12 +238,26 @@
   .rl .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
   /* the model leaderboard: one row per model, best first; the model playing now is highlighted */
   .board { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  .board th { font: 8px/1.4 var(--pixel); color: var(--balance); text-align: right; padding: 0 6px 6px; white-space: nowrap; }
+  .board th { font: 8px/1.4 var(--pixel); color: var(--balance); text-align: right; padding: 0 6px 6px; vertical-align: bottom; }
   .board td { font: 13px/1.3 var(--mono); color: var(--clarity); text-align: right; padding: 6px; border-top: 1px solid var(--line); white-space: nowrap; }
   .board th:nth-child(2), .board td:nth-child(2) { text-align: left; white-space: normal; overflow-wrap: anywhere; }
   .board td.rank { font: 18px/1 var(--digits); color: var(--agility); text-align: left; }
-  .board td.model { font-weight: 600; font-family: inherit; }
-  #board[hidden] { display: none; }
+  .board td.model { font-weight: 600; font-family: inherit; min-width: 9em; }
+  /* narrow (the full-screen layout's third of the screen): the columns that matter most */
+  #board { container-type: inline-size; }
+  @container (max-width: 600px) {
+    .board .opt { display: none; }
+    .board th, .board td { padding-left: 3px; padding-right: 3px; }
+  }
+  /* the side panel's two tabs: the live feed (everything else) and the leaderboard */
+  .tabs { display: flex; gap: 6px; }
+  .tabs button { font: 8px/1 var(--pixel); color: var(--balance); background: var(--depth-2); border: 1px solid var(--line);
+                 border-radius: 4px; padding: 9px 12px; cursor: pointer; }
+  .tabs button.on { color: var(--depth); background: var(--agility); border-color: var(--agility); }
+  body.tab-board main > :not(.tabs):not(#board) { display: none !important; }
+  body:not(.tab-board) #board { display: none !important; }
+  #board .note { margin-top: 10px; font-size: 12px; color: var(--balance); line-height: 1.5; }
+  #board .empty { color: var(--balance); }
   .board tr.now td { background: var(--depth-3); }
   .board tr.now td.model::after { content: " ◀ PLAYING"; font: 7px/1 var(--pixel); color: var(--agility); }
   .rl .live.fresh::before { animation: pulse .8s 3; }
@@ -484,13 +498,15 @@
   <div class="stat model"><div class="num" id="s-model">STANDBY</div><div class="lbl">MODEL</div></div>
 </div>
 <main>
+  <nav class="tabs" id="tabs"><button data-tab="live" class="on">LIVE FEED</button><button data-tab="board">LEADERBOARD</button></nav>
   <div class="now ingame" id="now">
     <div class="mode" id="now-mode">YOU'RE PLAYING · LIVE</div>
     <div class="big" id="now-big"><div class="hint">Grab the keycards in the lobby, then clear the rooms. Every kill shows up here.</div></div>
     <div class="keys" id="now-keys"><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</div>
   </div>
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
-  <section class="ingame" id="board" hidden><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div></section>
+  <section class="grow" id="board"><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div>
+    <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Scored from the game, not from what the model says. Pick the model in Esc &gt; Options &gt; Model.</div></section>
   <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
@@ -887,7 +903,7 @@ function renderGame(s) {
   $("now-mode").textContent = modeText(game, s);
   $("now-keys").hidden = claudePlays(game);
   if (!lastEventKey) setHTML($("now-big"), `<div class="hint">${claudePlays(game)
-    ? "Claude grabs the keycards, then clears the rooms. Every kill shows up here."
+    ? `${esc(whoPlays(game.model) === "CLAUDE" ? "Claude" : game.model)} grabs the keycards, then clears the rooms. Every kill shows up here.`
     : "Grab the keycards in the lobby, then clear the rooms. Every kill shows up here."}</div>`);
 
   const m = s.mission || {};
@@ -979,17 +995,20 @@ const mmss = s => s == null ? "-" : `${Math.floor(s / 60)}:${String(Math.round(s
 const pct = x => x == null ? "-" : `${Math.round(x * 100)}%`;
 function renderBoard(rows, game) {
   rows = rows || [];
-  $("board").hidden = !rows.length;
   const bench = game?.bench;
   setText($("board-meta"), bench ? `BENCH: RUN ${bench[0]} OF ${bench[1]}` : rows.length ? `${rows.reduce((n, b) => n + b.runs, 0)} RUNS` : "");
-  if (!rows.length) return;
+  if (!rows.length) {
+    setHTML($("board-rows"), `<div class="empty">No model has played this level yet. Pick one in Esc &gt; Options &gt; Model and turn Claude plays on, or run a bench: <code>./raid.sh replay --saved-data --models claude-code,gemini-3.7-flash</code></div>`);
+    return;
+  }
   // the row for whoever is playing now: a gateway model by name, else Claude Code's
   const playing = claudePlays(game) && game.mode === "claude"
     ? (game.model || rows.find(b => b.harness === "claude-code")?.model) : null;
-  setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th></tr>${
+  setHTML($("board-rows"), `<table class="board"><tr><th>#</th><th>MODEL</th><th>CLEARED</th><th>TIME</th><th class="opt">KILLED</th><th>STUCK</th><th>URGENT 1ST</th><th>VAULT</th><th class="opt">TOKENS</th></tr>${
     rows.map(b => `<tr class="${b.model === playing ? "now" : ""}"><td class="rank">${b.rank}</td><td class="model">${esc(b.model)}</td>
-      <td>${b.cleared}/${b.runs}</td><td>${mmss(b.time_to_clear_s)}</td><td>${b.stuck == null ? "-" : b.stuck}</td>
-      <td>${pct(b.urgent_first)}</td><td>${b.vault_runs ? `${b.vault_kept}/${b.vault_runs}` : "-"}</td></tr>`).join("")}</table>`);
+      <td>${b.cleared}/${b.runs}</td><td>${mmss(b.time_to_clear_s)}</td><td class="opt">${pct(b.killed)}</td><td>${b.stuck == null ? "-" : b.stuck}</td>
+      <td>${pct(b.urgent_first)}</td><td>${b.vault_runs ? `${b.vault_kept}/${b.vault_runs}` : "-"}</td>
+      <td class="opt">${b.tokens ? `${Math.round(b.tokens / 1000)}k` : "-"}</td></tr>`).join("")}</table>`);
 }
 
 // ---------- the automap: the level drawing itself while Claude briefs ----------
@@ -1260,6 +1279,15 @@ function renderStage(s, events) {
     say = `<span class="tag">CONTROLS</span><span><b>WASD</b> move <b>Mouse</b> turn <b>Click / Space</b> fire <b>Walk into</b> doors <b>Shift</b> run <b>P</b> pause</span>`;
   setHTML($("stage-say"), say);
 }
+
+// The tabs: the one picked last on this screen comes back (a per-viewer convenience)
+function showTab(tab) {
+  document.body.classList.toggle("tab-board", tab === "board");
+  for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === tab);
+  try { localStorage.setItem("tab", tab); } catch (e) {}
+}
+for (const b of $("tabs").children) b.addEventListener("click", () => showTab(b.dataset.tab));
+try { if (localStorage.getItem("tab") === "board") showTab("board"); } catch (e) {}
 
 try {
   const lg = $("legend");

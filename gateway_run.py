@@ -13,6 +13,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import claude_run
 
@@ -48,6 +49,22 @@ def complete(key, body, timeout=120, sleep=time.sleep):
             if wait is None:
                 raise GatewayError(f"The LLM Gateway didn't answer: {e}")
         sleep(wait)
+
+
+def models(key, cache, timeout=4):
+    """The models this key may use (GET /models: the project's allowlist), for the Options
+    menu's Model row. Saved in `cache`; when the gateway doesn't answer in time, the last list."""
+    req = urllib.request.Request(f"{GATEWAY_URL}/models", headers={"Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            names = [m["id"] for m in json.loads(resp.read()).get("data", []) if m.get("id")]
+        cache.write_text(json.dumps(names) + "\n")
+        return names
+    except (OSError, ValueError, KeyError):
+        try:
+            return json.loads(cache.read_text())
+        except (OSError, ValueError):
+            return []
 
 
 def run(prompt, model, tools, log, *, key, max_turns, post=complete):
@@ -101,3 +118,9 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
     log("done", cost_usd=None, duration_ms=round((time.time() - started) * 1000), turns=turns, text=final,
         tokens=tokens)
     return {"result": final, "turns": turns, "tokens": tokens}
+
+
+if __name__ == "__main__":
+    # gateway_run.py models: the key's models, comma-separated (raid.sh, for the Options menu)
+    state = Path(os.environ.get("CONNECT_DOOM_STATE", Path(__file__).resolve().parent / "state"))
+    print(",".join(models(os.environ["CONNECT_AI_GATEWAY_KEY"], state / "gateway-models.json")))

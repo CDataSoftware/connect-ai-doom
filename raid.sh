@@ -146,20 +146,26 @@ if [[ -n "$MODELS" ]]; then
   export PLAY_MODELS="$MODELS" PLAY_RUNS="$RUNS"
   for m in ${MODELS//,/ }; do [[ "$m" != claude-code ]] && GATEWAY=$m; done
 fi
-if [[ -n "$GATEWAY" ]]; then
-  # play.py sends its turns through the LLM Gateway, which takes a gateway virtual key
-  # (cgw_sk_...), not the Connect AI token
-  if [[ -z "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
-    CONNECT_AI_GATEWAY_KEY=$(security find-generic-password -s connect-doom -a llm-gateway -w 2>/dev/null || true)
-  fi
-  if [[ -z "$CONNECT_AI_GATEWAY_KEY" ]]; then
-    echo "No LLM Gateway key for $GATEWAY. Issue a virtual key in Connect AI (LLM Gateway > Routing >" >&2
-    echo "Virtual Keys), then save it: security add-generic-password -U -s connect-doom -a llm-gateway -w" >&2
-    exit 1
-  fi
-  export CONNECT_AI_GATEWAY_KEY
-  [[ -n "$MODEL" ]] && export PLAY_GATEWAY_MODEL="$MODEL"
+# The LLM Gateway takes a gateway virtual key (cgw_sk_...), not the Connect AI token: for
+# --model, a bench, and the Options menu's Model row (offline, nothing asks the Keychain)
+if [[ -z "${CONNECT_AI_GATEWAY_KEY:-}" && ( -n "$GATEWAY" || "$MODE" == live || "$MODE" == again ) ]]; then
+  CONNECT_AI_GATEWAY_KEY=$(security find-generic-password -s connect-doom -a llm-gateway -w 2>/dev/null || true)
 fi
+if [[ -n "$GATEWAY" && -z "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
+  echo "No LLM Gateway key for $GATEWAY. Issue a virtual key in Connect AI (LLM Gateway > Routing >" >&2
+  echo "Virtual Keys), then save it: security add-generic-password -U -s connect-doom -a llm-gateway -w" >&2
+  exit 1
+fi
+if [[ -n "$MODEL" ]]; then export PLAY_GATEWAY_MODEL="$MODEL"; fi
+# The Options menu's Model row: Claude Code, then the models the gateway key may use (its
+# project's allowlist; the last list if the gateway doesn't answer in 4 s), then any named above
+MENU_MODELS=claude-code ALLOWED=""
+if [[ -n "${CONNECT_AI_GATEWAY_KEY:-}" ]]; then
+  export CONNECT_AI_GATEWAY_KEY
+  ALLOWED=$(python3 gateway_run.py models 2>/dev/null || true)
+fi
+for m in ${ALLOWED//,/ } $MODEL ${MODELS//,/ }; do [[ ",$MENU_MODELS," == *",$m,"* ]] || MENU_MODELS+=",$m"; done
+export PSDOOM_AGENT_MODELS="$MENU_MODELS"
 
 if [[ -n "$BOOTH" ]]; then
   # Back-to-back games for a booth. The screen stays awake between games; Ctrl-C in this
@@ -202,6 +208,9 @@ print(*[1 if o.get(k) else "-" for k in ("claude_plays", "auto_replay", "god_mod
     GOD=1   # Claude starts in god mode, as switching Claude plays on in the menu does
   fi
   export PSDOOM_OPT_GOD=${GOD:-0} PSDOOM_OPT_SAVED=${SAVED:-0} PSDOOM_OPT_OFFLINE=${OFFLINE:-0}
+  # the Model row's pick: the last booth game's, else --model's, else Claude Code
+  PSDOOM_AGENT_MODEL=$(python3 -c 'import json; print(json.load(open("state/options.json")).get("model") or "")' 2>/dev/null || true)
+  export PSDOOM_AGENT_MODEL=${PSDOOM_AGENT_MODEL:-${MODEL:-claude-code}}
   PSDOOM_OPT_MUSIC=1 PSDOOM_OPT_SFX=1
   [[ -n "$NOMUSIC" ]] && PSDOOM_OPT_MUSIC=0
   [[ -n "$NOSFX" ]] && PSDOOM_OPT_SFX=0

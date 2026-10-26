@@ -15,7 +15,8 @@
            Sin's wall, so Doom animates it.
   M_CLAUDE, M_AUTORP, M_GODMOD, M_SAVED, M_OFFAI, M_MUSON, M_SFXON  the Options menu's
            switches ("Claude plays:", "Auto replay:", "God mode:", "Saved data:", "Offline
-           Claude:", "Music:", "Sound effects:"), in the stock labels' red shading.
+           Claude:", "Music:", "Sound effects:"), in the stock labels' red shading; M_MODEL its
+           Model row ("Model:"), whose model psdoom writes after it.
 
 With --mission (state/mission.json from brief.py) it also draws the run's signs:
   CAIRM0-2 one per app room: the app, what Claude found there, and the access
@@ -44,8 +45,9 @@ FONT = "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf"
 MENU_FONT = "/System/Library/Fonts/Supplemental/Arial Black.ttf"  # closest to Freedoom's menu font
 # The stock menu labels' reds, row by row from the top (sampled from M_MESSG).
 MENU_REDS = [167, 255, 255, 239, 215, 199, 179, 167, 155, 139, 127, 115, 103, 79, 67]
-# The Options menu's switches (psdoom's PR_AgentOption order), each label drawn like the stock ones.
-MENU_SWITCHES = [("M_CLAUDE", "CLAUDE PLAYS:"), ("M_AUTORP", "AUTO REPLAY:"), ("M_GODMOD", "GOD MODE:"),
+# The Options menu's switches (psdoom's PR_AgentOption order, and its Model row), each label drawn
+# like the stock ones.
+MENU_SWITCHES = [("M_CLAUDE", "CLAUDE PLAYS:"), ("M_MODEL", "MODEL:"), ("M_AUTORP", "AUTO REPLAY:"), ("M_GODMOD", "GOD MODE:"),
                  ("M_SAVED", "SAVED DATA:"), ("M_OFFAI", "OFFLINE CLAUDE:"), ("M_MUSON", "MUSIC:"),
                  ("M_SFXON", "SOUND EFFECTS:")]
 LOGO = "connect-ai.png"  # the brand kit's connect-ai-agility-clarity.png, for dark backgrounds

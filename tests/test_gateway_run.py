@@ -102,6 +102,13 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.sent[1]["messages"], self.sent[2]["messages"])  # asked again, unchanged
         self.assertEqual([e["turn"] for e in self.events if e["kind"] == "empty_reply"], [2, 3])
 
+    def test_the_last_replys_finish_reason_is_kept(self):
+        """content_filter there means the gateway or provider blocked the reply (leaderboard: blocked)."""
+        filtered = {**reply(None), "choices": [{"message": {"role": "assistant", "content": None},
+                                                "finish_reason": "content_filter"}]}
+        self.run_loop([reply(None, [("c1", "doom__look", {})]), filtered, filtered, filtered])
+        self.assertEqual(self.events[-1]["stop"], "content_filter")
+
     def test_stops_at_max_turns(self):
         out = self.run_loop([reply(None, [(f"c{i}", "doom__look", {})]) for i in range(5)], max_turns=3)
         self.assertEqual((out["turns"], out["result"]), (3, ""))

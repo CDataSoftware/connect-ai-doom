@@ -96,7 +96,7 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
              for name, (_, desc, schema) in tools.items()]
     messages = [{"role": "user", "content": prompt}]
     log("session", model=model, tools=sorted(f"mcp__{name}" for name in tools))
-    started, turns, final, empty = time.time(), 0, "", 0
+    started, turns, final, empty, stop = time.time(), 0, "", 0, None
     tokens = {"input": 0, "output": 0}
     while turns < max_turns:
         compact(messages)
@@ -104,7 +104,7 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
         usage = reply.get("usage") or {}
         tokens["input"] += usage.get("prompt_tokens") or 0
         tokens["output"] += usage.get("completion_tokens") or 0
-        msg = reply["choices"][0]["message"]
+        msg, stop = reply["choices"][0]["message"], reply["choices"][0].get("finish_reason")
         if not (msg.get("content") or "").strip() and not msg.get("tool_calls") and empty < EMPTY_RETRIES:
             empty += 1                  # not a turn the model played: the same request again
             log("empty_reply", turn=turns + 1, finish_reason=reply["choices"][0].get("finish_reason"))
@@ -139,7 +139,7 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete):
                 ms=round((time.time() - start) * 1000))
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": out[:RESULT_CHARS]})
     log("done", cost_usd=None, duration_ms=round((time.time() - started) * 1000), turns=turns, text=final,
-        tokens=tokens, empty_replies=empty)
+        tokens=tokens, empty_replies=empty, stop=stop)    # stop: why the last reply ended (content_filter: blocked)
     return {"result": final, "turns": turns, "tokens": tokens, "empty_replies": empty}
 
 

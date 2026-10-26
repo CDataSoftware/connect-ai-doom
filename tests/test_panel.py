@@ -346,14 +346,14 @@ class PanelTest(unittest.TestCase):
                   "vault_kept": 3, "vault_runs": 3, "tokens": 410_000, "cost_usd": 0.33, "data": "saved"},
                  {"rank": 2, "model": "gemini-3.7-flash", "harness": "gateway", "runs": 2, "cleared": 0,
                   "time_to_clear_s": None, "killed": 0.4, "stuck": 4.5, "urgent_first": None, "vault_kept": 0,
-                  "vault_runs": 0, "tokens": None, "cost_usd": None, "data": "live"}]
+                  "vault_runs": 0, "tokens": None, "cost_usd": None, "data": "live", "blocked": 2}]
         ids = self.render(leaderboard=board, game={"mode": "claude", "started": 1, "model": "gemini-3.7-flash",
                                                    "bench": [4, 6]})
         self.assertEqual(ids["board-meta"]["text"], "BENCH: RUN 4 OF 6")
         html = ids["board-rows"]["html"]
         self.assertRegex(html, r"claude-sonnet-5-5 \(Claude Code\)</td>\s*<td>3/3</td><td>4:08</td><td class=\"opt\">100%</td><td>0</td>"
                                r"\s*<td>93%</td><td>3/3</td>\s*<td class=\"opt\">410k</td>\s*<td class=\"opt\">\$0.33</td>")
-        self.assertRegex(html, r'<tr class="now"><td class="rank">2</td><td class="model">gemini-3.7-flash <span class="data">LIVE DATA</span></td>')
+        self.assertRegex(html, r'<tr class="now"><td class="rank">2</td><td class="model">gemini-3.7-flash <span class="data">LIVE DATA</span> <span class="data">2 BLOCKED</span></td>')
         self.assertIn("<td>0/2</td><td>-</td><td class=\"opt\">40%</td><td>4.5</td>", html)
         self.assertEqual(ids["now-mode"]["text"], "GEMINI-3.7-FLASH IS PLAYING · LIVE")
         ids = self.render(leaderboard=board, game={"mode": "claude", "started": 1})   # Claude Code plays

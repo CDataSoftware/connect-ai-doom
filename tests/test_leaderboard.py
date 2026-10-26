@@ -75,6 +75,17 @@ class ScoreTest(unittest.TestCase):
         self.assertIsNone(row["time_to_clear_s"])
         self.assertEqual(row["longest_stall_s"], 5)             # from arriving in room 1 to the kill
 
+    def test_records_count_once_and_only_from_the_start(self):
+        """A record still spawning in at the start, or a duplicate, isn't one killed or left."""
+        row = leaderboard.score(Feed().events, MISSION, URGENT, [3, 4, 4, 5], [4, 5, 6, 6, 7], model="m",
+                                harness="gateway", data="saved", ended="done")
+        self.assertEqual((row["records"], row["killed"]), (3, 1))
+
+    def test_a_filtered_reply_marks_the_run_blocked(self):
+        f = Feed().go("keycards", "lobby")
+        f.events.append({"t": f.t + 1, "kind": "done", "turns": 4, "stop": "content_filter"})
+        self.assertEqual(score(f, alive_after=[3, 4, 5, 6])["ended"], "blocked")
+
     def test_urgent_first_and_a_routine_kill_too_soon(self):
         f = Feed().go("room 1").attack(6).attack(3).go("room 2").attack(4)   # room 1's routine record first
         self.assertEqual(score(f, alive_after=[5])["urgent_first"], 0.5)
@@ -103,8 +114,9 @@ class BoardTest(unittest.TestCase):
         self.state = Path(tmp.name)
 
     def run_(self, model, cleared, time_to_clear=None, killed=4, stuck=0, level="L1", vault="kept", tokens=1000,
-             data="saved", cost=None):
+             data="saved", cost=None, ended="done"):
         leaderboard.record({"t": 1, "model": model, "harness": "gateway", "level": level, "data": data, "records": 4,
+                            "ended": ended,
                             "killed": killed, "cleared": cleared, "time_to_clear_s": time_to_clear, "stuck": stuck,
                             "urgent_first": 1.0, "vault": vault, "tokens": {"input": tokens, "output": 0},
                             "cost_usd": cost})
@@ -124,6 +136,16 @@ class BoardTest(unittest.TestCase):
         self.assertEqual((fast["cleared"], fast["time_to_clear_s"], fast["stuck"]), (2, 130, 0))   # medians
         self.assertEqual((fast["vault_kept"], fast["vault_runs"]), (2, 3))
         self.assertEqual(len(leaderboard.board()), 4)            # every level
+
+    def test_blocked_runs_are_counted_apart(self):
+        self.run_("sonnet", True, 150)
+        self.run_("sonnet", False, killed=0, ended="blocked")
+        [b] = leaderboard.board("L1")
+        self.assertEqual((b["runs"], b["blocked"], b["cleared"], b["clear_rate"], b["killed"]), (1, 1, 1, 1.0, 1.0))
+        self.run_("only blocked", False, killed=0, ended="blocked")
+        self.assertEqual([(b["model"], b["runs"], b["blocked"]) for b in leaderboard.board("L1")],
+                         [("sonnet", 1, 1), ("only blocked", 0, 1)])
+        self.assertIn("BLOCKED", leaderboard.table(leaderboard.board("L1")))
 
     def test_live_and_saved_runs_are_ranked_apart(self):
         self.run_("gemini", True, 100, data="live")

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect AI × DOOM licenses</title>
+<meta name="description" content="The licenses of the software, art and fonts in Connect AI × DOOM's browser version.">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root {
+    --depth: #15151C; --depth-2: #1D1D26; --line: #34344A; --clarity: #F1EEE9; --balance: #B5B9BC;
+    --agility: #FFE500; --doom-red: #E8290B;
+    --pixel: "Press Start 2P", monospace;
+    --sans: "DM Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--depth); color: var(--clarity); font: 16px/1.6 var(--sans); }
+  a { color: var(--agility); }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 16px; }
+  nav.top { border-bottom: 1px solid var(--line); }
+  nav.top .wrap { display: flex; align-items: center; gap: 18px; padding-top: 14px; padding-bottom: 14px; }
+  nav.top .home { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: auto; }
+  nav.top .home img { height: 22px; display: block; }
+  nav.top .home .doom { font: 13px/1 var(--pixel); color: var(--doom-red); letter-spacing: 1px; }
+  nav.top .home .x { color: var(--balance); font: 15px/1 var(--mono); }
+  nav.top a.link { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
+  nav.top a.link:hover, nav.top a.link:focus-visible { color: var(--agility); }
+  h1 { font: 700 clamp(26px, 5vw, 36px)/1.15 var(--sans); margin: 40px 0 12px; }
+  .lede { color: var(--balance); margin: 0 0 28px; }
+  section { background: var(--depth-2); border: 1px solid var(--line); border-radius: 4px; padding: 16px 18px; margin: 0 0 12px; }
+  h2 { font: 10px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; margin: 0 0 8px; }
+  p { margin: 0 0 8px; }
+  p:last-child { margin: 0; }
+  .muted { color: var(--balance); font-size: 14px; }
+  footer { padding: 24px 0 40px; color: var(--balance); font-size: 14px; }
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap">
+  <a class="home" href="./"><img src="brand/connect-ai.svg" alt="Connect AI"><span class="x">×</span><span class="doom">DOOM</span></a>
+  <a class="link" href="./">PLAY</a>
+  <a class="link" href="about.html">ABOUT</a>
+</div></nav>
+
+<main class="wrap">
+  <h1>Licenses</h1>
+  <p class="lede">This page is built from open source software, art and fonts. Here's each one, with its license.</p>
+
+  <section>
+    <h2>CONNECT AI × DOOM</h2>
+    <p>The project's own code, by CData Software: <a href="licenses/connect-ai-doom.txt">MIT License</a>.
+      Source on <a href="https://github.com/CDataSoftware/connect-ai-doom" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+  </section>
+
+  <section>
+    <h2>THE GAME ENGINE</h2>
+    <p><a href="https://github.com/keymon/psdoom-ng" target="_blank" rel="noopener noreferrer">psdoom-ng</a>, built on
+      Chocolate Doom and id Software's Doom source code, under the <a href="licenses/gpl-2.0.txt">GNU General Public
+      License, version 2</a>.</p>
+    <p>The source for the version running here: psdoom-ng at commit <code>83d02baf</code>, with this project's
+      <a href="https://github.com/CDataSoftware/connect-ai-doom/blob/main/patches/psdoom-ng-connect-doom.patch" target="_blank" rel="noopener noreferrer">game patch</a>
+      and <a href="https://github.com/CDataSoftware/connect-ai-doom/blob/main/web/psdoom-web.patch" target="_blank" rel="noopener noreferrer">browser patch</a>,
+      built by <a href="https://github.com/CDataSoftware/connect-ai-doom/blob/main/web/build.sh" target="_blank" rel="noopener noreferrer">web/build.sh</a>.</p>
+    <p class="muted">Compiled to WebAssembly with Emscripten, whose runtime and libraries are under the MIT and
+      University of Illinois/NCSA licenses.</p>
+  </section>
+
+  <section>
+    <h2>ART, MONSTERS AND SOUNDS</h2>
+    <p><a href="https://freedoom.github.io/" target="_blank" rel="noopener noreferrer">Freedoom</a> 0.13.0, © the
+      contributors to the Freedoom project: <a href="licenses/freedoom.txt">BSD 3-Clause License</a>. The maps this
+      level doesn't use are left out of the copy served here.</p>
+  </section>
+
+  <section>
+    <h2>FONTS</h2>
+    <p>All under the SIL Open Font License 1.1: <a href="fonts/OFL-dm-sans.txt">DM Sans</a>,
+      <a href="fonts/OFL-dm-mono.txt">DM Mono</a>, <a href="fonts/OFL-press-start-2p.txt">Press Start 2P</a> and
+      <a href="fonts/OFL-vt323.txt">VT323</a>.</p>
+  </section>
+
+  <section>
+    <h2>TRADEMARKS</h2>
+    <p>CData, CData Connect AI and their logos are trademarks of CData Software. DOOM is a trademark of id Software;
+      this project isn't affiliated with or endorsed by id Software.</p>
+  </section>
+</main>
+
+<footer><div class="wrap"><a href="./">Back to the game</a> · <a href="about.html">About</a></div></footer>
+</body>
+</html>

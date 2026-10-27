@@ -94,10 +94,29 @@
   };
 
   // ---------- the game ----------
-  const files = {"/doom/freedoom2.wad": "freedoom2.wad", "/doom/level.wad": "level/level.wad",
-                 "/doom/brand.wad": "level/brand.wad", "/doom/level.deh": "level/level.deh",
-                 "/doom/labels.tsv": "level/labels.tsv"};
+  const files = {"/doom/level.wad": "level/level.wad", "/doom/brand.wad": "level/brand.wad",
+                 "/doom/level.deh": "level/level.deh", "/doom/labels.tsv": "level/labels.tsv"};
   const get = u => realFetch(u).then(r => { if (!r.ok) throw new Error(`${u}: ${r.status}`); return r; });
+
+  // Freedoom's WAD, gzipped by web/build.sh: most of the download, so it reports its progress. A
+  // server may unzip it on the way (Content-Encoding); then the bytes arrive ready to use.
+  async function downloadWad(onProgress) {
+    const r = await get("freedoom2.wad.gz");
+    const total = Number(r.headers.get("Content-Length")) || 0;
+    const reader = r.body.getReader(), chunks = [];
+    let loaded = 0;
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.length;
+      onProgress(loaded, total);
+    }
+    const bytes = new Blob(chunks);
+    const head = new Uint8Array(await bytes.slice(0, 2).arrayBuffer());
+    if (head[0] !== 0x1f || head[1] !== 0x8b) return bytes.arrayBuffer();
+    return new Response(bytes.stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  }
   // The keys the game plays with: Firefox has defaults for some of them (find as you type, scrolling)
   // that Emscripten's SDL leaves on, since the game asks for typed characters.
   const GAME_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "KeyE", "KeyP", "Space", "ArrowUp", "ArrowDown",
@@ -119,6 +138,7 @@
         e.preventDefault();
     }, true);
 
+    // The level first (small), so the start card is up while Freedoom downloads.
     const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
       get("level/state.json").then(r => r.json()), get("level/cache.json").then(r => r.json()),
       get("level/said.json").then(r => r.json()), get("level/monsters.txt").then(r => r.text()),
@@ -129,6 +149,7 @@
     state = {...baked, game: {mode: "player", started: Date.now() / 1000}, ask: null};
     plainWords();
     const coach = makeCoach(canvas);
+    const wad = await downloadWad(coach.loading);
 
     window.Module = {
       canvas,
@@ -139,6 +160,7 @@
         FS.mkdir("/doom");
         FS.mkdir("/doom/agent");   // the agent channel: replay.js steers through it; the shotgun start lives there too
         Object.keys(files).forEach((path, i) => FS.writeFile(path, new Uint8Array(bufs[i])));
+        FS.writeFile("/doom/freedoom2.wad", new Uint8Array(wad));
         // raid.sh's controls: WASD, the mouse turns, left click or Space fires, E or right click opens doors.
         FS.writeFile("/doom/controls.cfg", "key_up 17\nkey_down 31\nkey_strafeleft 30\nkey_straferight 32\n" +
           "key_left 75\nkey_right 77\nkey_fire 57\nkey_use 18\nkey_speed 42\nkey_strafe 56\nuse_mouse 1\n" +
@@ -180,8 +202,14 @@
     const board = document.querySelector("#board h2");
     if (board) board.insertAdjacentHTML("afterend", '<p class="board-lead">We gave each AI model the same Doom ' +
       "tools and the same Connect AI access, and let it play this level. Each run is scored from the game itself.</p>");
+    const note = document.querySelector("#board .note");
+    if (note) note.textContent = "Cleared: runs that killed every record. Time: the median time to the last kill. " +
+      "Stuck: moves with nothing to show for them. Urgent 1st: how often it went for the urgent records first. " +
+      "Vault: runs that tried the red door and took Connect AI's no. REF: Claude Code, playing by the same rules " +
+      "through its own harness, for reference.";
     const style = document.createElement("style");
     style.textContent = `.board-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: #E5E2DA; }
+      #board-meta, #board .model .data { display: none; }   /* rule versions, data sources, content-filter stops: bench notes */
       #stage .bar.bottom .fine a { color: var(--agility); }`;
     document.head.appendChild(style);
   }
@@ -352,7 +380,11 @@
       setTimeout(() => finish("played"), 5000);
     });
 
+    const mb = n => (n / 1e6).toFixed(1);
     return {
+      loading(loaded, total) {
+        intro.querySelector("[data-go=play]").textContent = total ? `LOADING ${mb(loaded)} / ${mb(total)} MB` : `LOADING ${mb(loaded)} MB`;
+      },
       ready() {
         const [play, watchBtn] = intro.querySelectorAll("[data-go]");
         play.textContent = "PLAY";

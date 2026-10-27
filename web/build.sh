@@ -61,7 +61,16 @@ python3 connect_doom.py state > "$L/state.json"   # the panel's state before the
 rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/about.html web/og.jpg wads/freedoom2.wad "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/about.html web/licenses.html \
+  web/og.jpg "$DIST/"
+# Freedoom without the maps the game never loads, gzipped: Pages serves it as is, and the page unzips it
+python3 web/trim_wad.py wads/freedoom2.wad "$DIST/freedoom2.wad"
+gzip -9 -n "$DIST/freedoom2.wad"
+# What the site distributes comes with its licenses (licenses.html)
+mkdir -p "$DIST/licenses"
+cp web/licenses/freedoom.txt "$DIST/licenses/"
+cp LICENSE "$DIST/licenses/connect-ai-doom.txt"
+cp "$SRC/trunk/COPYING" "$DIST/licenses/gpl-2.0.txt"
 python3 - "$DIST/index.html" <<'PY'
 import sys
 page = open("panel/index.html").read()

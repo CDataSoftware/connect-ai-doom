@@ -80,6 +80,22 @@ class PanelTest(unittest.TestCase):
         self.assertIn("123-45-6789", pii)
         self.assertIn("claude-sonnet-5-5", pii)
 
+    def test_saved_level_shows_claudes_line_and_its_briefing(self):
+        # the web build's level: records saved when Claude read them, with Claude's line for each
+        kills = [{"id": "Zendesk:7", "app": "Zendesk", "label": "Sync jobs", "detail": "high, open", "writable": True,
+                  "demon": 1, "killed_at": "2026-10-15T13:54:20", "lookup": None, "said": "Taking <b>it</b> down."}]
+        rooms = [{"app": "Zendesk", "writable": True, "title": "Angry", "left": 14, "urgent_left": 6, "killed": 1,
+                  "monster": {"key": "imp", "name": "Imp"}, "urgent_monster": {"key": "caco", "name": "Cacodemon"}}]
+        ids = self.render(kills=kills, kill_total=1, rooms_live=rooms, game={"mode": "player", "started": 0},
+                          records={"source": "saved-data", "fetched_at": 1792000000})
+        for html in (ids["now-big"]["html"], ids["events"]["html"]):
+            self.assertIn("Read earlier through Connect AI: not read again live", html)   # no live read to wait for
+            self.assertIn('<span class="tag">CLAUDE</span>Taking &lt;b&gt;it&lt;/b&gt; down.', html)
+        self.assertEqual(ids["s-records"]["text"], 15)            # the level's records, not the briefing's rows
+        self.assertFalse(ids["tab-brief"]["hidden"])               # the briefing that built it gets a tab
+        self.assertTrue(self.render(events=[], rooms_live=rooms, game={"mode": "player", "started": 0})["tab-brief"]["hidden"])
+        self.assertTrue(self.render()["tab-brief"]["hidden"])      # between games the briefing shows anyway
+
     def test_game_view(self):
         kills = [{"id": f"Zendesk:{i}", "app": "Zendesk", "label": f"K{i}", "detail": "high open", "writable": True,
                   "demon": i % 2, "killed_at": f"2026-10-15T13:54:{i}"} for i in range(18, 30)]
@@ -163,7 +179,7 @@ class PanelTest(unittest.TestCase):
         # the Options menu's saved data switch: by choice, so no error styling
         ids = self.render(rooms_live=rooms, records={"source": "saved-data", "fetched_at": fetched},
                           game={"mode": "player", "started": 0})
-        self.assertIn('<div class="live">Saved data (Options menu): the records from Oct 15, 15:35',
+        self.assertIn('<div class="live">Saved data: the records from Oct 15, 15:35',
                       ids["rooms-live"]["html"])
         self.assertNotIn("Live:", ids["rooms-live"]["html"])
         self.assertEqual(ids["now-mode"]["text"], "YOU'RE PLAYING · SAVED DATA")   # not "LIVE"

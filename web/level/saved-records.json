@@ -1,0 +1,476 @@
+{
+ "mission": "4e3ac5fb238c",
+ "fetched_at": 1793041630.311316,
+ "rooms": [
+  {
+   "connection": "Salesforce",
+   "rows": 15,
+   "ms": 23035,
+   "at": 1793041630.309131
+  },
+  {
+   "connection": "Zendesk",
+   "rows": 15,
+   "ms": 13147,
+   "at": 1793041620.421083
+  },
+  {
+   "connection": "Stripe1",
+   "rows": 15,
+   "ms": 10345,
+   "at": 1793041617.6192908
+  }
+ ],
+ "monsters": [
+  {
+   "pid": 353898,
+   "id": "Salesforce:006gK0000042kz7QAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q1-REN-Evergreen State A",
+   "detail": "$15127, Perception Analysis, closes 2026-08-24",
+   "name": "REN",
+   "demon": 1
+  },
+  {
+   "pid": 541770,
+   "id": "Salesforce:006gK00000I4BwzQAF",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2026 Q2-REN-Evergreen State A",
+   "detail": "$17495, Value Proposition, closes 2026-08-24",
+   "name": "REN",
+   "demon": 1
+  },
+  {
+   "pid": 399870,
+   "id": "Salesforce:006gK0000042kzNQAQ",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2022 Q1-NB-Desert Power Servi",
+   "detail": "$33077, Negotiation/Review, closes 2026-08-30",
+   "name": "DESERT",
+   "demon": 1
+  },
+  {
+   "pid": 632799,
+   "id": "Salesforce:006gK0000042kzUQAQ",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q3-NB-Southern Energy Sy",
+   "detail": "$76718, Negotiation/Review, closes 2026-08-30",
+   "name": "SOUTHERN",
+   "demon": 1
+  },
+  {
+   "pid": 411807,
+   "id": "Salesforce:006gK0000042kzZQAQ",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q2-NB-Premier Healthcare",
+   "detail": "$5969, Negotiation/Review, closes 2026-08-30",
+   "name": "PREMIER",
+   "demon": 1
+  },
+  {
+   "pid": 239016,
+   "id": "Salesforce:006gK0000042kzjQAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2024 Q3-NB-Bluegrass Academic",
+   "detail": "$20129, Negotiation/Review, closes 2026-08-30",
+   "name": "BLUEGRASS",
+   "demon": 1
+  },
+  {
+   "pid": 466224,
+   "id": "Salesforce:006gK0000042kzoQAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2022 Q2-NB-Pacific Northwest ",
+   "detail": "$52249, Negotiation/Review, closes 2026-08-30",
+   "name": "PACIFIC",
+   "demon": 1
+  },
+  {
+   "pid": 344310,
+   "id": "Salesforce:006gK0000042l03QAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q4-NB-Premier Card Servi",
+   "detail": "$23466, Negotiation/Review, closes 2026-08-30",
+   "name": "PREMIER",
+   "demon": 1
+  },
+  {
+   "pid": 30453,
+   "id": "Salesforce:006gK0000042l09QAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q3-NB-European Financial",
+   "detail": "$27272, Negotiation/Review, closes 2026-08-30",
+   "name": "EUROPEAN",
+   "demon": 1
+  },
+  {
+   "pid": 461505,
+   "id": "Salesforce:006gK0000042l0UQAQ",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q1-NB-Chemical Solutions",
+   "detail": "$29663, Negotiation/Review, closes 2026-08-30",
+   "name": "CHEMICAL",
+   "demon": 1
+  },
+  {
+   "pid": 745245,
+   "id": "Salesforce:006gK0000042l0hQAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2022 Q3-NB-Buckeye State Univ",
+   "detail": "$4669, Negotiation/Review, closes 2026-08-30",
+   "name": "BUCKEYE",
+   "demon": 1
+  },
+  {
+   "pid": 462330,
+   "id": "Salesforce:006gK0000042l0qQAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2024 Q4-NB-Sunshine State Uni",
+   "detail": "$91072, Negotiation/Review, closes 2026-08-30",
+   "name": "SUNSHINE",
+   "demon": 1
+  },
+  {
+   "pid": 412668,
+   "id": "Salesforce:006gK0000042l0zQAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2024 Q4-NB-Storage Networks C",
+   "detail": "$5517, Negotiation/Review, closes 2026-08-30",
+   "name": "STORAGE",
+   "demon": 1
+  },
+  {
+   "pid": 494586,
+   "id": "Salesforce:006gK0000042l17QAA",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2023 Q1-NB-Network Infrastruc",
+   "detail": "$20890, Negotiation/Review, closes 2026-08-30",
+   "name": "NETWORK",
+   "demon": 1
+  },
+  {
+   "pid": 857013,
+   "id": "Salesforce:006gK0000042l1BQAQ",
+   "app": "Salesforce",
+   "writable": true,
+   "label": "2024 Q1-NB-Hardware Solutions",
+   "detail": "$24529, Negotiation/Review, closes 2026-08-30",
+   "name": "HARDWARE",
+   "demon": 1
+  },
+  {
+   "pid": 440362,
+   "id": "Zendesk:284",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Quote and Proposal Request - ",
+   "detail": "normal, new, since 2026-02-04",
+   "name": "QUOTE-AND",
+   "demon": 0
+  },
+  {
+   "pid": 210199,
+   "id": "Zendesk:283",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Quote and Proposal Request",
+   "detail": "normal, new, since 2026-02-04",
+   "name": "QUOTE-AND",
+   "demon": 0
+  },
+  {
+   "pid": 799960,
+   "id": "Zendesk:280",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Incorrect billing charges on ",
+   "detail": "normal, new, since 2025-12-11",
+   "name": "INCORRECT",
+   "demon": 0
+  },
+  {
+   "pid": 895051,
+   "id": "Zendesk:287",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Escalation: still no working ",
+   "detail": "urgent, open, since 2026-07-09",
+   "name": "ESCALATION",
+   "demon": 1
+  },
+  {
+   "pid": 394450,
+   "id": "Zendesk:285",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Sync jobs failing after Snowf",
+   "detail": "high, open, since 2026-07-09",
+   "name": "SYNC-JOBS",
+   "demon": 1
+  },
+  {
+   "pid": 34078,
+   "id": "Zendesk:282",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Phone System Setup for New Br",
+   "detail": "normal, open, since 2025-12-11",
+   "name": "PHONE-SYSTEM",
+   "demon": 0
+  },
+  {
+   "pid": 307042,
+   "id": "Zendesk:281",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Internet Connection Issues at",
+   "detail": "high, open, since 2025-12-11",
+   "name": "INTERNET",
+   "demon": 1
+  },
+  {
+   "pid": 1120,
+   "id": "Zendesk:279",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Phone service intermittent ou",
+   "detail": "urgent, open, since 2025-12-11",
+   "name": "PHONE",
+   "demon": 1
+  },
+  {
+   "pid": 381463,
+   "id": "Zendesk:278",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Slow internet connection at T",
+   "detail": "high, open, since 2025-12-11",
+   "name": "SLOW",
+   "demon": 1
+  },
+  {
+   "pid": 314611,
+   "id": "Zendesk:260",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Database connection timeout",
+   "detail": "high, open, since 2025-08-06",
+   "name": "DATABASE",
+   "demon": 1
+  },
+  {
+   "pid": 364303,
+   "id": "Zendesk:259",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Sync agent installation issue",
+   "detail": "high, open, since 2025-08-06",
+   "name": "SYNC-AGENT",
+   "demon": 1
+  },
+  {
+   "pid": 858238,
+   "id": "Zendesk:258",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Sync conflicts resolution",
+   "detail": "normal, open, since 2025-08-06",
+   "name": "SYNC",
+   "demon": 0
+  },
+  {
+   "pid": 99325,
+   "id": "Zendesk:255",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "API endpoint returning 500 er",
+   "detail": "urgent, open, since 2025-08-06",
+   "name": "API-ENDPOINT",
+   "demon": 1
+  },
+  {
+   "pid": 302119,
+   "id": "Zendesk:256",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "Request for PowerBI connector",
+   "detail": "low, open, since 2025-08-06",
+   "name": "REQUEST",
+   "demon": 0
+  },
+  {
+   "pid": 620449,
+   "id": "Zendesk:257",
+   "app": "Zendesk",
+   "writable": true,
+   "label": "How to handle deleted records",
+   "detail": "normal, open, since 2025-08-06",
+   "name": "HOW-TO",
+   "demon": 0
+  },
+  {
+   "pid": 789383,
+   "id": "Stripe1:in_1UKHD1QhXx8Qe5UDR6Uqs3aK",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Computer Systems International",
+   "detail": "$1499, open, due 2026-10-27",
+   "name": "COMPUTER",
+   "demon": 0
+  },
+  {
+   "pid": 580637,
+   "id": "Stripe1:in_1UKHD1QhXx8Qe5UDqi4biumt",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Premier Healthcare Alliance",
+   "detail": "$1499, open, due 2026-10-27",
+   "name": "PREMIER",
+   "demon": 0
+  },
+  {
+   "pid": 716510,
+   "id": "Stripe1:in_1UKHCuQhXx8Qe5UD1wYX0Usi",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Buckeye State University",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "BUCKEYE",
+   "demon": 0
+  },
+  {
+   "pid": 763031,
+   "id": "Stripe1:in_1UKHCuQhXx8Qe5UDQtQxUnpo",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Western Faith Medical Center",
+   "detail": "$1499, open, due 2026-10-27",
+   "name": "WESTERN",
+   "demon": 0
+  },
+  {
+   "pid": 489944,
+   "id": "Stripe1:in_1UKHCZQhXx8Qe5UDgEgCIvt5",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Plains State Energy",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "PLAINS",
+   "demon": 0
+  },
+  {
+   "pid": 434750,
+   "id": "Stripe1:in_1UKHCZQhXx8Qe5UDrQmnOkUZ",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Aurora Healthcare Systems",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "AURORA",
+   "demon": 0
+  },
+  {
+   "pid": 663494,
+   "id": "Stripe1:in_1UKHCZQhXx8Qe5UD702LCp9B",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Network Infrastructure Inc",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "NETWORK",
+   "demon": 0
+  },
+  {
+   "pid": 716120,
+   "id": "Stripe1:in_1UKHByQhXx8Qe5UDkvsNR6Dm",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Silver State Banking",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "SILVER",
+   "demon": 0
+  },
+  {
+   "pid": 263816,
+   "id": "Stripe1:in_1UKHBkQhXx8Qe5UDJIIQ92Y6",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Advanced Defense Technologies",
+   "detail": "$899, open, due 2026-10-27",
+   "name": "ADVANCED",
+   "demon": 0
+  },
+  {
+   "pid": 183776,
+   "id": "Stripe1:in_1UKHBdQhXx8Qe5UDgJpdrUdl",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Harbor View Credit Union",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "HARBOR",
+   "demon": 0
+  },
+  {
+   "pid": 535505,
+   "id": "Stripe1:in_1UKHBVQhXx8Qe5UDJDrInGvL",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Suncoast Regional Hospital",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "SUNCOAST",
+   "demon": 0
+  },
+  {
+   "pid": 787952,
+   "id": "Stripe1:in_1UKHAyQhXx8Qe5UDOwJ5H0CN",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Cascade Valley Health Clinic",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "CASCADE",
+   "demon": 0
+  },
+  {
+   "pid": 160769,
+   "id": "Stripe1:in_1UKHAxQhXx8Qe5UDwr2uBnPR",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Tri-State Nonprofit Alliance",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "TRI-STATE",
+   "demon": 0
+  },
+  {
+   "pid": 772505,
+   "id": "Stripe1:in_1UKHAwQhXx8Qe5UD5PPVBkMJ",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Riverside County Schools",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "RIVERSIDE",
+   "demon": 0
+  },
+  {
+   "pid": 283172,
+   "id": "Stripe1:in_1UKHAqQhXx8Qe5UD5u5FDe7s",
+   "app": "Stripe",
+   "writable": false,
+   "label": "Greenfield Public Library",
+   "detail": "$299, open, due 2026-10-27",
+   "name": "GREENFIELD",
+   "demon": 0
+  }
+ ]
+}

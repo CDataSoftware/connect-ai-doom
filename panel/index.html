@@ -256,6 +256,14 @@
   .tabs button.on { color: var(--depth); background: var(--agility); border-color: var(--agility); }
   body.tab-board main > :not(.tabs):not(#board) { display: none !important; }
   body:not(.tab-board) #board { display: none !important; }
+  /* the briefing's tab, during a game: how Claude built this level, call by call */
+  body.tab-brief main > :not(.tabs):not(.brief) { display: none !important; }
+  body.in-game.tab-brief main > section.brief { display: block !important; }
+  .tabs button[hidden] { display: none; }
+  body.stage.in-game.tab-brief #side { display: block; overflow-y: auto; }
+  body.stage.in-game.tab-brief main { display: grid; }
+  body.stage.in-game.tab-brief main > section.brief.grow { display: block !important; }
+  body.in-game.tab-brief #feed { max-height: none; }
   #board .note { margin-top: 10px; font-size: 12px; color: var(--balance); line-height: 1.5; }
   #board .empty { color: var(--balance); }
   .board tr.now td { background: var(--depth-3); }
@@ -275,6 +283,8 @@
   .lread.wait { color: var(--balance); }
   .lread.wait .tag::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--agility); animation: pulse .8s infinite; }
   .lread.err { color: #FFB4AC; }
+  .said { font-size: 14px; line-height: 1.4; color: #E5E2DA; margin-top: 6px; }
+  .said .tag { font: 8px/1.8 var(--pixel); color: #8FA8FF; margin-right: 6px; }
   .now .lread { font-size: 14px; margin-top: 6px; }
   .ev .t { font: 12px var(--mono); color: var(--balance); }
   .ev .k { font: 8px/1.8 var(--pixel); color: var(--doom-red); }
@@ -500,7 +510,7 @@
   <div class="stat model"><div class="num" id="s-model">STANDBY</div><div class="lbl">MODEL</div></div>
 </div>
 <main>
-  <nav class="tabs" id="tabs"><button data-tab="live" class="on">LIVE FEED</button><button data-tab="board">LEADERBOARD</button></nav>
+  <nav class="tabs" id="tabs"><button data-tab="live" class="on">LIVE FEED</button><button data-tab="board">LEADERBOARD</button><button data-tab="brief" id="tab-brief" hidden>HOW CLAUDE BUILT IT</button></nav>
   <div class="now ingame" id="now">
     <div class="mode" id="now-mode">YOU'RE PLAYING · LIVE</div>
     <div class="big" id="now-big"><div class="hint">Grab the keycards in the lobby, then clear the rooms. Every kill shows up here.</div></div>
@@ -787,7 +797,7 @@ class Feed {
 const feed = new Feed($("feed"), "No calls yet");
 const playFeed = new Feed($("playfeed"), "Claude hasn't started playing");
 
-function renderMission(m, events, rooms) {
+function renderMission(m, events, rooms, game) {
   const done = events.some(e => e.kind === "mission");
   const q = events.find(e => e.kind === "question");
   if (q) $("ask").textContent = q.text;
@@ -801,6 +811,8 @@ function renderMission(m, events, rooms) {
     $("s-records").textContent = (rooms || []).reduce((n, r) => n + r.left + r.killed, 0);
     $("s-blocked").textContent = (m.denied || []).length;
   }
+  // during a game, the records in its level, not every row the briefing read on the way
+  if (game && (rooms || []).length) $("s-records").textContent = rooms.reduce((n, r) => n + r.left + r.killed, 0);
   const model = feed.model || playFeed.model;    // offline there's no briefing, only Claude playing
   if (model) $("s-model").textContent = model.replace(/^claude-/, "").toUpperCase();
   if (!done || !m) return;
@@ -832,8 +844,9 @@ function legendMonsters(rooms) {
 }
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
-function liveRead(k, demo) {
+function liveRead(k, demo, saved) {
   if (demo) return `<div class="lread"><span class="tag">OFFLINE</span>Sample level: not read live</div>`;
+  if (saved) return `<div class="lread"><span class="tag">SAVED</span>Read earlier through Connect AI: not read again live</div>`;
   const l = k.lookup;
   if (!l && Date.now() / 1000 - k.at > 60) return `<div class="lread err"><span class="tag">CONNECT AI</span>No live read came back</div>`;
   if (!l) return `<div class="lread wait"><span class="tag">CONNECT AI</span>Reading this record live from ${esc(k.app)}</div>`;
@@ -868,7 +881,7 @@ function refreshed(r, records) {
   if (records?.source === "saved")   // Connect AI didn't answer at launch: the level's last good records
     return `<div class="live err">Saved ${when()}: Connect AI isn't answering</div>`;
   if (records?.source === "saved-data")   // the Options menu's saved data switch: Connect AI isn't asked
-    return `<div class="live">Saved data (Options menu): the records from ${when()}</div>`;
+    return `<div class="live">Saved data: the records from ${when()}</div>`;
   if (!r) return "";
   if (r.error) return `<div class="live err">Refresh failed: ${esc(r.error)}</div>`;
   const ago = Math.max(0, Math.round(Date.now() / 1000 - r.at));
@@ -931,13 +944,14 @@ function renderGame(s) {
 
   const evs = gameEvents(s);
   const demo = (m.rooms || []).length > 0 && m.rooms.every(r => r.rows);
+  const saved = ["saved", "saved-data"].includes(s.records?.source);
   const isNew = e => seenEvents && !seenEvents.has(evKey(e)) ? " new" : "";
   setHTML($("events"), evs.length ? evs.map(e => e.kind === "vault"
     ? `<div class="ev vault${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">RED DOOR</span>
         <span class="w"><b>Connect AI</b> ${e.blocked ? "blocked it again, live" : "answered"} in ${(e.ms / 1000).toFixed(1)} s: ${esc(e.text)}</span></div>`
     : e.kind === "kill"
     ? `<div class="ev kill${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
-        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo)}</span></div>`
+        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo, saved)}${e.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(e.said)}</div>` : ""}</span></div>`
     : `<div class="ev hit${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)}</span></div>`).join("")
     : '<div class="empty">Nothing yet. Shoot something.</div>');
@@ -966,7 +980,7 @@ function renderGame(s) {
   $("now-big").innerHTML = clear
     ? `<div class="verb clear">ALL ${rooms.length} ROOMS CLEAR</div>
        <div class="who">${s.kill_total} records cleared</div>
-       <div class="d">Each one was read again, live, through Connect AI.${(m.denied || []).length ? " Now try the red door." : ""}</div>`
+       <div class="d">${demo || saved ? "" : "Each one was read again, live, through Connect AI."}${(m.denied || []).length ? " Now try the red door." : ""}</div>`
     : last.kind === "vault"
     ? `<div class="verb">RED DOOR: CONNECT AI SAID NO, LIVE</div>
        <div class="who">${esc(last.text)}</div>
@@ -974,7 +988,8 @@ function renderGame(s) {
        <div class="sql">${vaultRequest(last)}</div>`
     : last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
-       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo)}`
+       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo, saved)}
+       ${last.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(last.said)}</div>` : ""}`
     : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${last.demon ? "Urgent: " : ""}${esc(last.detail)}</div>`;
   if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }
@@ -1288,11 +1303,12 @@ function renderStage(s, events) {
 // The tabs: the one picked last on this screen comes back (a per-viewer convenience)
 function showTab(tab) {
   document.body.classList.toggle("tab-board", tab === "board");
+  document.body.classList.toggle("tab-brief", tab === "brief");
   for (const b of $("tabs").children) b.classList.toggle("on", b.dataset.tab === tab);
   try { localStorage.setItem("tab", tab); } catch (e) {}
 }
 for (const b of $("tabs").children) b.addEventListener("click", () => showTab(b.dataset.tab));
-try { if (localStorage.getItem("tab") === "board") showTab("board"); } catch (e) {}
+try { const t = localStorage.getItem("tab"); if (t === "board" || t === "brief") showTab(t); } catch (e) {}
 
 try {
   const lg = $("legend");
@@ -1357,7 +1373,10 @@ async function tick() {
       lastRun = run;
     }
     feed.apply(events);
-    renderMission(s.mission, events, s.rooms_live);
+    // During a game, the briefing that built its level gets a tab of its own.
+    $("tab-brief").hidden = !(s.game && events.length);
+    if ($("tab-brief").hidden && document.body.classList.contains("tab-brief")) showTab("live");
+    renderMission(s.mission, events, s.rooms_live, s.game);
     const play = s.play_events || [];
     $("play").hidden = !play.length || !claudePlays(s.game);
     if (play.length) playFeed.apply(play);

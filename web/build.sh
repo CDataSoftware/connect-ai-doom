@@ -38,18 +38,27 @@ rm -rf "$DIST" && mkdir -p "$DIST"
     -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV -sEXPORTED_FUNCTIONS=_main,_pr_kill -o "$DIST/psdoom.js"
 )
 
-echo "The offline level..."
+# The level: web/level's snapshot of a real one (web/snapshot.py) played on its saved records,
+# with its briefing log, leaderboard and Claude's lines; without one, the offline sample.
 L=$DIST/level
 rm -rf "$L" && mkdir -p "$L"
 export CONNECT_DOOM_STATE=$L
-python3 connect_doom.py poll --demo >/dev/null
+if [[ -f web/level/mission.json ]]; then
+  echo "The level in web/level..."
+  cp web/level/* "$L/"
+  python3 -c 'import connect_doom as c; c.restore_saved(c.read_json(c.MISSION), "saved-data") or exit("web/level: no saved records")'
+else
+  echo "The offline level..."
+  python3 connect_doom.py poll --demo >/dev/null
+  echo '{}' > "$L/said.json"
+fi
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand "$L/brand.wad" --mission "$L/mission.json"
 python3 tools/make_arena.py "$L/level-raw.wad" --mission "$L/mission.json" --records "$L/cache.json" --brand
 vendor/src/zdbsp/build/zdbsp -o "$L/level.wad" "$L/level-raw.wad" >/dev/null
 python3 tools/make_deh.py "$L/mission.json" "$L/level.deh"
 python3 tools/themes.py monsters "$L/mission.json" > "$L/monsters.txt"
 python3 connect_doom.py state > "$L/state.json"   # the panel's state before the first kill
-rm -f "$L/level-raw.wad"
+rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
 cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/about.html wads/freedoom2.wad "$DIST/"

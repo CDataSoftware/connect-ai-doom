@@ -26,7 +26,7 @@
   });
 
   // ---------- this game's records, kills and hits ----------
-  let state = null, monsters = [], labels = {};
+  let state = null, monsters = [], said = {};
   const kills = [], hits = [];
   const alive = () => monsters.filter(m => !kills.some(k => k.id === m.id));
 
@@ -55,7 +55,9 @@
     const now = Date.now() / 1000;
     if (verb === "list") return alive().map(x => `connectai ${x.pid} ${x.name} ${x.demon}`).join("\n") + "\n";
     if (verb === "kill" && m && alive().includes(m)) {
-      kills.push({...m, killed_at: new Date().toISOString().slice(0, 19), mode: "read-only", lookup: null});
+      // said: what Claude wrote about this record when it played the level (web/snapshot.py)
+      kills.push({...m, killed_at: new Date().toISOString().slice(0, 19), mode: "read-only", lookup: null,
+                  said: said[m.pid] || null});
       return killMessage(m) + "\n";
     }
     if (verb === "hit" && m) hits.push({...m, at: now});
@@ -88,15 +90,19 @@
     document.head.appendChild(style);
     document.getElementById("stage-screen").appendChild(canvas);
     canvas.addEventListener("click", () => { canvas.focus(); canvas.requestPointerLock(); });
-    // The page's own bars describe live data; this level is the offline sample.
-    const fine = document.querySelector("#stage .bar.bottom .fine");
-    if (fine) fine.textContent = "Every monster is a record from the sample CRM, help desk and billing apps, " +
-                                 "as the Connect AI MCP server would read them. Click the game to play; Esc frees the mouse.";
-
-    const [baked, cache, monsterKinds, ...bufs] = await Promise.all([
+    const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
       get("level/state.json").then(r => r.json()), get("level/cache.json").then(r => r.json()),
-      get("level/monsters.txt").then(r => r.text()), ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
+      get("level/said.json").then(r => r.json()), get("level/monsters.txt").then(r => r.text()),
+      ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
     monsters = cache.monsters;
+    said = saidJson;
+    // The page's own bars describe live data; here the records were saved when Claude read them.
+    const fine = document.querySelector("#stage .bar.bottom .fine");
+    const when = new Date(cache.fetched_at * 1000).toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric"});
+    if (fine) fine.textContent = cache.source === "demo"
+      ? "Every monster is a record from the sample CRM, help desk and billing apps. Click the game to play; Esc frees the mouse."
+      : `Every monster is a record Claude read through the Connect AI MCP server from a synthetic CRM, help desk and ` +
+        `billing account, saved ${when}. Click the game to play; Esc frees the mouse.`;
     // No question box: a new question needs Claude and Connect AI, which the Mac version runs.
     state = {...baked, game: {mode: "player", started: Date.now() / 1000}, ask: null};
 

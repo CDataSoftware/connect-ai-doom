@@ -109,6 +109,10 @@ The Options menu's Model row (`m_menu.c`, between *Claude plays* and *Auto repla
 
 `SHOT` saves the frame as `DOOMnn.pcx`, so the mode also runs headless with `SDL_VIDEODRIVER=dummy`, which is how it's tested.
 
+## The browser version
+
+`web/` builds a static site that plays one saved level in the browser; `.github/workflows/pages.yml` deploys it to GitHub Pages on each push to main that changes it. `web/build.sh` (needs Emscripten and `./setup.sh`; `serve` serves it on port 8777) compiles psdoom with the game's patch plus `web/psdoom-web.patch` to WebAssembly: frames drawn straight onto the canvas, the bridge's shell commands answered by the page (`Module.bridge`), the agent channel in Emscripten's in-memory files, an Options menu with only God mode and the mouse, and `web_keys` / `web_player` for the page. It plays `web/level/`, a snapshot of a real level that `python3 web/snapshot.py` copies from `state/` (the mission, its saved records, the briefing log, the leaderboard's runs on it and Claude's line for each record), on the records' source `snapshot`, which the panel shows without live-read or saved-data notes. Only snapshot a level from an account whose data is synthetic: it's published. The page is the panel's own `index.html` with `web/web.js` ahead of its script (the stage layout, the game, a `/state.json` built in the page, the new-player prompts and the end card) and `web/replay.js`, a port of the offline player for *Watch Claude play*. No sound yet; the level is built with `--no-gore`.
+
 ## Account notes
 
 If the account's Data Security rules are switched off, the SSN lookup goes through, no vault appears, and the panel shows the unmasked answer.

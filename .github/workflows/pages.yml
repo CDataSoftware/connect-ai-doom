@@ -2,6 +2,18 @@ name: pages
 # The browser version (web/) on GitHub Pages: setup.sh's downloads and builds that web/build.sh
 # needs (psdoom-ng's source, zdbsp, Freedoom, the panel's sprites), then the build, then the deploy.
 on:
+  push:
+    branches: [main]
+    paths:   # what the browser version is built from
+      - web/**
+      - panel/**
+      - tools/**
+      - patches/**
+      - assets/brand/**
+      - connect_doom.py
+      - leaderboard.py
+      - play.py
+      - .github/workflows/pages.yml
   workflow_dispatch:
 permissions:
   contents: read

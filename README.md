@@ -15,6 +15,8 @@
 
 Play it yourself, or let Claude play while a side panel shows every step it takes through Connect AI.
 
+**[Play it in your browser](https://cdatasoftware.github.io/connect-ai-doom/)**, no install: a level Claude built from a demo account, with the side panel, the model leaderboard and Claude playing it if you'd rather watch. The rest of this page is the full version, on your own data.
+
 ## Install
 
 You need a Mac (Apple Silicon or Intel) and about 10 minutes.

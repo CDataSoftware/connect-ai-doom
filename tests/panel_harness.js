@@ -13,6 +13,8 @@ class El {
     this.tag = tag; this.children = []; this.textContent = ""; this.innerHTML = ""; this.hidden = false;
     this.className = ""; this.scrollHeight = 0; this.scrollTop = 0; this.clientHeight = 0; this.parent = null;
     this.subs = {};
+    this.vars = {};   // CSS variables set with style.setProperty
+    this.style = { setProperty: (k, v) => { this.vars[k] = v; } };
     const el = this;
     this.classList = {
       add: c => { if (!el.classList.contains(c)) el.className = `${el.className} ${c}`.trim(); },
@@ -33,7 +35,7 @@ class El {
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); }
   addEventListener(type, fn) { this.listener = fn; }
   dump() {
-    return { text: this.textContent, html: this.innerHTML, hidden: this.hidden, className: this.className,
+    return { text: this.textContent, html: this.innerHTML, hidden: this.hidden, className: this.className, vars: this.vars,
              children: this.children.map(c => c.dump()),
              subs: Object.fromEntries(Object.entries(this.subs).map(([k, v]) => [k, v.innerHTML])) };
   }

@@ -52,7 +52,7 @@ python3 connect_doom.py state > "$L/state.json"   # the panel's state before the
 rm -f "$L/level-raw.wad"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js wads/freedoom2.wad "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/about.html wads/freedoom2.wad "$DIST/"
 python3 - "$DIST/index.html" <<'PY'
 import sys
 page = open("panel/index.html").read()

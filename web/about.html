@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About Connect AI × DOOM</title>
+<meta name="description" content="A Doom level built from business data, read through the CData Connect AI MCP server. Every monster is a record.">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="favicon-180.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root {
+    --depth: #15151C; --depth-2: #1D1D26; --depth-3: #262632; --line: #34344A;
+    --clarity: #F1EEE9; --balance: #B5B9BC; --agility: #FFE500;
+    --doom-red: #E8290B; --doom-red-dim: #7A1505; --key-blue: #4D7CFF;
+    --pixel: "Press Start 2P", monospace;
+    --sans: "DM Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--depth); color: var(--clarity); font: 17px/1.6 var(--sans); }
+  a { color: var(--agility); }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 16px; }
+
+  nav.top { border-bottom: 1px solid var(--line); }
+  nav.top .wrap { display: flex; align-items: center; gap: 18px; padding-top: 14px; padding-bottom: 14px; }
+  nav.top .home { display: flex; align-items: center; gap: 10px; text-decoration: none; margin-right: auto; }
+  nav.top .home img { height: 22px; display: block; }
+  nav.top .home .doom { font: 13px/1 var(--pixel); color: var(--doom-red); letter-spacing: 1px; }
+  nav.top .home .x { color: var(--balance); font: 15px/1 var(--mono); }
+  nav.top a.link { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
+  nav.top a.link:hover, nav.top a.link:focus-visible { color: var(--agility); }
+
+  header.hero { padding: 56px 0 40px; }
+  .eyebrow { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; margin: 0 0 16px; }
+  h1 { font: 700 clamp(30px, 6vw, 46px)/1.1 var(--sans); letter-spacing: -.02em; margin: 0 0 18px; }
+  h1 .red { color: var(--doom-red); }
+  .lede { font-size: 20px; color: #E5E2DA; margin: 0 0 28px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { font: 10px/1 var(--pixel); text-decoration: none; padding: 14px 16px; border-radius: 3px;
+         background: var(--agility); color: var(--depth); letter-spacing: 1px; }
+  .btn.alt { background: var(--depth-3); color: var(--clarity); border: 1px solid var(--line); }
+
+  section { padding: 36px 0; border-top: 1px solid var(--line); }
+  h2 { font: 11px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; margin: 0 0 18px; }
+  h2::before { content: ""; display: inline-block; width: 9px; height: 9px; background: var(--doom-red); margin-right: 10px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--balance); }
+
+  .firsts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 8px; }
+  .first { background: var(--depth-2); border: 1px solid var(--line); border-left: 4px solid var(--agility);
+           border-radius: 4px; padding: 14px 16px; }
+  .first b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .first span { color: var(--balance); font-size: 15px; }
+
+  dl.legend { display: grid; grid-template-columns: auto 1fr; gap: 14px 16px; margin: 0; align-items: start; }
+  dl.legend dt { display: flex; align-items: center; gap: 10px; font-weight: 700; white-space: nowrap; }
+  dl.legend dt img { width: 28px; height: 28px; object-fit: contain; image-rendering: pixelated; }
+  dl.legend dd { margin: 0; color: #E5E2DA; }
+
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: step; display: grid; grid-template-columns: 44px 1fr; gap: 14px; }
+  ol.steps li::before { content: counter(step); font: 14px/44px var(--pixel); text-align: center; color: var(--depth);
+                        background: var(--agility); border-radius: 3px; height: 44px; }
+  ol.steps b { display: block; }
+
+  .flow { font: 13px/1.5 var(--mono); color: var(--balance); background: #0E0E13; border: 1px solid var(--line);
+          border-radius: 4px; padding: 14px 16px; margin: 18px 0 0; overflow-x: auto; white-space: pre; }
+
+  table.keys { border-collapse: collapse; width: 100%; }
+  table.keys td { padding: 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.keys td:first-child { width: 42%; padding-right: 16px; }
+  kbd { font: 9px/1 var(--pixel); color: var(--clarity); background: var(--depth-3); border: 1px solid var(--line);
+        border-radius: 3px; padding: 5px 6px; display: inline-block; margin: 0 2px 4px 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--balance); font-size: 14px; }
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .lede { font-size: 18px; }
+    dl.legend { grid-template-columns: 1fr; gap: 4px; }
+    dl.legend dd { margin-bottom: 12px; }
+    table.keys td:first-child { width: 50%; }
+  }
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap">
+  <a class="home" href="./"><img src="brand/connect-ai.svg" alt="Connect AI"><span class="x">×</span><span class="doom">DOOM</span></a>
+  <a class="link" href="./">PLAY</a>
+  <a class="link" href="https://github.com/CDataSoftware/connect-ai-doom">GITHUB</a>
+</div></nav>
+
+<main class="wrap">
+  <header class="hero">
+    <p class="eyebrow">BUT CAN IT RUN CONNECT AI?</p>
+    <h1>Every monster is a <span class="red">record</span>.</h1>
+    <p class="lede">Ask Claude a business question. Claude answers it through the CData Connect AI MCP server,
+      and a Doom level is built from what it finds: a room for each app, a monster for each record.</p>
+    <div class="cta">
+      <a class="btn" href="./">PLAY IN YOUR BROWSER</a>
+      <a class="btn alt" href="https://github.com/CDataSoftware/connect-ai-doom">VIEW ON GITHUB</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>A FIRST FOR MCP</h2>
+    <p>The Model Context Protocol (MCP) is how AI models reach tools and data. As far as we know, this is
+      the first time it has been wired into Doom:</p>
+    <div class="firsts">
+      <div class="first"><b>MCP data, played in Doom</b><span>The level, its doors and its monsters all come from
+        records Claude read through the Connect AI MCP server.</span></div>
+      <div class="first"><b>Doom as an MCP server</b><span>When Claude plays, Doom itself is an MCP server, with
+        tools to look around, walk and attack.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>WHAT YOU'RE SEEING</h2>
+    <dl class="legend">
+      <dt><img src="sprites/imp.png" alt="">Rooms</dt>
+      <dd>Each room is an app: a Salesforce office, a Zendesk ops center, a Stripe treasury. It's styled after the app,
+        with its own monsters.</dd>
+      <dt><img src="sprites/zombie.png" alt="">Monsters</dt>
+      <dd>Each monster is a record from that app: a deal, a ticket, an invoice. Aim at one to read it. The biggest
+        monsters are the urgent records.</dd>
+      <dt><img src="sprites/bluekey.png" alt="">Keycards</dt>
+      <dd>Your permissions, as Connect AI reports them: blue for an app you can only read, yellow for read and write.</dd>
+      <dt><img src="sprites/redkey.png" alt="">The red door</dt>
+      <dd>Data that Connect AI blocked, like a lookup by Social Security number. There is no red key.</dd>
+      <dt><img src="sprites/marine.png" alt="">The side panel</dt>
+      <dd>The score for each room, and every kill as it happens, with the record behind it.</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>HOW IT WORKS</h2>
+    <ol class="steps">
+      <li><div><b>Claude reads your data.</b>Claude gets one MCP server, Connect AI, limited to its read-only
+        tools. Claude finds the three apps that answer the question and writes one query for each.</div></li>
+      <li><div><b>The level is built from the answer.</b>Rows become monsters, and Connect AI's permissions become the
+        door colors. A request Connect AI refused becomes the vault behind the red door.</div></li>
+      <li><div><b>The game stays live.</b>In the full version, the monsters refresh every 15 seconds, each kill reads its
+        record again, and the red door asks Connect AI once more, live. Nothing in your apps is ever changed.</div></li>
+    </ol>
+    <div class="flow">your question
+  → Claude ⇄ Connect AI MCP server ⇄ Salesforce, Zendesk, Stripe, …
+  → a Doom level: rooms, records, doors, a vault
+  → you (or Claude) clear it</div>
+  </section>
+
+  <section>
+    <h2>THIS WEB VERSION</h2>
+    <p>This page plays a sample level, built from a synthetic CRM, help desk and billing account. The game runs
+      entirely in your browser: Doom, compiled to WebAssembly. No data is sent anywhere while you play.</p>
+    <p class="muted">There's no sound yet. Asking new questions, live reads and letting Claude play need the full version.</p>
+  </section>
+
+  <section>
+    <h2>CONTROLS</h2>
+    <table class="keys">
+      <tr><td><kbd>CLICK</kbd> the game</td><td>Capture the mouse and start playing</td></tr>
+      <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Move</td></tr>
+      <tr><td>Mouse, or <kbd>←</kbd><kbd>→</kbd></td><td>Turn</td></tr>
+      <tr><td><kbd>CLICK</kbd> or <kbd>SPACE</kbd></td><td>Fire</td></tr>
+      <tr><td>Walk into it, <kbd>E</kbd> or right click</td><td>Open a door</td></tr>
+      <tr><td><kbd>SHIFT</kbd></td><td>Run</td></tr>
+      <tr><td><kbd>P</kbd></td><td>Pause</td></tr>
+      <tr><td><kbd>ESC</kbd></td><td>Free the mouse, and Doom's menu</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>PLAY IT ON YOUR OWN DATA</h2>
+    <p>The full version runs on a Mac with <a href="https://code.claude.com/docs/en/setup">Claude Code</a> and a
+      <a href="https://www.cdata.com/ai/">CData Connect AI</a> account. Ask your own question, watch Claude build the
+      level, and let Claude play it. Other models can play too, ranked on a leaderboard.</p>
+    <p><a href="https://github.com/CDataSoftware/connect-ai-doom">Setup instructions are on GitHub.</a></p>
+  </section>
+</main>
+
+<footer><div class="wrap">
+  <p>Made by <a href="https://www.cdata.com/">CData Software</a>. The code is MIT licensed, on
+    <a href="https://github.com/CDataSoftware/connect-ai-doom">GitHub</a>.</p>
+  <p>The game is <a href="https://github.com/keymon/psdoom-ng">psdoom-ng</a>, built on Chocolate Doom (GPL-2.0), with the
+    project's patches on GitHub. The art and monsters are from <a href="https://freedoom.github.io/">Freedoom</a>.
+    DOOM is a trademark of id Software; this project isn't affiliated with or endorsed by id Software.</p>
+</div></footer>
+</body>
+</html>

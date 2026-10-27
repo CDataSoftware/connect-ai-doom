@@ -416,7 +416,8 @@
   body.stage .stat.model .num { font-size: 17px; line-height: 2.3; }
   body.stage .now { position: static; margin: 0; border: 1px solid var(--line); border-bottom: 3px solid var(--doom-red); border-radius: 4px; padding: 10px 12px 12px; box-shadow: none; }
   body.stage .now .who { font-size: 19px; }
-  body.stage #rooms-live { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 6px; }
+  /* a column per room (--rooms, set with the cards): auto-fit left an empty fourth column on wide screens */
+  body.stage #rooms-live { grid-template-columns: repeat(var(--rooms, 3), minmax(0, 1fr)); gap: 6px; }
   body.stage .rl { padding: 7px 8px; gap: 4px; }
   body.stage .rl .app { font-size: 15px; }
   body.stage .rl .num { font-size: 24px; }
@@ -924,6 +925,7 @@ function renderGame(s) {
     cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
       <div class="app">PII vault</div><div class="sub why">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
       <div class="sub">${tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
+  $("rooms-live").style.setProperty("--rooms", Math.max(1, (s.rooms_live || []).length));
   setHTML($("rooms-live"), cards.join(""));
   legendMonsters(s.rooms_live || []);
 

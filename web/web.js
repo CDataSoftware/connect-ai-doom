@@ -4,6 +4,8 @@
 // web/build.sh baked (connect_doom.py state) and takes this game's kills and hits, and psdoom's
 // list / kill / hit commands are answered from the level's records.
 (() => {
+  const REPO = "https://github.com/CDataSoftware/connect-ai-doom";
+
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
   // The game takes two thirds of the window at 4:3, with room for the brand bars above and below.
   function layout() {
@@ -16,6 +18,8 @@
     params.set("stage", layout().join(","));
     history.replaceState(null, "", `${location.pathname}?${params}`);
   }
+  // The panel reads ?stage= as it loads; then the address goes back to the plain one people share.
+  addEventListener("DOMContentLoaded", () => history.replaceState(null, "", location.pathname));
   addEventListener("resize", () => {
     const css = document.documentElement.style;
     layout().forEach((v, i) => css.setProperty(["--gx", "--gy", "--gw", "--gh", "--split", "--top"][i], `${v}px`));
@@ -64,7 +68,6 @@
   window.fetch = (url, opts) => {
     const path = new URL(url, location.href).pathname;
     if (path.endsWith("/state.json")) return Promise.resolve(json(state ? currentState() : {}));
-    if (path.endsWith("/ask")) return Promise.resolve(json({error: state.ask.unavailable}, 409));
     return realFetch(url, opts);
   };
 
@@ -94,8 +97,8 @@
       get("level/state.json").then(r => r.json()), get("level/cache.json").then(r => r.json()),
       get("level/monsters.txt").then(r => r.text()), ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
     monsters = cache.monsters;
-    state = {...baked, game: {mode: "player", started: Date.now() / 1000},
-             ask: {...baked.ask, unavailable: "New questions need Connect AI and Claude Code: they work in the Mac version (./raid.sh)."}};
+    // No question box: a new question needs Claude and Connect AI, which the Mac version runs.
+    state = {...baked, game: {mode: "player", started: Date.now() / 1000}, ask: null};
 
     window.Module = {
       canvas,
@@ -124,5 +127,61 @@
     script.src = "psdoom.js";
     document.body.appendChild(script);
   }
-  addEventListener("DOMContentLoaded", () => start().catch(e => console.error("connect-doom web:", e)));
+  // ---------- links, and desktops only ----------
+  function addLinks() {
+    const style = document.createElement("style");
+    style.textContent = `
+      .weblinks { display: flex; gap: 18px; margin-left: auto; }
+      .weblinks a { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
+      .weblinks a:hover, .weblinks a:focus-visible { color: var(--agility); }
+      #desktop-only { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+                      padding: 24px 16px; background: var(--depth); text-align: center; }
+      #desktop-only[hidden] { display: none; }
+      #desktop-only .box { max-width: 460px; display: flex; flex-direction: column; gap: 16px; align-items: center; }
+      #desktop-only .doom { font: 22px/1 var(--pixel); color: var(--doom-red); letter-spacing: 2px; }
+      #desktop-only p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--clarity); }
+      #desktop-only .links { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+      #desktop-only .links a { font: 10px/1 var(--pixel); color: var(--depth); background: var(--agility);
+                               padding: 12px 14px; border-radius: 3px; text-decoration: none; }
+      #desktop-only .links a + a { background: var(--depth-3); color: var(--clarity); }`;
+    document.head.appendChild(style);
+    const nav = document.createElement("nav");
+    nav.className = "weblinks";
+    nav.innerHTML = `<a href="about.html">ABOUT</a><a href="${REPO}">GITHUB</a>`;
+    const chip = document.getElementById("stage-mode");
+    chip.parentNode.insertBefore(nav, chip);
+    const gate = document.createElement("div");
+    gate.id = "desktop-only";
+    gate.hidden = true;
+    gate.innerHTML = `<div class="box"><img src="brand/connect-ai.svg" alt="Connect AI" height="32">
+      <div class="doom">DOOM</div>
+      <p id="desktop-why"></p>
+      <div class="links"><a href="about.html">WHAT IS THIS?</a><a href="${REPO}">GITHUB</a></div></div>`;
+    document.body.appendChild(gate);
+    return gate;
+  }
+
+  // Doom needs a keyboard and a mouse, and room for the stage and the panel side by side.
+  const hasMouse = () => matchMedia("(any-pointer: fine)").matches;
+  const roomy = () => innerWidth >= 900 && innerHeight >= 560;
+
+  addEventListener("DOMContentLoaded", () => {
+    const gate = addLinks();
+    let started = false;
+    const check = () => {
+      if (started) return;
+      if (hasMouse() && roomy()) {
+        gate.hidden = true;
+        started = true;
+        start().catch(e => console.error("connect-doom web:", e));
+        return;
+      }
+      gate.hidden = false;
+      document.getElementById("desktop-why").textContent = hasMouse()
+        ? "Connect AI × DOOM needs a bigger window. Make this one wider to play."
+        : "Connect AI × DOOM plays on a desktop browser, with a keyboard and a mouse. Open this page on your computer to play.";
+    };
+    check();
+    addEventListener("resize", check);
+  });
 })();

@@ -264,6 +264,7 @@ class PanelTest(unittest.TestCase):
         rl = ids["rooms-live"]["html"]
         self.assertIn('<span class="acc"> · READ + WRITE</span><span class="acc-s"> · R+W</span>', rl)
         self.assertIn('<span class="acc-s"> · READ</span>', rl)
+        self.assertEqual(ids["rooms-live"]["vars"], {"--rooms": 2})     # a column per room on the stage
         # the offline sample level (its rooms carry their rows): the header says so, not "LIVE"
         ids = self.render(events=[], rooms_live=rooms, game={"mode": "player", "started": 0},
                           mission={"question": "q", "rooms": [{"app": "Salesforce", "rows": [{"Id": "1"}]}]})

@@ -844,7 +844,8 @@ function legendMonsters(rooms) {
 }
 const clock = epoch => new Date(epoch * 1000).toTimeString().slice(0, 8);
 // What Connect AI said when the kill read the record again (connect_doom.py lookup).
-function liveRead(k, demo, saved) {
+function liveRead(k, demo, saved, snapshot) {
+  if (snapshot) return "";
   if (demo) return `<div class="lread"><span class="tag">OFFLINE</span>Sample level: not read live</div>`;
   if (saved) return `<div class="lread"><span class="tag">SAVED</span>Read earlier through Connect AI: not read again live</div>`;
   const l = k.lookup;
@@ -878,6 +879,7 @@ function gameEvents(s) {
 // A room's last refresh through Connect AI (the poller re-runs its query every 15 s).
 function refreshed(r, records) {
   const when = () => new Date(records.fetched_at * 1000).toLocaleString("en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false});
+  if (records?.source === "snapshot") return "";   // the web build's level: where its records came from is no news
   if (records?.source === "saved")   // Connect AI didn't answer at launch: the level's last good records
     return `<div class="live err">Saved ${when()}: Connect AI isn't answering</div>`;
   if (records?.source === "saved-data")   // the Options menu's saved data switch: Connect AI isn't asked
@@ -903,13 +905,15 @@ const whoPlays = model => !model || /^(claude|offline)/i.test(model) ? "CLAUDE" 
 function dataText(s) {
   const rooms = s.mission?.rooms || [];
   if (s.records?.source === "demo" || (rooms.length && rooms.every(r => r.rows))) return "OFFLINE";
+  if (s.records?.source === "snapshot") return "";
   return ["saved", "saved-data"].includes(s.records?.source) ? "SAVED DATA" : "LIVE";
 }
 const modeText = (game, s) => game.mode === "replay" ? "CLAUDE PLAYS · OFFLINE REPLAY"
-  : `${game.mode === "claude" ? `${whoPlays(game.model)} IS PLAYING` : "YOU'RE PLAYING"} · ${dataText(s)}`;
+  : `${game.mode === "claude" ? `${whoPlays(game.model)} IS PLAYING` : "YOU'RE PLAYING"}${dataText(s) ? ` · ${dataText(s)}` : ""}`;
 
 let lastGame = null;
 function renderGame(s) {
+  const snapshot = s.records?.source === "snapshot";   // the web build: no live reads, and no need to say so
   const game = s.game;
   if (game && game.started !== lastGame) { lastEventKey = null; seenEvents = null; lastGame = game.started; }
   document.body.classList.toggle("in-game", !!game);
@@ -937,7 +941,8 @@ function renderGame(s) {
   for (const d of m.denied || [])
     cards.push(`<div class="rl vault"><div class="top"><img src="sprites/redkey.png" alt=""><span class="no">RED DOOR · NO KEY</span></div>
       <div class="app">PII vault</div><div class="sub why">Connect AI blocked: ${esc((d.error || "").split("\n")[0])}</div>
-      <div class="sub">${tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
+      <div class="sub">${snapshot ? "Claude asked for this data, and Connect AI said no. There is no key."
+        : tries.length ? `Tried ${tries.length}× this game; Connect AI checked live each time` : "Try the door: Connect AI checks again, live"}</div></div>`);
   $("rooms-live").style.setProperty("--rooms", Math.max(1, (s.rooms_live || []).length));
   setHTML($("rooms-live"), cards.join(""));
   legendMonsters(s.rooms_live || []);
@@ -951,7 +956,7 @@ function renderGame(s) {
         <span class="w"><b>Connect AI</b> ${e.blocked ? "blocked it again, live" : "answered"} in ${(e.ms / 1000).toFixed(1)} s: ${esc(e.text)}</span></div>`
     : e.kind === "kill"
     ? `<div class="ev kill${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">KILLED</span>
-        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo, saved)}${e.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(e.said)}</div>` : ""}</span></div>`
+        <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)} <span class="d">${e.demon ? "urgent, " : ""}${esc(e.detail)}</span>${liveRead(e, demo, saved, snapshot)}${e.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(e.said)}</div>` : ""}</span></div>`
     : `<div class="ev hit${isNew(e)}"><span class="t">${clock(e.at)}</span><span class="k">HIT${e.n > 1 ? ` ×${e.n}` : ""}</span>
         <span class="w"><b>${esc(e.app)}</b>: ${esc(e.label)}</span></div>`).join("")
     : '<div class="empty">Nothing yet. Shoot something.</div>');
@@ -980,7 +985,7 @@ function renderGame(s) {
   $("now-big").innerHTML = clear
     ? `<div class="verb clear">ALL ${rooms.length} ROOMS CLEAR</div>
        <div class="who">${s.kill_total} records cleared</div>
-       <div class="d">${demo || saved ? "" : "Each one was read again, live, through Connect AI."}${(m.denied || []).length ? " Now try the red door." : ""}</div>`
+       <div class="d">${demo || saved || snapshot ? "" : "Each one was read again, live, through Connect AI."}${(m.denied || []).length ? " Now try the red door." : ""}</div>`
     : last.kind === "vault"
     ? `<div class="verb">RED DOOR: CONNECT AI SAID NO, LIVE</div>
        <div class="who">${esc(last.text)}</div>
@@ -988,7 +993,7 @@ function renderGame(s) {
        <div class="sql">${vaultRequest(last)}</div>`
     : last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
-       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo, saved)}
+       <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${liveRead(last, demo, saved, snapshot)}
        ${last.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(last.said)}</div>` : ""}`
     : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${last.demon ? "Urgent: " : ""}${esc(last.detail)}</div>`;

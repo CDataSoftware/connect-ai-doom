@@ -95,6 +95,14 @@ class PanelTest(unittest.TestCase):
         self.assertFalse(ids["tab-brief"]["hidden"])               # the briefing that built it gets a tab
         self.assertTrue(self.render(events=[], rooms_live=rooms, game={"mode": "player", "started": 0})["tab-brief"]["hidden"])
         self.assertTrue(self.render()["tab-brief"]["hidden"])      # between games the briefing shows anyway
+        # the web build's snapshot: no date, no "saved", no live-read promises at the red door
+        ids = self.render(kills=kills, kill_total=1, rooms_live=rooms, game={"mode": "player", "started": 0},
+                          records={"source": "snapshot", "fetched_at": 1792000000})
+        self.assertEqual(ids["now-mode"]["text"], "YOU'RE PLAYING")
+        self.assertNotIn("lread", ids["now-big"]["html"] + ids["events"]["html"])
+        self.assertIn("CLAUDE</span>Taking", ids["now-big"]["html"])
+        self.assertNotIn('class="live', ids["rooms-live"]["html"])
+        self.assertIn("Connect AI said no. There is no key.", ids["rooms-live"]["html"])
 
     def test_game_view(self):
         kills = [{"id": f"Zendesk:{i}", "app": "Zendesk", "label": f"K{i}", "detail": "high open", "writable": True,

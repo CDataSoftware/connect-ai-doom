@@ -35,7 +35,7 @@ rm -rf "$DIST" && mkdir -p "$DIST"
   # shellcheck disable=SC2086
   emcc -O2 -I. -Isrc -Iopl -Ipcsound -Itextscreen -DHAVE_CONFIG_H -sUSE_SDL=1 -Wno-everything $FILES \
     -sASYNCIFY -sALLOW_MEMORY_GROWTH -sINVOKE_RUN=0 -sFORCE_FILESYSTEM \
-    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV -sEXPORTED_FUNCTIONS=_main,_pr_kill -o "$DIST/psdoom.js"
+    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV -sEXPORTED_FUNCTIONS=_main,_pr_kill,_web_keys -o "$DIST/psdoom.js"
 )
 
 # The level: web/level's snapshot of a real one (web/snapshot.py) played on its saved records,
@@ -46,7 +46,7 @@ export CONNECT_DOOM_STATE=$L
 if [[ -f web/level/mission.json ]]; then
   echo "The level in web/level..."
   cp web/level/* "$L/"
-  python3 -c 'import connect_doom as c; c.restore_saved(c.read_json(c.MISSION), "saved-data") or exit("web/level: no saved records")'
+  python3 -c 'import connect_doom as c; c.restore_saved(c.read_json(c.MISSION), "snapshot") or exit("web/level: no saved records")'
 else
   echo "The offline level..."
   python3 connect_doom.py poll --demo >/dev/null

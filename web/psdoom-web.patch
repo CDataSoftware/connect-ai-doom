@@ -1,7 +1,7 @@
-diff --git c/trunk/config.h i/trunk/config.h
+diff --git c/trunk/config.h w/trunk/config.h
 index 109f977..3679cc2 100644
 --- c/trunk/config.h
-+++ i/trunk/config.h
++++ w/trunk/config.h
 @@ -11,7 +11,7 @@
  #define HAVE_INTTYPES_H 1
  
@@ -31,10 +31,10 @@ index 109f977..3679cc2 100644
  
  /* Define to 1 if you have the <stdint.h> header file. */
  #define HAVE_STDINT_H 1
-diff --git c/trunk/src/doomfeatures.h i/trunk/src/doomfeatures.h
+diff --git c/trunk/src/doomfeatures.h w/trunk/src/doomfeatures.h
 index 46e26e5..07e2736 100644
 --- c/trunk/src/doomfeatures.h
-+++ i/trunk/src/doomfeatures.h
++++ w/trunk/src/doomfeatures.h
 @@ -37,7 +37,7 @@
  
  // Enables multiplayer support (network games)
@@ -44,10 +44,10 @@ index 46e26e5..07e2736 100644
  
  // Enables sound output
  
-diff --git c/trunk/src/i_timer.c i/trunk/src/i_timer.c
+diff --git c/trunk/src/i_timer.c w/trunk/src/i_timer.c
 index 48be83b..1121de5 100644
 --- c/trunk/src/i_timer.c
-+++ i/trunk/src/i_timer.c
++++ w/trunk/src/i_timer.c
 @@ -24,6 +24,9 @@
  //
  //-----------------------------------------------------------------------------
@@ -70,10 +70,10 @@ index 48be83b..1121de5 100644
  }
  
  
-diff --git c/trunk/src/i_video.c i/trunk/src/i_video.c
+diff --git c/trunk/src/i_video.c w/trunk/src/i_video.c
 index 2e7d77c..8086757 100644
 --- c/trunk/src/i_video.c
-+++ i/trunk/src/i_video.c
++++ w/trunk/src/i_video.c
 @@ -25,6 +25,10 @@
  //-----------------------------------------------------------------------------
  
@@ -152,11 +152,11 @@ index 2e7d77c..8086757 100644
      SDL_FillRect(screen, NULL, 0);
  
      // If mode was not set, it must be set now that we know the
-diff --git c/trunk/src/i_web.c i/trunk/src/i_web.c
+diff --git c/trunk/src/i_web.c w/trunk/src/i_web.c
 new file mode 100644
 index 0000000..a5fb98d
 --- /dev/null
-+++ i/trunk/src/i_web.c
++++ w/trunk/src/i_web.c
 @@ -0,0 +1,87 @@
 +// connect-doom web build: what Emscripten's SDL 1.2 lacks, and the browser's side of the bridge.
 +
@@ -245,10 +245,10 @@ index 0000000..a5fb98d
 +    return 0;
 +}
 +#endif
-diff --git c/trunk/src/pr_process.c i/trunk/src/pr_process.c
-index 86d15dd..3199e8a 100644
+diff --git c/trunk/src/pr_process.c w/trunk/src/pr_process.c
+index 86d15dd..eaf1ac3 100644
 --- c/trunk/src/pr_process.c
-+++ i/trunk/src/pr_process.c
++++ w/trunk/src/pr_process.c
 @@ -5,6 +5,15 @@
  // Copyright (C) 1999 by Dennis Chao
  // Copyright (C) 2000 by David Koppenhofer
@@ -265,3 +265,16 @@ index 86d15dd..3199e8a 100644
  #include <stdlib.h>
  #include <string.h>
  #include <math.h>
+@@ -1495,3 +1504,12 @@ void PR_VaultTouched(void)
+     system(buf);
+ }
+ // *** VAULT END ***
++
++#ifdef __EMSCRIPTEN__
++// The web page's prompts for new players: the keycards the player holds (1 blue, 2 yellow, 4 red).
++int web_keys(void)
++{
++    player_t *p = &players[consoleplayer];
++    return (p->cards[it_bluecard] ? 1 : 0) | (p->cards[it_yellowcard] ? 2 : 0) | (p->cards[it_redcard] ? 4 : 0);
++}
++#endif

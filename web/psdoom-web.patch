@@ -1,0 +1,267 @@
+diff --git c/trunk/config.h i/trunk/config.h
+index 109f977..3679cc2 100644
+--- c/trunk/config.h
++++ i/trunk/config.h
+@@ -11,7 +11,7 @@
+ #define HAVE_INTTYPES_H 1
+ 
+ /* Define to 1 if you have the `ioperm' function. */
+-#define HAVE_IOPERM 1
++/* #undef HAVE_IOPERM */
+ 
+ /* Define to 1 if you have the `amd64' library (-lamd64). */
+ /* #undef HAVE_LIBAMD64 */
+@@ -26,16 +26,16 @@
+ /* #undef HAVE_LIBSAMPLERATE */
+ 
+ /* Define to 1 if you have the <linux/kd.h> header file. */
+-#define HAVE_LINUX_KD_H 1
++/* #undef HAVE_LINUX_KD_H */
+ 
+ /* Define to 1 if you have the <memory.h> header file. */
+ #define HAVE_MEMORY_H 1
+ 
+ /* Define to 1 if you have the `mmap' function. */
+-#define HAVE_MMAP 1
++/* #undef HAVE_MMAP */
+ 
+ /* Define to 1 if you have the `sched_setaffinity' function. */
+-#define HAVE_SCHED_SETAFFINITY 1
++/* #undef HAVE_SCHED_SETAFFINITY */
+ 
+ /* Define to 1 if you have the <stdint.h> header file. */
+ #define HAVE_STDINT_H 1
+diff --git c/trunk/src/doomfeatures.h i/trunk/src/doomfeatures.h
+index 46e26e5..07e2736 100644
+--- c/trunk/src/doomfeatures.h
++++ i/trunk/src/doomfeatures.h
+@@ -37,7 +37,7 @@
+ 
+ // Enables multiplayer support (network games)
+ 
+-#define FEATURE_MULTIPLAYER 1
++// #define FEATURE_MULTIPLAYER 1
+ 
+ // Enables sound output
+ 
+diff --git c/trunk/src/i_timer.c i/trunk/src/i_timer.c
+index 48be83b..1121de5 100644
+--- c/trunk/src/i_timer.c
++++ i/trunk/src/i_timer.c
+@@ -24,6 +24,9 @@
+ //
+ //-----------------------------------------------------------------------------
+ 
++#ifdef __EMSCRIPTEN__
++void emscripten_sleep(unsigned int ms);
++#endif
+ #include "SDL.h"
+ 
+ #include "i_timer.h"
+@@ -70,7 +73,11 @@ int I_GetTimeMS(void)
+ 
+ void I_Sleep(int ms)
+ {
++#ifdef __EMSCRIPTEN__
++    emscripten_sleep(ms);  // hand the browser its turn
++#else
+     SDL_Delay(ms);
++#endif
+ }
+ 
+ 
+diff --git c/trunk/src/i_video.c i/trunk/src/i_video.c
+index 2e7d77c..8086757 100644
+--- c/trunk/src/i_video.c
++++ i/trunk/src/i_video.c
+@@ -25,6 +25,10 @@
+ //-----------------------------------------------------------------------------
+ 
+ 
++#ifdef __EMSCRIPTEN__
++void emscripten_sleep(unsigned int ms);
++void web_present(unsigned char *frame, unsigned char *palette);
++#endif
+ #include "SDL.h"
+ #include <stdlib.h>
+ #include <ctype.h>
+@@ -748,7 +752,7 @@ static void CenterMouse(void)
+     // Clear any relative movement caused by warping
+ 
+     SDL_PumpEvents();
+-#if SDL_VERSION_ATLEAST(1, 3, 0)
++#if SDL_VERSION_ATLEAST(1, 3, 0) && !defined(__EMSCRIPTEN__)
+     SDL_GetRelativeMouseState(0, NULL, NULL);
+ #else
+     SDL_GetRelativeMouseState(NULL, NULL);
+@@ -766,7 +770,7 @@ static void I_ReadMouse(void)
+     int x, y;
+     event_t ev;
+ 
+-#if SDL_VERSION_ATLEAST(1, 3, 0)
++#if SDL_VERSION_ATLEAST(1, 3, 0) && !defined(__EMSCRIPTEN__)
+     SDL_GetRelativeMouseState(0, &x, &y);
+ #else
+     SDL_GetRelativeMouseState(&x, &y);
+@@ -919,6 +923,9 @@ void I_BeginRead(void)
+                     + (SCREENWIDTH - LOADING_DISK_W);
+     int y;
+ 
++#ifdef __EMSCRIPTEN__
++    return;  // no disk icon: the page draws the frame itself
++#endif
+     if (!initialized || disk_image == NULL)
+         return;
+ 
+@@ -947,6 +954,9 @@ void I_EndRead(void)
+                     + (SCREENWIDTH - LOADING_DISK_W);
+     int y;
+ 
++#ifdef __EMSCRIPTEN__
++    return;  // no disk icon: the page draws the frame itself
++#endif
+     if (!initialized || disk_image == NULL)
+         return;
+ 
+@@ -1013,6 +1023,13 @@ void I_FinishUpdate (void)
+     
+     }
+ 
++#ifdef __EMSCRIPTEN__
++    // The page draws Doom's 320x200 frame and palette onto the canvas itself.
++    web_present(screens[0], (byte *) palette);
++    emscripten_sleep(0);  // let the browser show the frame and deliver input
++    return;
++#endif
++
+     // draw to screen
+ 
+     BlitArea(0, 0, SCREENWIDTH, SCREENHEIGHT);
+@@ -1814,6 +1831,14 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+     // Blank out the full screen area in case there is any junk in
+     // the borders that won't otherwise be overwritten.
+ 
++#ifdef __EMSCRIPTEN__
++    // Emscripten's SDL can't fill a palettized surface before it has a palette.
++    if (screen->format->BitsPerPixel == 8)
++    {
++        static SDL_Color black[256];
++        SDL_SetColors(screen, black, 0, 256);
++    }
++#endif
+     SDL_FillRect(screen, NULL, 0);
+ 
+     // If mode was not set, it must be set now that we know the
+diff --git c/trunk/src/i_web.c i/trunk/src/i_web.c
+new file mode 100644
+index 0000000..a5fb98d
+--- /dev/null
++++ i/trunk/src/i_web.c
+@@ -0,0 +1,87 @@
++// connect-doom web build: what Emscripten's SDL 1.2 lacks, and the browser's side of the bridge.
++
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "SDL.h"
++#include "SDL_mixer.h"
++
++// No text-mode ENDOOM screen in a browser.
++int TXT_Init(void) { return 0; }
++void TXT_Shutdown(void) {}
++unsigned char *TXT_GetScreenData(void) { static unsigned char screen[80 * 25 * 2]; return screen; }
++void TXT_UpdateScreen(void) {}
++int TXT_GetChar(void) { return -1; }
++void TXT_Sleep(int timeout) {}
++
++// The page hides the cursor and locks the pointer itself.
++static int fake_cursor;
++SDL_Cursor *SDL_CreateCursor(const Uint8 *data, const Uint8 *mask, int w, int h, int hot_x, int hot_y) { return (SDL_Cursor *) &fake_cursor; }
++SDL_Cursor *SDL_GetCursor(void) { return (SDL_Cursor *) &fake_cursor; }
++void SDL_SetCursor(SDL_Cursor *cursor) {}
++
++// Mouse movement since the last call, from the browser's movementX/Y (pointer lock).
++EM_JS(int, web_mouse_take, (int *x, int *y), {
++  const m = Module.webMouse || (Module.webMouse = {dx: 0, dy: 0});
++  if (!m.installed) {
++    m.installed = true;
++    document.addEventListener('mousemove', (e) => {
++      if (document.pointerLockElement === Module.canvas) { m.dx += e.movementX; m.dy += e.movementY; }
++    });
++  }
++  if (x) HEAP32[x >> 2] = m.dx;
++  if (y) HEAP32[y >> 2] = m.dy;
++  m.dx = 0; m.dy = 0;
++  return 0;
++});
++Uint8 SDL_GetRelativeMouseState(int *x, int *y) { web_mouse_take(x, y); return 0; }
++
++// Sound: 0 sends i_sdlsound.c to its own resampler; no OPL music hook.
++int SDL_BuildAudioCVT(SDL_AudioCVT *cvt, SDL_AudioFormat sf, Uint8 sc, int sr, SDL_AudioFormat df, Uint8 dc, int dr) { return 0; }
++int SDL_ConvertAudio(SDL_AudioCVT *cvt) { return -1; }
++int Mix_UnregisterAllEffects(int channel) { return 1; }
++void Mix_HookMusic(void (*mix_func)(void *, Uint8 *, int), void *arg) {}
++
++// Doom's 320x200 8-bit frame through its palette (SDL_Color: r, g, b, unused) onto the canvas.
++EM_JS(void, web_present, (unsigned char *frame, unsigned char *palette), {
++  const c = Module.canvas;
++  if (c.width !== 320 || c.height !== 200) { c.width = 320; c.height = 200; Module.webImage = null; }
++  const ctx = Module.webCtx || (Module.webCtx = c.getContext('2d'));
++  const img = Module.webImage || (Module.webImage = ctx.createImageData(320, 200));
++  const px = new Uint32Array(img.data.buffer), pal = new Uint32Array(256);
++  for (let i = 0; i < 256; i++) {
++    const p = palette + i * 4;
++    pal[i] = 0xff000000 | (HEAPU8[p + 2] << 16) | (HEAPU8[p + 1] << 8) | HEAPU8[p];
++  }
++  for (let i = 0; i < 64000; i++) px[i] = pal[HEAPU8[frame + i]];
++  ctx.putImageData(img, 0, 0);
++});
++
++// The bridge: psdoom runs PSDOOMPSCMD / PSDOOMKILLCMD as shell commands. Here the page's
++// Module.bridge(command) answers instead, and its reply is read back like a pipe's output.
++EM_JS(char *, web_bridge_call, (const char *command), {
++  let out = '';
++  try { out = Module.bridge ? String(Module.bridge(UTF8ToString(command)) || '') : ''; }
++  catch (e) { console.error('bridge', e); }
++  return stringToNewUTF8(out);
++});
++
++FILE *web_popen(const char *command, const char *mode)
++{
++    char *out = web_bridge_call(command);
++    FILE *f = fmemopen(NULL, strlen(out) + 1, "w+");
++    if (f) { fputs(out, f); rewind(f); }
++    free(out);
++    return f;
++}
++
++int web_pclose(FILE *f) { return fclose(f); }
++
++int web_system(const char *command)
++{
++    free(web_bridge_call(command));
++    return 0;
++}
++#endif
+diff --git c/trunk/src/pr_process.c i/trunk/src/pr_process.c
+index 86d15dd..3199e8a 100644
+--- c/trunk/src/pr_process.c
++++ i/trunk/src/pr_process.c
+@@ -5,6 +5,15 @@
+ // Copyright (C) 1999 by Dennis Chao
+ // Copyright (C) 2000 by David Koppenhofer
+ 
++#ifdef __EMSCRIPTEN__
++#include <stdio.h>
++FILE *web_popen(const char *command, const char *mode);
++int web_pclose(FILE *f);
++int web_system(const char *command);
++#define popen web_popen
++#define pclose web_pclose
++#define system web_system
++#endif
+ #include <stdlib.h>
+ #include <string.h>
+ #include <math.h>

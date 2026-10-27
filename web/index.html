@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>connect-doom</title>
+<style>
+  :root { --bg: #111; --fg: #ddd; --dim: #888; --accent: #f5d000; }
+  body { background: var(--bg); color: var(--fg); font: 14px ui-monospace, Menlo, monospace; margin: 0;
+         display: flex; flex-direction: column; align-items: center; padding: 16px; }
+  #game { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  canvas { width: min(960px, calc(100vw - 32px)); aspect-ratio: 4 / 3; image-rendering: pixelated;
+           background: #000; cursor: none; outline: none; }
+  #feed { width: 280px; max-height: 720px; overflow: auto; }
+  #feed h2 { color: var(--accent); font-size: 14px; margin: 0 0 8px; }
+  #kills div { padding: 4px 0; border-bottom: 1px solid #333; }
+  #kills small { color: var(--dim); display: block; }
+  #status { color: var(--dim); margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<p id="status">Loading…</p>
+<div id="game">
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="feed"><h2>Kills</h2><div id="kills"></div></div>
+</div>
+<script>
+// The browser's side of connect-doom's bridge (connect_doom.py list / kill / hit), over the offline
+// level that web/build.sh bakes into level/. psdoom runs these as shell commands on the Mac; here
+// its popen goes to Module.bridge.
+const files = {'/doom/freedoom2.wad': 'freedoom2.wad', '/doom/level.wad': 'level/level.wad',
+               '/doom/brand.wad': 'level/brand.wad', '/doom/level.deh': 'level/level.deh',
+               '/doom/labels.tsv': 'level/labels.tsv'};
+const status = document.getElementById('status');
+const canvas = document.getElementById('canvas');
+const killed = new Set();
+let records = [], labels = {}, mission = {};
+
+function killMessage(pid) {
+  const alive = records.filter(r => !killed.has(r.pid));
+  const inRoom = alive.filter(r => r.pid % 3 === pid % 3);
+  const app = (labels[pid] || '').split(':')[0];
+  if (!alive.length) return 'ALL RECORDS CLEARED!' + (mission.denied ? ' NOW TRY THE RED DOOR' : '');
+  if (!inRoom.length) return `${app} room clear! ${alive.length} left elsewhere`.toUpperCase();
+  return (labels[pid] || '').slice(0, 36).toUpperCase() + `, ${inRoom.length} LEFT`;
+}
+
+function logKill(pid) {
+  const [name, detail] = [labels[pid] || String(pid), labels[pid + ':detail'] || ''];
+  const el = document.createElement('div');
+  el.textContent = name;
+  const small = document.createElement('small');
+  small.textContent = detail;
+  el.appendChild(small);
+  document.getElementById('kills').prepend(el);
+}
+
+var Module = {
+  canvas,
+  print: (s) => console.log(s),
+  printErr: (s) => console.warn(s),
+  bridge(command) {
+    const [verb, arg] = command.split(' ');
+    const pid = Number(arg);
+    if (verb === 'list') {
+      return records.filter(r => !killed.has(r.pid)).map(r => r.line).join('\n') + '\n';
+    }
+    if (verb === 'kill' && records.some(r => r.pid === pid) && !killed.has(pid)) {
+      killed.add(pid);
+      logKill(pid);
+      return killMessage(pid) + '\n';
+    }
+    return '';
+  },
+};
+
+canvas.addEventListener('click', () => { canvas.focus(); canvas.requestPointerLock(); });
+
+(async () => {
+  const get = (u) => fetch(u).then(r => { if (!r.ok) throw new Error(u + ': ' + r.status); return r; });
+  const [monsters, list, labelText, missionJson, ...bufs] = await Promise.all([
+    get('level/monsters.txt').then(r => r.text()), get('level/list.txt').then(r => r.text()),
+    get('level/labels.tsv').then(r => r.text()), get('level/mission.json').then(r => r.json()),
+    ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
+  mission = missionJson;
+  records = list.trim().split('\n').map(line => ({line, pid: Number(line.split(' ')[1])}));
+  for (const row of labelText.trim().split('\n')) {
+    const [pid, line1, line2] = row.split('\t');
+    labels[pid] = line1;
+    labels[pid + ':detail'] = line2 || '';
+  }
+  Module.preRun = [() => {
+    FS.mkdir('/doom');
+    Object.keys(files).forEach((path, i) => FS.writeFile(path, new Uint8Array(bufs[i])));
+    // raid.sh's controls: WASD, the mouse turns, left click or Space fires, E or right click opens doors.
+    FS.writeFile('/doom/controls.cfg', 'key_up 17\nkey_down 31\nkey_strafeleft 30\nkey_straferight 32\n' +
+      'key_left 75\nkey_right 77\nkey_fire 57\nkey_use 18\nkey_speed 42\nkey_strafe 56\nuse_mouse 1\n' +
+      'mouseb_fire 0\nmouseb_strafe -1\nmouseb_forward -1\nmouse_sensitivity 6\n');
+    FS.writeFile('/doom/extra.cfg', 'novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\nfullscreen 0\n' +
+      'screen_width 640\nscreen_height 480\n');
+    Object.assign(ENV, {PSDOOMPSCMD: 'list', PSDOOMKILLCMD: 'kill', PSDOOMRENICECMD: 'hit',
+      PSDOOMVAULTCMD: 'vault', PSDOOM_LABELS: '/doom/labels.tsv', PSDOOM_MONSTERS: monsters.trim(),
+      HOME: '/doom'});
+  }];
+  Module.onRuntimeInitialized = () => {
+    status.textContent = mission.question ? `“${mission.question}” — click the game to play, Esc frees the mouse`
+                                          : 'Click the game to play, Esc frees the mouse';
+    // No sound yet: Emscripten's SDL mixer can't play the buffers Chocolate Doom builds.
+    Module.callMain(['-iwad', '/doom/freedoom2.wad', '-file', '/doom/level.wad', '/doom/brand.wad',
+      '-deh', '/doom/level.deh', '-nopslev', '-psallusers', '-warp', '1', '-skill', '1', '-window',
+      '-nosound', '-nomusic', '-config', '/doom/controls.cfg', '-extraconfig', '/doom/extra.cfg']);
+  };
+  const script = document.createElement('script');
+  script.src = 'psdoom.js';
+  document.body.appendChild(script);
+})().catch(e => { status.textContent = 'Could not load the game: ' + e.message; });
+</script>
+</body>
+</html>

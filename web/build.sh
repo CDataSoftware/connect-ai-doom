@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the browser version into web/dist: the patched psdoom compiled to WebAssembly, the
-# offline sample level, and the page. Needs ./setup.sh once (psdoom-ng's source, zdbsp,
+# offline sample level, and the side panel's full-screen stage with the game on it (web/web.js). Needs ./setup.sh once (psdoom-ng's source, zdbsp,
 # Freedoom) and Emscripten (brew install emscripten).
 #   web/build.sh          build
 #   web/build.sh serve    build, then serve it on http://127.0.0.1:8777
@@ -19,7 +19,7 @@ git -C vendor/src/psdoom-ng archive 83d02bafe91439117421a0ccc3e238a0b9544e93 tru
 (cd "$SRC" && patch -s -p1 < "$ROOT/patches/psdoom-ng-connect-doom.patch" && patch -s -p1 < "$ROOT/web/psdoom-web.patch")
 
 echo "Compiling psdoom to WebAssembly..."
-mkdir -p "$DIST"
+rm -rf "$DIST" && mkdir -p "$DIST"
 (
   cd "$SRC/trunk"
   # The single-player game: no network play, no ENDOOM text screen.
@@ -48,11 +48,17 @@ python3 tools/make_arena.py "$L/level-raw.wad" --mission "$L/mission.json" --rec
 vendor/src/zdbsp/build/zdbsp -o "$L/level.wad" "$L/level-raw.wad" >/dev/null
 python3 tools/make_deh.py "$L/mission.json" "$L/level.deh"
 python3 tools/themes.py monsters "$L/mission.json" > "$L/monsters.txt"
-python3 connect_doom.py list > "$L/list.txt"
+python3 connect_doom.py state > "$L/state.json"   # the panel's state before the first kill
 rm -f "$L/level-raw.wad"
 
-cp web/index.html "$DIST/"
-cp wads/freedoom2.wad "$DIST/"
+# The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js wads/freedoom2.wad "$DIST/"
+python3 - "$DIST/index.html" <<'PY'
+import sys
+page = open("panel/index.html").read()
+assert page.count("\n<script>\n") == 1, "panel/index.html: expected one inline <script>"
+open(sys.argv[1], "w").write(page.replace("\n<script>\n", '\n<script src="web.js"></script>\n<script>\n', 1))
+PY
 echo "Built web/dist."
 if [[ "${1:-}" == serve ]]; then
   echo "Open http://127.0.0.1:8777"

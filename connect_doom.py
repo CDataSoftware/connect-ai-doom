@@ -538,21 +538,74 @@ def leaderboard_state(mission):
     return rows or [{**b, "earlier_rules": True} for b in leaderboard.board(level, None)]
 
 
+def live_events(path):
+    """A run's event log; skips a last line that's still being written."""
+    events = []
+    for line in path.read_text().splitlines() if path.exists() else []:
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return events
+
+
+def panel_state():
+    """The side panel's /state.json: the level, this game's kills and hits, each room's count."""
+    try:
+        mission = json.loads(MISSION.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        mission = None
+    game = read_json(GAME)
+    checking = read_json(VAULT_CHECK)
+    kills = game_kills()      # while a game runs, only that game's kills and hits
+    dead = {k["id"] for k in kills}
+    monsters = cached_monsters()
+    since = game["started"] if game else 0
+    by_id = {m["id"]: m for m in monsters}
+    hits = [{**by_id[h["id"]], "at": h["at"]} for h in read_jsonl(HITS)
+            if h["at"] >= since and h["id"] in by_id]
+    looked = {e["id"]: e for e in read_jsonl(LOOKUPS)}
+    kills = [{**k, "lookup": looked.get(k["id"])} for k in kills]
+    refreshed = {r["connection"]: r for r in (read_json(CACHE) or {}).get("rooms", [])}
+    rooms = []
+    mission_rooms = (mission or {}).get("rooms", [])[:3]
+    for i, (room, theme) in enumerate(zip(mission_rooms, room_themes(mission_rooms))):
+        mine = [m for m in monsters if m["pid"] % 3 == i]   # monster_id puts the room in pid mod 3
+        alive = [m for m in mine if m["id"] not in dead]
+        record, urgent = ({"key": k, "name": MONSTERS[k]["name"]} for k in theme["monsters"])
+        rooms.append({"app": room.get("app", room["connection"]), "writable": room.get("writable", False),
+                      "title": room.get("title", ""), "left": len(alive),
+                      "theme": theme["label"], "monster": record, "urgent_monster": urgent,
+                      "urgent_left": sum(m["demon"] for m in alive),
+                      "killed": sum(m["id"] in dead for m in mine),
+                      "refresh": refreshed.get(room["connection"])})
+    return {
+        # the briefing log belongs to the real level, not the offline sample in its place
+        "events": [] if is_offline(mission) else live_events(STATE / "run.jsonl"),
+        "play_events": live_events(STATE / "play.jsonl"),
+        "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
+        "game": game,
+        "kills": kills[-12:],
+        "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
+        "hits": hits[-40:],
+        "rooms_live": rooms,
+        # where the monsters came from: connect-ai-mcp (live), saved (Connect AI unreachable) or demo
+        "records": {k: (read_json(CACHE) or {}).get(k) for k in ("source", "fetched_at")},
+        "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
+        "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
+        "standing": len([m for m in monsters if m["id"] not in dead]),
+        "ask": ask_state(),
+        # how each model has played this level (leaderboard.py), best first: under the
+        # current rules, or until a run plays by them, every run (marked earlier_rules)
+        "leaderboard": leaderboard_state(mission),
+    }
+
+
 def cmd_panel(args):
     """Serve the side panel (panel/index.html) and the run's state on localhost."""
     import http.server
 
     port = int(args[0]) if args else 8666
-
-    def live_events(path):
-        """A run's event log; skips a last line that's still being written."""
-        events = []
-        for line in path.read_text().splitlines() if path.exists() else []:
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-        return events
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -570,54 +623,7 @@ def cmd_panel(args):
         def do_GET(self):
             if self.path.split("?")[0] != "/state.json":
                 return super().do_GET()
-            try:
-                mission = json.loads(MISSION.read_text())
-            except (FileNotFoundError, json.JSONDecodeError):
-                mission = None
-            game = read_json(GAME)
-            checking = read_json(VAULT_CHECK)
-            kills = game_kills()      # while a game runs, only that game's kills and hits
-            dead = {k["id"] for k in kills}
-            monsters = cached_monsters()
-            since = game["started"] if game else 0
-            by_id = {m["id"]: m for m in monsters}
-            hits = [{**by_id[h["id"]], "at": h["at"]} for h in read_jsonl(HITS)
-                    if h["at"] >= since and h["id"] in by_id]
-            looked = {e["id"]: e for e in read_jsonl(LOOKUPS)}
-            kills = [{**k, "lookup": looked.get(k["id"])} for k in kills]
-            refreshed = {r["connection"]: r for r in (read_json(CACHE) or {}).get("rooms", [])}
-            rooms = []
-            mission_rooms = (mission or {}).get("rooms", [])[:3]
-            for i, (room, theme) in enumerate(zip(mission_rooms, room_themes(mission_rooms))):
-                mine = [m for m in monsters if m["pid"] % 3 == i]   # monster_id puts the room in pid mod 3
-                alive = [m for m in mine if m["id"] not in dead]
-                record, urgent = ({"key": k, "name": MONSTERS[k]["name"]} for k in theme["monsters"])
-                rooms.append({"app": room.get("app", room["connection"]), "writable": room.get("writable", False),
-                              "title": room.get("title", ""), "left": len(alive),
-                              "theme": theme["label"], "monster": record, "urgent_monster": urgent,
-                              "urgent_left": sum(m["demon"] for m in alive),
-                              "killed": sum(m["id"] in dead for m in mine),
-                              "refresh": refreshed.get(room["connection"])})
-            body = json.dumps({
-                # the briefing log belongs to the real level, not the offline sample in its place
-                "events": [] if is_offline(mission) else live_events(STATE / "run.jsonl"),
-                "play_events": live_events(STATE / "play.jsonl"),
-                "mission": mission and {k: mission[k] for k in ("question", "answer", "rooms", "denied", "masked")},
-                "game": game,
-                "kills": kills[-12:],
-                "kill_total": len(kills),  # the list is capped, so the panel counts and redraws by this
-                "hits": hits[-40:],
-                "rooms_live": rooms,
-                # where the monsters came from: connect-ai-mcp (live), saved (Connect AI unreachable) or demo
-                "records": {k: (read_json(CACHE) or {}).get(k) for k in ("source", "fetched_at")},
-                "vault": [v for v in read_jsonl(VAULT) if v["at"] >= since][-5:],
-                "vault_checking": checking if checking and time.time() - checking["at"] < 120 else None,
-                "standing": len([m for m in monsters if m["id"] not in dead]),
-                "ask": ask_state(),
-                # how each model has played this level (leaderboard.py), best first: under the
-                # current rules, or until a run plays by them, every run (marked earlier_rules)
-                "leaderboard": leaderboard_state(mission),
-            }).encode()
+            body = json.dumps(panel_state()).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Cache-Control", "no-store")
@@ -644,6 +650,11 @@ def cmd_panel(args):
     http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 
+def cmd_state(_):
+    """The panel's state as JSON, for the web build to start from (web/build.sh)."""
+    print(json.dumps(panel_state()))
+
+
 def cmd_reset(_):
     for p in (KILLS, HITS, LOOKUPS, VAULT):
         p.unlink(missing_ok=True)
@@ -652,7 +663,7 @@ def cmd_reset(_):
 
 COMMANDS = {"list": cmd_list, "kill": cmd_kill, "hit": cmd_hit, "lookup": cmd_lookup, "vault": cmd_vault,
             "poll": cmd_poll, "check": cmd_check,
-            "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel}
+            "score": cmd_score, "reset": cmd_reset, "panel": cmd_panel, "state": cmd_state}
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:

@@ -387,7 +387,7 @@ class PollCLITest(unittest.TestCase):
             for args in ((), ("bogus",)):
                 r = bridge(tmp, *args)
                 self.assertNotEqual(r.returncode, 0)
-                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|check|score|reset|panel}", r.stderr)
+                self.assertIn("usage: connect_doom.py {list|kill|hit|lookup|vault|poll|check|score|reset|panel|state}", r.stderr)
 
 
 class AskTest(unittest.TestCase):

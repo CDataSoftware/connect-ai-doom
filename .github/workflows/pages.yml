@@ -1,0 +1,53 @@
+name: pages
+# The browser version (web/) on GitHub Pages: setup.sh's downloads and builds that web/build.sh
+# needs (psdoom-ng's source, zdbsp, Freedoom, the panel's sprites), then the build, then the deploy.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: "6.0.13"   # the Emscripten web/psdoom-web.patch is tested with
+      - run: pip install -r requirements-dev.txt
+      - run: sudo apt-get install -y zlib1g-dev
+      - name: psdoom-ng, zdbsp and Freedoom (as setup.sh fetches them)
+        run: |
+          mkdir -p vendor/src wads
+          git clone -q https://github.com/keymon/psdoom-ng.git vendor/src/psdoom-ng
+          git -C vendor/src/psdoom-ng checkout -q 83d02bafe91439117421a0ccc3e238a0b9544e93
+          git clone -q https://github.com/rheit/zdbsp.git vendor/src/zdbsp
+          git -C vendor/src/zdbsp checkout -q f324e34c8bdbf9800d53b18ebd578a51fd7f9998
+          cmake -S vendor/src/zdbsp -B vendor/src/zdbsp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_C_FLAGS="-Wno-implicit-function-declaration -Wno-int-conversion -include stdlib.h" \
+            -DCMAKE_CXX_FLAGS="-include utility"
+          cmake --build vendor/src/zdbsp/build -j"$(nproc)"
+          curl -fsSL -o vendor/freedoom.zip https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
+          unzip -o -q -j vendor/freedoom.zip '*/freedoom2.wad' -d wads
+          python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
+      - run: web/build.sh
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

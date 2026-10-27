@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>About Connect AI × DOOM</title>
 <meta name="description" content="A Doom level built from business data, read through the CData Connect AI MCP server. Every monster is a record.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="About Connect AI × DOOM">
+<meta property="og:description" content="A Doom level built from business data, read through the CData Connect AI MCP server. Every monster is a record.">
+<meta property="og:image" content="og.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="favicon-180.png">
 <link rel="stylesheet" href="fonts/fonts.css">
@@ -89,7 +94,7 @@
 <nav class="top"><div class="wrap">
   <a class="home" href="./"><img src="brand/connect-ai.svg" alt="Connect AI"><span class="x">×</span><span class="doom">DOOM</span></a>
   <a class="link" href="./">PLAY</a>
-  <a class="link" href="https://github.com/CDataSoftware/connect-ai-doom">GITHUB</a>
+  <a class="link" href="https://github.com/CDataSoftware/connect-ai-doom" target="_blank" rel="noopener noreferrer">GITHUB</a>
 </div></nav>
 
 <main class="wrap">
@@ -100,7 +105,7 @@
       and a Doom level is built from what it finds: a room for each app, a monster for each record.</p>
     <div class="cta">
       <a class="btn" href="./">PLAY IN YOUR BROWSER</a>
-      <a class="btn alt" href="https://github.com/CDataSoftware/connect-ai-doom">VIEW ON GITHUB</a>
+      <a class="btn alt" href="https://github.com/CDataSoftware/connect-ai-doom" target="_blank" rel="noopener noreferrer">VIEW ON GITHUB</a>
     </div>
   </header>
 
@@ -157,7 +162,9 @@
     <p>The side panel has three tabs. <b>Live feed</b> follows your game, with what Claude said about each record when it
       played this level. <b>Leaderboard</b> shows how Claude and other models did when they played it.
       <b>How Claude built it</b> shows every call Claude made to Connect AI, with the SQL it wrote.</p>
-    <p class="muted">There's no sound yet. Asking new questions, live reads and letting Claude play need the full version.</p>
+    <p>Press <b>Watch Claude play</b> to see Claude clear the level in the game itself, narrating each record it
+      goes after, the way it did when it played this level for real.</p>
+    <p class="muted">There's no sound yet. Asking new questions and live reads need the full version.</p>
   </section>
 
   <section>
@@ -176,18 +183,18 @@
 
   <section>
     <h2>PLAY IT ON YOUR OWN DATA</h2>
-    <p>The full version runs on a Mac with <a href="https://code.claude.com/docs/en/setup">Claude Code</a> and a
-      <a href="https://www.cdata.com/ai/">CData Connect AI</a> account. Ask your own question, watch Claude build the
+    <p>The full version runs on a Mac with <a href="https://code.claude.com/docs/en/setup" target="_blank" rel="noopener noreferrer">Claude Code</a> and a
+      <a href="https://www.cdata.com/ai/" target="_blank" rel="noopener noreferrer">CData Connect AI</a> account. Ask your own question, watch Claude build the
       level, and let Claude play it. Other models can play too, ranked on a leaderboard.</p>
-    <p><a href="https://github.com/CDataSoftware/connect-ai-doom">Setup instructions are on GitHub.</a></p>
+    <p><a href="https://github.com/CDataSoftware/connect-ai-doom" target="_blank" rel="noopener noreferrer">Setup instructions are on GitHub.</a></p>
   </section>
 </main>
 
 <footer><div class="wrap">
-  <p>Made by <a href="https://www.cdata.com/">CData Software</a>. The code is MIT licensed, on
-    <a href="https://github.com/CDataSoftware/connect-ai-doom">GitHub</a>.</p>
-  <p>The game is <a href="https://github.com/keymon/psdoom-ng">psdoom-ng</a>, built on Chocolate Doom (GPL-2.0), with the
-    project's patches on GitHub. The art and monsters are from <a href="https://freedoom.github.io/">Freedoom</a>.
+  <p>Made by <a href="https://www.cdata.com/" target="_blank" rel="noopener noreferrer">CData Software</a>. The code is MIT licensed, on
+    <a href="https://github.com/CDataSoftware/connect-ai-doom" target="_blank" rel="noopener noreferrer">GitHub</a>.</p>
+  <p>The game is <a href="https://github.com/keymon/psdoom-ng" target="_blank" rel="noopener noreferrer">psdoom-ng</a>, built on Chocolate Doom (GPL-2.0), with the
+    project's patches on GitHub. The art and monsters are from <a href="https://freedoom.github.io/" target="_blank" rel="noopener noreferrer">Freedoom</a>.
     DOOM is a trademark of id Software; this project isn't affiliated with or endorsed by id Software.</p>
 </div></footer>
 </body>

@@ -103,6 +103,16 @@ class PanelTest(unittest.TestCase):
         self.assertIn("CLAUDE</span>Taking", ids["now-big"]["html"])
         self.assertNotIn('class="live', ids["rooms-live"]["html"])
         self.assertIn("Connect AI said no. There is no key.", ids["rooms-live"]["html"])
+        # the level clear, then the red door: the door's answer takes the card from "all clear"
+        done = [{**rooms[0], "left": 0, "urgent_left": 0, "killed": 15}]
+        door = {"connection": "PostgreSQLPII", "tool": "queryData", "blocked": True, "ms": 0,
+                "at": datetime.datetime(2026, 10, 15, 13, 55).timestamp(), "text": "Request blocked: PII detected",
+                "request": {"query": "SELECT [ssn] FROM [customers]"}}
+        ids = self.render(kills=kills, kill_total=15, rooms_live=done, vault=[door],
+                          game={"mode": "player", "started": 0}, records={"source": "snapshot"})
+        self.assertIn("RED DOOR: CONNECT AI SAID NO</div>", ids["now-big"]["html"])
+        self.assertIn("never reached Claude", ids["now-big"]["html"])
+        self.assertIn("blocked it: Request blocked", ids["events"]["html"])
 
     def test_game_view(self):
         kills = [{"id": f"Zendesk:{i}", "app": "Zendesk", "label": f"K{i}", "detail": "high open", "writable": True,
@@ -286,8 +296,8 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(ids["s-records"]["text"], 24)                   # every monster in the level
         self.assertEqual(ids["s-blocked"]["text"], 1)                    # the PII vault
         rl = ids["rooms-live"]["html"]
-        self.assertIn('<span class="acc"> · READ + WRITE</span><span class="acc-s"> · R+W</span>', rl)
-        self.assertIn('<span class="acc-s"> · READ</span>', rl)
+        self.assertIn('<span class="acc"> · READ + WRITE</span><span class="acc-s">READ + WRITE</span>', rl)
+        self.assertIn('<span class="acc-s">READ ONLY</span>', rl)
         self.assertEqual(ids["rooms-live"]["vars"], {"--rooms": 2})     # a column per room on the stage
         # the offline sample level (its rooms carry their rows): the header says so, not "LIVE"
         ids = self.render(events=[], rooms_live=rooms, game={"mode": "player", "started": 0},

@@ -245,8 +245,85 @@ index 0000000..a5fb98d
 +    return 0;
 +}
 +#endif
+diff --git c/trunk/src/m_menu.c w/trunk/src/m_menu.c
+index f9563fc..e33472c 100644
+--- c/trunk/src/m_menu.c
++++ w/trunk/src/m_menu.c
+@@ -376,6 +376,23 @@ menu_t  NewDef =
+ //
+ // OPTIONS MENU
+ //
++#ifdef __EMSCRIPTEN__
++// The web build: God mode and the mouse. Claude, the booth's switches and sound need the Mac.
++enum
++{
++    godmode,
++    mousesens,
++    option_empty1,
++    opt_end
++} options_e;
++
++menuitem_t OptionsMenu[]=
++{
++    {1,"M_GODMOD",	M_ChangeGodMode,'g'},
++    {2,"M_MSENS",	M_ChangeSensitivity,'m'},
++    {-1,"",0,'\0'}
++};
++#else
+ enum
+ {
+     claudeplays,  // connect-doom: the booth's switches, in PR_AgentOption's order
+@@ -410,6 +427,8 @@ menuitem_t OptionsMenu[]=
+     {1,"M_SVOL",	M_Sound,'s'}
+ };
+ 
++#endif
++
+ menu_t  OptionsDef =
+ {
+     opt_end,
+@@ -1036,6 +1055,15 @@ void M_DrawOptions(void)
+ 
+     V_DrawPatchDirect (108,4,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));  // connect-doom: up from 15
+ 	
++#ifdef __EMSCRIPTEN__
++    {
++        patch_t *label = W_CacheLumpName(OptionsMenu[godmode].name, PU_CACHE);
++        patch_t *onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(2)]), PU_CACHE);
++        V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
++                           OptionsDef.y+LINEHEIGHT*godmode,0,onoff);
++    }
++    i = 0;
++#else
+     // connect-doom: ON / OFF just right of each switch's label, and the Model row's model
+     for (i = claudeplays; i <= sfxon; i++)
+     {
+@@ -1054,6 +1082,7 @@ void M_DrawOptions(void)
+         V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
+                            OptionsDef.y+LINEHEIGHT*i,0,onoff);
+     }
++#endif
+ 
+     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(mousesens+1),
+ 		 10,mouseSensitivity);
+@@ -2096,6 +2125,7 @@ void M_Init (void)
+     messageLastMenuActive = menuactive;
+     quickSaveSlot = -1;
+ 
++#ifndef __EMSCRIPTEN__
+     // connect-doom: the switches' labels come from state/brand.wad; without it, blank rows
+     for (i = claudeplays; i <= sfxon; i++)
+     {
+@@ -2105,6 +2135,7 @@ void M_Init (void)
+             OptionsMenu[i].name[0] = '\0';
+         }
+     }
++#endif
+ 
+     // Here we could catch other version dependencies,
+     //  like HELP1/2, and four episodes.
 diff --git c/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index 86d15dd..eaf1ac3 100644
+index 86d15dd..c19b4e9 100644
 --- c/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -5,6 +5,15 @@
@@ -265,7 +342,22 @@ index 86d15dd..eaf1ac3 100644
  #include <stdlib.h>
  #include <string.h>
  #include <math.h>
-@@ -1495,3 +1504,12 @@ void PR_VaultTouched(void)
+@@ -1251,12 +1260,14 @@ void PR_AgentTiccmd(ticcmd_t *cmd)
+     // connect-doom: raid.sh (the launcher) gone means nothing serves the records or the panel
+     // any more, and a game left behind would sit frozen on the screen: quit. Its exit trap
+     // kills the game too; this covers the times the trap never runs (kill -9, a crash).
++#ifndef __EMSCRIPTEN__   // a browser has no launcher to lose
+     if (agent_clock % TICRATE == 0 && getppid() == 1)
+     {
+         extern int show_endoom;
+         show_endoom = 0;               // nobody is there to press a key on the ENDOOM screen
+         I_Quit();
+     }
++#endif
+     if (agent_clock % 4 == 0)
+     {
+         agent_read_cmd();
+@@ -1495,3 +1506,21 @@ void PR_VaultTouched(void)
      system(buf);
  }
  // *** VAULT END ***
@@ -276,5 +368,14 @@ index 86d15dd..eaf1ac3 100644
 +{
 +    player_t *p = &players[consoleplayer];
 +    return (p->cards[it_bluecard] ? 1 : 0) | (p->cards[it_yellowcard] ? 2 : 0) | (p->cards[it_redcard] ? 4 : 0);
++}
++
++// Where the player stands: x and y in map units, and the angle in degrees (0 east, 90 north).
++void web_player(int *out)
++{
++    mobj_t *mo = players[consoleplayer].mo;
++    out[0] = mo ? mo->x >> FRACBITS : 0;
++    out[1] = mo ? mo->y >> FRACBITS : 0;
++    out[2] = mo ? (int) ((double) mo->angle * 360.0 / 4294967296.0) : 0;
 +}
 +#endif

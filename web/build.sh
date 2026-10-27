@@ -35,7 +35,7 @@ rm -rf "$DIST" && mkdir -p "$DIST"
   # shellcheck disable=SC2086
   emcc -O2 -I. -Isrc -Iopl -Ipcsound -Itextscreen -DHAVE_CONFIG_H -sUSE_SDL=1 -Wno-everything $FILES \
     -sASYNCIFY -sALLOW_MEMORY_GROWTH -sINVOKE_RUN=0 -sFORCE_FILESYSTEM \
-    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV -sEXPORTED_FUNCTIONS=_main,_pr_kill,_web_keys -o "$DIST/psdoom.js"
+    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAP32 -sEXPORTED_FUNCTIONS=_main,_pr_kill,_web_keys,_web_player,_malloc,_free -o "$DIST/psdoom.js"
 )
 
 # The level: web/level's snapshot of a real one (web/snapshot.py) played on its saved records,
@@ -55,18 +55,27 @@ fi
 python3 tools/make_branding.py wads/freedoom2.wad assets/brand "$L/brand.wad" --mission "$L/mission.json"
 python3 tools/make_arena.py "$L/level-raw.wad" --mission "$L/mission.json" --records "$L/cache.json" --brand
 vendor/src/zdbsp/build/zdbsp -o "$L/level.wad" "$L/level-raw.wad" >/dev/null
-python3 tools/make_deh.py "$L/mission.json" "$L/level.deh"
+python3 tools/make_deh.py "$L/mission.json" "$L/level.deh" --no-gore   # no blood: records vanish in teleport fog
 python3 tools/themes.py monsters "$L/mission.json" > "$L/monsters.txt"
 python3 connect_doom.py state > "$L/state.json"   # the panel's state before the first kill
 rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/about.html wads/freedoom2.wad "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/about.html web/og.jpg wads/freedoom2.wad "$DIST/"
 python3 - "$DIST/index.html" <<'PY'
 import sys
 page = open("panel/index.html").read()
 assert page.count("\n<script>\n") == 1, "panel/index.html: expected one inline <script>"
-open(sys.argv[1], "w").write(page.replace("\n<script>\n", '\n<script src="web.js"></script>\n<script>\n', 1))
+page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
+# what a link to it shows in search results and chat apps
+meta = """<meta name="description" content="Play a Doom level built from business data, read by Claude through the CData Connect AI MCP server. Every monster is a record.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Connect AI × DOOM">
+<meta property="og:description" content="Every monster is a record. Play a Doom level Claude built from business data through the CData Connect AI MCP server, or watch Claude play it.">
+<meta property="og:image" content="og.jpg">
+<meta name="twitter:card" content="summary_large_image">"""
+assert page.count("</title>") == 1, "panel/index.html: expected one <title>"
+open(sys.argv[1], "w").write(page.replace("</title>", "</title>\n" + meta, 1))
 PY
 echo "Built web/dist."
 if [[ "${1:-}" == serve ]]; then

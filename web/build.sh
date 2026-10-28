@@ -61,8 +61,7 @@ python3 connect_doom.py state > "$L/state.json"   # the panel's state before the
 rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/about.html web/licenses.html \
-  web/og.jpg "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/og.jpg "$DIST/"
 # Freedoom without the maps the game never loads, gzipped: Pages serves it as is, and the page unzips it
 python3 web/trim_wad.py wads/freedoom2.wad "$DIST/freedoom2.wad"
 gzip -9 -n "$DIST/freedoom2.wad"
@@ -71,8 +70,19 @@ mkdir -p "$DIST/licenses"
 cp web/licenses/freedoom.txt "$DIST/licenses/"
 cp LICENSE "$DIST/licenses/connect-ai-doom.txt"
 cp "$SRC/trunk/COPYING" "$DIST/licenses/gpl-2.0.txt"
-python3 - "$DIST/index.html" <<'PY'
+# The site's pages, each with Plausible analytics (the site's only; the booth's local panel has none)
+python3 - "$DIST" <<'PY'
 import sys
+analytics = """<script async src="https://plausible.joekarlsson.io/js/pa-CMybn7KnTCbpVs_M_GdO7.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>"""
+def write_with_analytics(name, page):
+    assert page.count("</title>") == 1, f"{name}: expected one <title>"
+    open(f"{sys.argv[1]}/{name}", "w").write(page.replace("</title>", "</title>\n" + analytics, 1))
+for name in ("about.html", "licenses.html"):
+    write_with_analytics(name, open(f"web/{name}").read())
 page = open("panel/index.html").read()
 assert page.count("\n<script>\n") == 1, "panel/index.html: expected one inline <script>"
 page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
@@ -83,8 +93,7 @@ meta = """<meta name="description" content="Play a Doom level built from busines
 <meta property="og:description" content="Every monster is a record. Play a Doom level Claude built from business data through the CData Connect AI MCP server, or watch Claude play it.">
 <meta property="og:image" content="og.jpg">
 <meta name="twitter:card" content="summary_large_image">"""
-assert page.count("</title>") == 1, "panel/index.html: expected one <title>"
-open(sys.argv[1], "w").write(page.replace("</title>", "</title>\n" + meta, 1))
+write_with_analytics("index.html", page.replace("</head>", meta + "\n</head>", 1))
 PY
 echo "Built web/dist."
 if [[ "${1:-}" == serve ]]; then

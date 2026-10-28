@@ -133,7 +133,7 @@ index afe3974..d987c9a 100644
      HUlib_drawIText(&w_chat);
      if (automapactive)
 diff --git i/trunk/src/i_video.c w/trunk/src/i_video.c
-index 15e4a6b..2e7d77c 100644
+index 15e4a6b..21c4ee9 100644
 --- i/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
 @@ -50,9 +50,86 @@
@@ -303,7 +303,24 @@ index 15e4a6b..2e7d77c 100644
  
      // Don't update the screen if the window isn't visible.
      // Not doing this breaks under Windows when we alt-tab away 
-@@ -1674,15 +1784,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -972,15 +1082,7 @@ void I_SetPalette (byte *doompalette)
+ 
+ void I_SetWindowCaption(void)
+ {
+-    char *buf;
+-
+-    buf = Z_Malloc(strlen(gamedescription) + strlen(PACKAGE_STRING) + 10, 
+-                   PU_STATIC, NULL);
+-    sprintf(buf, "%s - %s", gamedescription, PACKAGE_STRING);
+-
+-    SDL_WM_SetCaption(buf, NULL);
+-
+-    Z_Free(buf);
++    SDL_WM_SetCaption("Connect AI \xc3\x97 DOOM", NULL);
+ }
+ 
+ // Set the application icon
+@@ -1674,15 +1776,17 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
      {
          flags |= SDL_FULLSCREEN;
      }
@@ -325,7 +342,7 @@ index 15e4a6b..2e7d77c 100644
      }
  
      screen = SDL_SetVideoMode(w, h, screen_bpp, flags);
-@@ -1693,6 +1805,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1693,6 +1797,12 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
                  w, h, screen_bpp, SDL_GetError());
      }
  
@@ -338,7 +355,7 @@ index 15e4a6b..2e7d77c 100644
      // Blank out the full screen area in case there is any junk in
      // the borders that won't otherwise be overwritten.
  
-@@ -1799,6 +1917,7 @@ void I_InitGraphics(void)
+@@ -1799,6 +1909,7 @@ void I_InitGraphics(void)
      // Check for command-line video-related parameters.
  
      CheckCommandLine();

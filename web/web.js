@@ -9,6 +9,8 @@
   const CONNECT_AI = "https://www.cdata.com/ai/";
   const external = (href, text, cls = "") =>
     `<a href="${href}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}>${text}</a>`;
+  // A custom event for the site's Plausible analytics (web/build.sh puts its script on the page)
+  const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
   // The game takes two thirds of the window at 4:3, with room for the brand bars above and below.
@@ -326,6 +328,7 @@
     function finish(how) {
       if (ended) return;
       ended = true;
+      trackEvent("Level clear", {how});
       tip.hidden = true;
       if (document.pointerLockElement) document.exitPointerLock();
       const n = kills.length;
@@ -346,13 +349,16 @@
 
     intro.addEventListener("click", e => {
       const go = e.target.closest("[data-go]")?.dataset.go;
-      if (go === "play") playYourself();
-      if (go === "watch") watch();
+      if (go === "play") { trackEvent("Play"); playYourself(); }
+      if (go === "watch") { trackEvent("Watch Claude"); watch(); }
     });
-    end.addEventListener("click", e => { if (e.target.closest("[data-go=again]")) location.reload(); });
+    end.addEventListener("click", e => {
+      if (e.target.closest(`a[href="${CONNECT_AI}"]`)) trackEvent("Try Connect AI");
+      if (e.target.closest("[data-go=again]")) location.reload();
+    });
     // During Claude's run, a click on the game takes the marine over where it stands.
     canvas.addEventListener("click", () => {
-      if (replay) { playYourself(); return; }
+      if (replay) { trackEvent("Take over from Claude"); playYourself(); return; }
       canvas.focus();
       lockPointer(canvas);
     });
@@ -362,12 +368,14 @@
       const keys = window.Module?._web_keys ? Module._web_keys() : 0;
       if (step === 1 && !replay && (keys & need) === need) {
         step = 2;
+        trackEvent("Got keys");
         show("STEP 2 OF 3 · CLEAR THE ROOMS", "Access granted. Each room is an app, and each monster is a record from it. Shoot one to read it in the panel.", 9);
       }
     }, 300);
     let endTimer = 0;
     events.addEventListener("cleared", () => {
       if (replay) return;                                   // Claude's run goes on to the red door itself
+      trackEvent("Rooms cleared");
       if (!denied) { finish("played"); return; }
       step = 3;
       show("STEP 3 OF 3 · TRY THE RED DOOR", "Every record is cleared. The red door guards data Connect AI blocked. There is no key.", 12);
@@ -376,6 +384,7 @@
     events.addEventListener("vault", () => {
       if (replay || alive().length) return;
       clearTimeout(endTimer);
+      trackEvent("Red door");
       show("CONNECT AI SAID NO", "Claude asked for a customer's Social Security number. Connect AI blocked it, so the data never reached Claude.", 6);
       setTimeout(() => finish("played"), 5000);
     });
@@ -443,9 +452,10 @@
       if (hasMouse() && roomy()) {
         gate.hidden = true;
         started = true;
-        start().catch(e => console.error("connect-doom web:", e));
+        start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
         return;
       }
+      if (gate.hidden) trackEvent("Desktop only", {reason: hasMouse() ? "small window" : "no mouse"});
       gate.hidden = false;
       document.getElementById("desktop-why").textContent = hasMouse()
         ? "Connect AI × DOOM needs a bigger window. Make this one wider to play."

@@ -16,13 +16,16 @@
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
-  // The game takes two thirds of the window at 4:3, with room for the brand bars: 90 px above (the
-  // links and the logos), and 150 px below (the question, Claude's line and the footer).
+  // The game takes two thirds of the window at 4:3 (leaving the panel PANEL_MIN at least), with the
+  // brand bars hugging it: TOP above (the links and the logos), BOTTOM below (the question, Claude's
+  // line and the footer). In a tall window the three sit together in the middle, the spare height
+  // above and below them rather than inside the bars (the top bar follows the game: see plainWords).
+  const PANEL_MIN = 440, TOP = 90, BOTTOM = 170;
   function layout() {
-    const w = innerWidth, h = innerHeight, split = Math.round(w * 2 / 3);
-    const gh = Math.max(200, Math.min(h - 240, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
-    const gy = Math.min((h - gh) / 2, h - gh - 150);
-    return [Math.round((split - gw) / 2), Math.round(gy), Math.round(gw), Math.round(gh), split, 0];
+    const w = innerWidth, h = innerHeight, split = Math.round(Math.min(w * 2 / 3, w - PANEL_MIN));
+    const gh = Math.max(200, Math.min(h - TOP - 150, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
+    const top = Math.max(0, Math.round((h - TOP - gh - BOTTOM) / 2));
+    return [Math.round((split - gw) / 2), top + TOP, Math.round(gw), Math.round(gh), split, 0];
   }
   const params = new URLSearchParams(location.search);
   if (!params.has("stage")) {
@@ -385,7 +388,29 @@
       });
     }
     const style = document.createElement("style");
-    style.textContent = `/* the question box and its ideas take room: the game's events keep enough to read the latest */
+    style.textContent = `/* the bars hug the game (layout()): the top one just above it, the footer just under it */
+      #stage .bar.top { top: calc(var(--gy) - 90px); height: 90px; container-type: inline-size; align-items: flex-end; padding-bottom: 12px; }
+      #stage .bar.bottom { justify-content: flex-start; padding-top: 16px; }
+      /* a narrow stage: smaller logos, so the chip beside them fits */
+      @container (max-width: 720px) {
+        .lockup { gap: 10px; }
+        .lockup .cdata { height: 15px; } .lockup .cailogo { height: 22px; } .lockup .rule { height: 24px; }
+        .lockup .x, .lockup .doom { font-size: 15px; }
+      }
+      /* the booth's loading screen: here the start card is */
+      #stage-screen .splash { display: none; }
+      /* a narrow, tall panel: the rooms one under another, each with its count beside its name (short
+         windows keep them side by side, or the game's events lose their room) */
+      section:has(> #rooms-live) { container-type: inline-size; }
+      @media (min-height: 860px) { @container (max-width: 440px) {
+        body.stage #rooms-live { grid-template-columns: minmax(0, 1fr); }
+        #rooms-live .rl { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: center; }
+        #rooms-live .rl > * { grid-column: 1 / -1; }
+        #rooms-live .rl > .top, #rooms-live .rl > .app { grid-column: 1; }
+        #rooms-live .rl > .num { grid-column: 2; grid-row: 1 / span 2; font-size: 24px; text-align: right; }
+        #rooms-live .rl .num small { font-size: 14px; }
+      } }
+      /* the question box and its ideas take room: the game's events keep enough to read the latest */
       body.stage.in-game main > section.grow:has(#events) { min-height: 96px; }
       body.stage.in-game main > #newq:not([hidden]) { flex: 0 1 auto; overflow-y: auto; }   /* short windows: it scrolls */
       #newq .ideas { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -414,7 +439,7 @@
     const screen = document.getElementById("stage-screen");
     const style = document.createElement("style");
     style.textContent = `
-      .coach-card { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center;
+      .coach-card { position: absolute; inset: 0; z-index: 3; display: flex; align-items: safe center; justify-content: center; overflow-y: auto;
                     background: rgba(13, 13, 18, .88); padding: 24px; }
       .coach-card[hidden], #coach-tip[hidden] { display: none; }
       .coach-card .card { max-width: 640px; display: flex; flex-direction: column; gap: 16px; }
@@ -439,6 +464,14 @@
       .coach-card .byo .btn { flex: none; padding: 11px 12px; }
       .coach-card .btn:focus-visible { outline: 3px solid var(--clarity); outline-offset: 3px; }
       .coach-card .keys { font: 13px/1.5 var(--mono); color: var(--balance); }
+      .coach-card { container-type: size; }
+      @container (max-height: 600px) {
+        .coach-card .card { gap: 10px; }
+        .coach-card p.what, .coach-card .keys { display: none; }
+        .coach-card h3 { font-size: 24px; } .coach-card p, .coach-card li { font-size: 14px; }
+        .coach-card li { grid-template-columns: 26px 1fr; } .coach-card li::before { line-height: 26px; }
+        .coach-card .btn { padding: 11px 14px; } .coach-card .byo { padding: 6px 10px; font-size: 13px; }
+      }
       /* above Doom's status bar (its bottom 16%), clear of Doom's own message line at the top */
       #coach-tip { position: absolute; z-index: 2; bottom: calc(16% + 16px); left: 50%; transform: translateX(-50%); width: min(560px, 86%);
                    background: rgba(13, 13, 18, .9); border: 2px solid var(--agility); border-radius: 4px; padding: 12px 16px;

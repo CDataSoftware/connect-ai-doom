@@ -153,6 +153,12 @@
     const coach = makeCoach(canvas);
     const wad = await downloadWad(coach.loading);
 
+    // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
+    const pageTitle = document.title;
+    const titleWatch = new MutationObserver(() => {
+      if (document.title !== pageTitle) { titleWatch.disconnect(); document.title = pageTitle; }
+    });
+    titleWatch.observe(document.querySelector("title"), {childList: true, characterData: true, subtree: true});
     window.Module = {
       canvas,
       print: s => console.log(s),
@@ -197,13 +203,16 @@
     relabel("#s-model + .lbl", "BUILT BY");
     relabel("#stage .bar.bottom .line .tag", "THE QUESTION");
     const briefing = document.querySelector("#feed")?.parentElement.querySelector("h2");
-    if (briefing) briefing.textContent = "EVERY CALL CLAUDE MADE TO CONNECT AI";
+    if (briefing) briefing.textContent = "DOOMCP · EVERY CALL CLAUDE MADE TO CONNECT AI";
     const fine = document.querySelector("#stage .bar.bottom .fine");
     if (fine) fine.innerHTML = "Every monster is a record Claude read through the " +
       external(CONNECT_AI, "CData Connect AI") + " MCP server. Click the game to play; Esc frees the mouse.";
     const board = document.querySelector("#board h2");
-    if (board) board.insertAdjacentHTML("afterend", '<p class="board-lead">We gave each AI model the same Doom ' +
-      "tools and the same Connect AI access, and let it play this level. Each run is scored from the game itself.</p>");
+    if (board) {
+      board.firstChild.textContent = "DOOMCP LEADERBOARD: THIS LEVEL";
+      board.insertAdjacentHTML("afterend", '<p class="board-lead">We gave each AI model the same Doom ' +
+        "tools and the same Connect AI access, and let it play this level. Each run is scored from the game itself.</p>");
+    }
     const note = document.querySelector("#board .note");
     if (note) note.textContent = "Cleared: runs that killed every record. Time: the median time to the last kill. " +
       "Stuck: moves with nothing to show for them. Urgent 1st: how often it went for the urgent records first. " +
@@ -272,7 +281,7 @@
       return el;
     };
     const intro = card("coach-intro", `
-      <div class="eyebrow">CONNECT AI × DOOM</div>
+      <div class="eyebrow">CONNECT AI × DOOM · A.K.A. DOOMCP</div>
       <h3 id="coach-intro-title">Every monster is a <span class="red">record</span>.</h3>
       <p>Claude read a demo company's ${appList} through the Connect AI MCP server and built this level from what it found.</p>
       <p class="what">CData Connect AI is one MCP server between AI agents like Claude and your business apps. It applies
@@ -333,7 +342,7 @@
       if (document.pointerLockElement) document.exitPointerLock();
       const n = kills.length;
       end.innerHTML = `<div class="card">
-        <div class="eyebrow">LEVEL CLEAR</div>
+        <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
         <h3 id="coach-end-title">${how === "watched" ? "Claude" : "You"} just read ${n} records from ${appList}.</h3>
         <p>All through one MCP server: Connect AI. It let Claude read the apps it was allowed into${denied
           ? ", and blocked the one request it shouldn't answer: a customer's Social Security number" : ""}.

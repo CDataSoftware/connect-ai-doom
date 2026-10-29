@@ -17,10 +17,7 @@ window.ConnectDoomAI = (() => {
   const MCP_URL = "https://mcp.cloud.cdata.com/mcp";
   const READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData";   // claude_run.py
   const PAT_URL = "https://cloud.cdata.com/settings?defaultTab=PersonalAccessTokens";
-  // Connect AI's free trial sign-up, as cdata.com's Start Free Trial button opens it: its source
-  // tag must not be empty (www.cdata.com/ai/signup/ sends an empty one, and the sign-up fails)
-  const SIGNUP_URL = "https://cloud-login.cdata.com/authorize?prompt=login&screen_hint=signup&response_type=code" +
-    "&client_id=8dtJbDAVHT0exzv9cPDuxxFBhzqsj78m&redirect_uri=https://cloud.cdata.com&ext-utm_source=connect-ai-doom";
+  const SIGNUP_URL = "https://cloud.cdata.com/";   // Connect AI: sign in, or sign up for the free trial
   const QUICKSTART_URL = "https://docs.cloud.cdata.com/en/Quick-Start-Guide";
 
   // gateway_run.py's limits, so a model plays here as it does on a Mac

@@ -650,7 +650,7 @@
         <p>Your model reads your own business data through the Connect AI MCP server: it can look records up while it
           plays, and answer the panel's questions. Read-only: nothing is written.</p>
         <ol class="setup">
-          <li>${external(AI.SIGNUP_URL, "Sign up for Connect AI")}: it's a free trial.</li>
+          <li>${external(AI.SIGNUP_URL, "Sign up for Connect AI")}: pick Sign up under the sign-in box. It's a free trial.</li>
           <li>Add a data source, or use the sample data, as the ${external(AI.QUICKSTART_URL, "Quick Start")} shows.</li>
           <li>Make a ${external(AI.PAT_URL, "personal access token")} and paste it below, with your sign-in email.</li>
         </ol>

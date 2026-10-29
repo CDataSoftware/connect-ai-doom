@@ -27,3 +27,14 @@ python3 tools/screenshots.py /tmp/shots      # play.png, aim.png, menu.png, paus
 ```
 
 It runs psdoom headless on the current `state/` level, walks to a room through the agent channel, presses Esc and P, and saves each screen. Kills and hits go to no-op commands, so the kill log is untouched.
+
+## The browser version
+
+`make test` covers `web/levelkit.py` (a visitor's level, built from recorded Connect AI answers), but not the page. `make web-test` builds `web/dist` and plays it in headless Chromium (`tests/web/smoke.mjs`), with Claude's API and the Connect AI MCP server faked, so it needs no keys:
+
+```bash
+cd tests/web && npm ci && npx playwright install chromium   # once
+make web-test
+```
+
+It checks that offline Claude plays on load, that a refused key hands the game back to offline Claude, that a level builds from the visitor's data (Pyodide and zdbsp in the page) and plays, and that Demo level goes back. The Pages workflow runs it before every deploy; a failure stops the deploy.

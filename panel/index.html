@@ -541,7 +541,7 @@
   </section>
   <section class="brief"><h2>THE ASK</h2><div class="ask" id="ask"><span class="empty">Waiting for a question</span></div></section>
   <section class="brief grow"><h2>LIVE FEED: CLAUDE THROUGH CONNECT AI</h2><div class="feed" id="feed"><div class="empty">No calls yet</div></div></section>
-  <section class="brief"><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The level is built when Claude is done</div></div></section>
+  <section class="brief"><h2>WHAT CONNECT AI LET IT REACH</h2><div id="rooms"><div class="empty">The rooms appear once the level is planned</div></div></section>
   <section class="brief"><h2>CLAUDE'S ANSWER</h2><div class="answer" id="answer"><span class="empty">Still working</span></div></section>
   <section class="newq" id="newq" hidden><h2>ASK CLAUDE A NEW QUESTION</h2>
     <form id="newq-form">
@@ -1396,7 +1396,7 @@ async function tick() {
       feed.reset(); automap.rooms.clear(); automap.seen = 0; feed.doneMeta = null;
       if (lastRun !== null) {     // the last level's answer and rooms aren't this question's
         $("answer").innerHTML = '<span class="empty">Still working</span>';
-        $("rooms").innerHTML = '<div class="empty">The level is built when Claude is done</div>';
+        $("rooms").innerHTML = '<div class="empty">The rooms appear once the level is planned</div>';
       }
       lastRun = run;
     }

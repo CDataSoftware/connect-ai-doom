@@ -16,6 +16,7 @@ on:
       - claude_run.py
       - leaderboard.py
       - play.py
+      - tests/web/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 permissions:
@@ -51,6 +52,12 @@ jobs:
           unzip -o -q -j vendor/freedoom.zip '*/freedoom2.wad' -d wads
           python3 tools/make_sprites.py wads/freedoom2.wad panel/sprites assets/brand
       - run: web/build.sh
+      - name: The built site, end to end in headless Chromium (a failure stops the deploy)
+        working-directory: tests/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          node smoke.mjs
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist

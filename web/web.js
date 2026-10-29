@@ -99,7 +99,7 @@
   // null hides the box (nothing set up to build with), busy while a level builds, note under it.
   function askState() {
     if (!buildReady()) return null;
-    const ai = AI.active(AI.load()), ask = {default: state.mission?.question || ""};
+    const ai = AI.active(AI.load()), ask = {default: suggestQuestions(AI.connections())[0] || ""};   // "Use the default question"
     if (builder?.building()) return {...ask, busy: `${modelName(ai.model)} is building your level…`};
     return {...ask, note: `Enter builds a level from your data: ${modelName(ai.model)} picks the three apps that best ` +
                           `answer it, through Connect AI, with ${connectionList(AI.connections())}.`};
@@ -355,13 +355,21 @@
     try { canvas.requestPointerLock()?.catch?.(() => {}); } catch (e) {}
   }
 
+  // The briefing's labels name whoever built the level: Claude for the site's, the visitor's model for theirs
+  function nameBuilder(model) {
+    const who = /claude/i.test(model) ? "CLAUDE" : /gpt|openai/i.test(model) ? "CHATGPT" : modelName(model);
+    const set = (el, text) => { if (el) el.textContent = text; };
+    set(document.getElementById("tab-brief"), `HOW ${who} BUILT IT`);
+    set(document.querySelector("#feed")?.parentElement.querySelector("h2"), `DOOMCP · EVERY CALL ${who} MADE TO CONNECT AI`);
+    set(document.querySelector("#answer")?.parentElement.querySelector("h2"), `${who}'S ANSWER`);
+  }
+
   // The panel speaks to people running a booth; a visitor here needs plainer words.
   function plainWords() {
     const relabel = (sel, text) => { const el = document.querySelector(sel); if (el) el.textContent = text; };
     relabel("#s-model + .lbl", "BUILT BY");
     relabel("#stage .bar.bottom .line .tag", "THE QUESTION");
-    const briefing = document.querySelector("#feed")?.parentElement.querySelector("h2");
-    if (briefing) briefing.textContent = "DOOMCP · EVERY CALL CLAUDE MADE TO CONNECT AI";
+    nameBuilder(mine ? mine.model : "claude");
     const fine = document.querySelector("#stage .bar.bottom .fine");
     // the page's footer: what Connect AI is, the code, and that this is a fan project
     if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI") +
@@ -810,6 +818,7 @@
       const headline = document.getElementById("stage-headline"), eyebrow = document.querySelector("#stage-screen .splash .eyebrow span");
       if (headline) headline.innerHTML = `${esc(modelName(ai.model))} is building a Doom level from your <span class="hl">live</span> data`;
       if (eyebrow) eyebrow.textContent = modelName(ai.model);
+      nameBuilder(ai.model);
     }
 
     async function build() {
@@ -840,6 +849,7 @@
         trackEvent("Level build failed", {provider: ai.provider});
         Object.assign(state, before);
         document.body.classList.remove("building");
+        nameBuilder(mine ? mine.model : "claude");
         el.showModal();
         note(`Couldn't build it: ${e.message}`, "bad");
         $("build-go").disabled = $("build-q").disabled = false;
@@ -873,8 +883,8 @@
           "that best answer your question, and turns their records into the level's monsters. Then you play it."
           : "Ask a question about your own data, and your AI model builds a Doom level from what it finds through Connect AI. " +
             "It needs two things first:";
-        $("build-fine").textContent = ready || building ? `It takes a minute or two, and uses your own ${AI.PROVIDERS[ai.provider].company} ` +
-          "credits. Its Connect AI calls show in the panel's HOW CLAUDE BUILT IT tab as it goes. The level stays in this browser."
+        $("build-fine").textContent = ready || building ? `It takes about three minutes and up to 40 Connect AI calls, and uses your own ${AI.PROVIDERS[ai.provider].company} ` +
+          "credits. You'll watch its Connect AI calls as it goes. The level stays in this browser."
           : "Your keys stay in this browser and go straight to the AI provider and to Connect AI.";
         el.showModal();
       },

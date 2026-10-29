@@ -25,6 +25,9 @@ window.ConnectDoomAI = (() => {
 
   // gateway_run.py's limits, so a model plays here as it does on a Mac
   const MAX_TOKENS = 4096, MAX_TURNS = 200, MAX_MOVES = 100, RETRY_WAITS = [2, 5, 10];
+  // A level's briefing on the visitor's credits: BRIEF_CALLS Connect AI calls (Sonnet used 30 for a real
+  // one), then each call is told to write the plan; BRIEF_TURNS replies at most, whatever happens.
+  const BRIEF_CALLS = 40, BRIEF_TURNS = 60;
   const KEEP_RESULTS = 6, RESULT_CHARS = 8000, TRIMMED_CHARS = 300, EMPTY_RETRIES = 2;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -174,14 +177,14 @@ window.ConnectDoomAI = (() => {
   // gateway_run.run: send `prompt`, run each tool the model calls, and send the results back until it
   // answers without a tool, the turns run out or until() says so. tools: {"server__tool": {run(args)
   // -> text, description, schema}}; text starting "Error:" is a failed call. log(kind, data) feeds the panel.
-  async function runAgent(ai, {prompt, system, tools, log, signal, until = () => false}) {
+  async function runAgent(ai, {prompt, system, tools, log, signal, until = () => false, maxTurns = MAX_TURNS}) {
     const specs = Object.entries(tools).map(([name, t]) => ({type: "function",
       function: {name, description: t.description, parameters: t.schema}}));
     const messages = [...(system ? [{role: "system", content: system}] : []), {role: "user", content: prompt}];
     log("session", {model: ai.model, tools: Object.keys(tools).map(n => `mcp__${n}`).sort()});
     const started = Date.now(), tokens = {input: 0, output: 0};
     let turns = 0, empty = 0, final = "", stop = null;
-    while (turns < MAX_TURNS && !signal.aborted && !until()) {
+    while (turns < maxTurns && !signal.aborted && !until()) {
       compact(messages);
       const reply = await complete(ai, messages, specs, signal);
       tokens.input += reply.usage.input;
@@ -422,9 +425,12 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     const client = new ConnectAI(settings.connectAI), listed = await client.start();
     if (!connections) await checkConnectAI(settings);
     const tools = {};
+    let used = 0;
     for (const t of listed)
-      tools[`connectai__${t.name}`] = {run: args => client.call(t.name, args), description: t.description || "",
-                                       schema: t.inputSchema || {type: "object", properties: {}}};
+      tools[`connectai__${t.name}`] = {description: t.description || "", schema: t.inputSchema || {type: "object", properties: {}},
+        run: args => ++used > BRIEF_CALLS
+          ? `Error: that's all the Connect AI calls this level gets (${BRIEF_CALLS}). Write the level plan now, from what you've found.`
+          : client.call(t.name, args)};
     // every Connect AI call and its answer, for the level's refused and masked requests (brief.build_mission)
     const calls = [], byId = {}, events = [];
     const record = (kind, data) => {
@@ -435,7 +441,8 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     };
     record("question", {text: question});
     const {instructions} = await kitJson();
-    const final = await runAgent(ai, {prompt: question, system: instructions, tools, log: record, signal: new AbortController().signal});
+    const final = await runAgent(ai, {prompt: question, system: instructions, tools, log: record, maxTurns: BRIEF_TURNS,
+                                      signal: new AbortController().signal});
 
     step("records", "Reading the rooms' records through Connect AI…");
     const {py, levelkit, zdbsp} = await kitReady;

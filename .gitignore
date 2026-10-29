@@ -8,3 +8,4 @@ panel/brand/
 .claude/
 web/dist/
 .env
+node_modules/

@@ -202,9 +202,33 @@
   const modelName = id => String(id).replace(/^[^/]*\//, "").toUpperCase();
   let coach = null;
 
+  // ---------- the visitor's own level, kept in this browser ----------
+  // ai.js builds it from their data; IndexedDB keeps it (its WADs are too big for localStorage), and the
+  // page plays it in place of the site's level until they go back to the demo.
+  const myLevel = {
+    async store(mode, use) {
+      const db = await new Promise((resolve, reject) => {
+        const open = indexedDB.open("connect-doom", 1);
+        open.onupgradeneeded = () => open.result.createObjectStore("level");
+        open.onsuccess = () => resolve(open.result);
+        open.onerror = () => reject(open.error);
+      });
+      return new Promise((resolve, reject) => {
+        const t = db.transaction("level", mode), request = use(t.objectStore("level"));
+        t.oncomplete = () => resolve(request.result);
+        t.onerror = () => reject(t.error);
+      });
+    },
+    load() { return this.store("readonly", s => s.get("mine")); },
+    save(level) { return this.store("readwrite", s => s.put(level, "mine")); },
+    clear() { return this.store("readwrite", s => s.delete("mine")); },
+  };
+  let mine = null;      // the level this page plays when it's the visitor's: {files, question, model}
+  let gameWad = null;   // Freedoom's WAD, once downloaded: the level builder takes its palette and textures
+
   // ---------- the game ----------
-  const files = {"/doom/level.wad": "level/level.wad", "/doom/brand.wad": "level/brand.wad",
-                 "/doom/level.deh": "level/level.deh", "/doom/labels.tsv": "level/labels.tsv"};
+  const files = {"/doom/level.wad": "level.wad", "/doom/brand.wad": "brand.wad",
+                 "/doom/level.deh": "level.deh", "/doom/labels.tsv": "labels.tsv"};
   const get = u => realFetch(u).then(r => { if (!r.ok) throw new Error(`${u}: ${r.status}`); return r; });
 
   // Freedoom's WAD, gzipped by web/build.sh: most of the download, so it reports its progress. A
@@ -254,11 +278,15 @@
           e.stopPropagation();
       });
 
-    // The level first (small), so the start card is up while Freedoom downloads.
+    // The level first (small), so the start card is up while Freedoom downloads: the visitor's own,
+    // if they built one, else the site's.
+    mine = await myLevel.load().catch(e => { console.warn("Your level:", e); return null; }) || null;
+    const level = mine ? name => Promise.resolve(new Response(mine.files[name])) : name => get(`level/${name}`);
     const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
-      get("level/state.json").then(r => r.json()), get("level/cache.json").then(r => r.json()),
-      get("level/said.json").then(r => r.json()), get("level/monsters.txt").then(r => r.text()),
-      ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
+      level("state.json").then(r => r.json()), level("cache.json").then(r => r.json()),
+      mine ? {} : level("said.json").then(r => r.json()),   // Claude's lines from its run of the site's level
+      level("monsters.txt").then(r => r.text()),
+      ...Object.values(files).map(name => level(name).then(r => r.arrayBuffer()))]);
     monsters = cache.monsters;
     said = saidJson;
     // The question box is the visitor's own model's (asking); a new level needs the Mac version.
@@ -269,8 +297,8 @@
     // the visitor's connections, for the question box; when Connect AI won't answer, the box just
     // doesn't name them, and asking shows the error
     const saved = AI.load();
-    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(showIdeas, e => console.warn("Connect AI:", e.message));
-    const wad = await downloadWad(coach.loading);
+    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(settingsChanged, e => console.warn("Connect AI:", e.message));
+    const wad = gameWad = await downloadWad(coach.loading);
 
     // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
     const pageTitle = document.title;
@@ -373,8 +401,10 @@
     // the question box needs the visitor's own model: the way to set it up, right there
     const askRow = document.querySelector("#newq .row");
     if (askRow) {
-      askRow.insertAdjacentHTML("beforeend", '<button type="button" class="link" id="newq-settings">AI settings</button>');
+      askRow.insertAdjacentHTML("beforeend", '<button type="button" id="newq-build">BUILD A LEVEL</button>' +
+        '<button type="button" class="link" id="newq-settings">AI settings</button>');
       document.getElementById("newq-settings").addEventListener("click", openSettings);
+      document.getElementById("newq-build").addEventListener("click", () => openBuilder(document.getElementById("newq-text").value));
       askRow.insertAdjacentHTML("afterend", '<div class="ideas" id="newq-ideas" hidden></div>');
       document.getElementById("newq-ideas").addEventListener("click", e => {
         const idea = e.target.closest("[data-idea]");
@@ -410,7 +440,8 @@
       } }
       /* the question box and its ideas take room: the game's events keep enough to read the latest */
       body.stage.in-game main > section.grow:has(#events) { min-height: 96px; }
-      body.stage.in-game main > #newq:not([hidden]) { flex: 0 1 auto; overflow-y: auto; }   /* short windows: it scrolls */
+      body.stage.in-game main > #newq:not([hidden]) { flex: 0 1 auto; max-height: 30vh; overflow-y: auto; }   /* it scrolls */
+      body.stage.in-game main > #play:not([hidden]) { min-height: 180px; }   /* whoever plays keeps their feed in view */
       #newq .ideas { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
       #newq .ideas[hidden] { display: none; }
       #newq .ideas .lbl { font: 8px/1.6 var(--pixel); color: var(--balance); letter-spacing: 1px; }
@@ -497,7 +528,9 @@
     const intro = card("coach-intro", `
       <div class="eyebrow">CONNECT AI × DOOM · A.K.A. DOOMCP</div>
       <h3 id="coach-intro-title">Every monster is a <span class="red">record</span>.</h3>
-      <p>Claude read a demo company's ${appList} through the Connect AI MCP server and built this level from what it found.</p>
+      <p>${mine ? `${esc(modelName(mine.model))} read your ${appList} through the Connect AI MCP server and built this
+        level for your question: “${esc(mine.question)}”` : `Claude read a demo company's ${appList} through the Connect AI MCP
+        server and built this level from what it found.`}</p>
       <p class="what">CData Connect AI is one MCP server between AI agents like Claude and your apps. It applies
         your permissions and your data security rules to every request.</p>
       <ol>
@@ -507,8 +540,7 @@
       </ol>
       <div class="row"><button class="btn" type="button" data-go="play" disabled>LOADING…</button>
         <button class="btn alt" type="button" data-go="watch" disabled>WATCH CLAUDE PLAY</button></div>
-      <div class="byo"><span><b>Bring your own AI.</b> Let your Claude, ChatGPT or OpenRouter model play, and ask your
-        own data a question through Connect AI.</span><button class="btn alt" type="button" data-go="settings">AI SETTINGS</button></div>
+      <div class="byo" id="coach-byo"></div>
       <div class="keys">WASD move · mouse turn · click fire · walk into doors · Esc frees the mouse</div>`);
     const end = card("coach-end", "");
     end.hidden = true;
@@ -604,7 +636,7 @@
         <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
         <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} records from ${appList}.</h3>
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
-          ? ", and blocked the one request it shouldn't answer: a customer's Social Security number" : ""}.
+          ? `, and blocked the one request it shouldn't answer${mine ? "" : ": a customer's Social Security number"}` : ""}.
           That's what Connect AI does for any AI agent and your data.</p>
         <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
@@ -635,6 +667,8 @@
         else watch(model);
       }
       if (go === "settings") openSettings();
+      if (go === "build") openBuilder();
+      if (go === "demo") { trackEvent("Back to the demo level"); myLevel.clear().finally(() => location.reload()); }
     });
     end.addEventListener("click", e => {
       if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
@@ -682,7 +716,8 @@
       if (run || alive().length) return;
       clearTimeout(endTimer);
       trackEvent("Red door");
-      show("CONNECT AI SAID NO", "Claude asked for a customer's Social Security number. Connect AI blocked it, so the data never reached Claude.", 6);
+      show("CONNECT AI SAID NO", mine ? "Connect AI blocked this request when your level was built, so the data never reached the model."
+        : "Claude asked for a customer's Social Security number. Connect AI blocked it, so the data never reached Claude.", 6);
       setTimeout(() => finish("played"), 5000);
     });
 
@@ -708,8 +743,118 @@
       // the Watch button names the model the Options menu's Model row picks
       settingsChanged() {
         const ai = AI.active(AI.load());
+        // what the visitor can do next: set up their AI, build a level from their data, or go back to the demo
+        intro.querySelector("#coach-byo").innerHTML = mine
+          ? `<span><b>This is your level.</b> Build another from a new question, or go back to the site's.</span>
+             <span class="row">${buildReady() ? '<button class="btn alt" type="button" data-go="build">NEW LEVEL</button>' : ""}
+             <button class="btn alt" type="button" data-go="demo">DEMO LEVEL</button></span>`
+          : buildReady()
+          ? `<span><b>Your data is connected.</b> Build a level from it: ${esc(modelName(ai.model))} picks three apps
+             that answer your question, and their records become the monsters.</span>
+             <button class="btn" type="button" data-go="build">BUILD MY LEVEL</button>`
+          : `<span><b>Bring your own AI.</b> Let your Claude, ChatGPT or OpenRouter model play, and build a level from your
+             own data through Connect AI.</span><button class="btn alt" type="button" data-go="settings">AI SETTINGS</button>`;
         intro.querySelector("[data-go=watch]").textContent = ai ? `WATCH ${modelName(ai.model)} PLAY`
           : run ? "KEEP WATCHING" : "WATCH CLAUDE PLAY";
+      },
+    };
+  }
+
+  // ---------- building a level from the visitor's own data ----------
+  // Their model plans it through Connect AI and the page builds it (ai.js); then the page starts
+  // over on it. The model's Connect AI calls go to the panel's briefing tab as they happen.
+  let builder = null;
+  function openBuilder(question = "") {
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (settingsDialog?.el.open) settingsDialog.el.close();
+    builder ||= makeBuilder();
+    builder.open(question);
+  }
+
+  function makeBuilder() {
+    styleDialogs();
+    const el = document.createElement("dialog");
+    el.id = "ai-build";
+    el.className = "ai-dialog";
+    el.setAttribute("aria-labelledby", "ai-build-title");
+    el.innerHTML = `<div class="wrap">
+      <div class="head"><h2 id="ai-build-title">BUILD A LEVEL FROM YOUR DATA</h2><button class="act" type="button" data-close>CLOSE</button></div>
+      <p class="status" id="build-lead"></p>
+      <label>Your question<textarea id="build-q" rows="3" maxlength="500"></textarea></label>
+      <div class="ideas" id="build-ideas"></div>
+      <div class="row"><button class="act go" type="button" id="build-go">BUILD MY LEVEL</button></div>
+      <ol class="steps" id="build-steps" hidden>
+        <li data-step="brief">Planning three rooms from your data</li>
+        <li data-step="records">Reading their records</li>
+        <li data-step="map">Building the map</li>
+        <li data-step="start">Starting your level</li>
+      </ol>
+      <p class="msg" id="build-msg" aria-live="polite"></p>
+      <p class="fine" id="build-fine"></p></div>`;
+    document.body.appendChild(el);
+    const $ = id => el.querySelector(`#${id}`);
+    const note = (text, cls = "") => { $("build-msg").textContent = text; $("build-msg").className = `msg ${cls}`; };
+    let building = false;
+
+    function step(name, text) {
+      let past = true;
+      for (const li of el.querySelectorAll("[data-step]")) {
+        const now = li.dataset.step === name;
+        if (now) past = false;
+        li.className = now ? "now" : past ? "done" : "";
+      }
+      note(text);
+    }
+
+    async function build() {
+      const settings = AI.load(), ai = AI.active(settings), question = $("build-q").value.trim();
+      if (!question) { note("Type a question first.", "bad"); return; }
+      if (!gameWad) { note("The game is still loading. Try again in a moment.", "bad"); return; }
+      building = true;
+      $("build-go").disabled = $("build-q").disabled = true;
+      $("build-steps").hidden = false;
+      trackEvent("Build level", {provider: ai.provider});
+      // the panel's briefing tab follows the model's steps
+      const before = state.events, events = state.events = [];
+      const log = (kind, data) => events.push({t: Date.now() / 1000, kind, ...data});
+      try {
+        const {files} = await AI.buildLevel(settings, question, gameWad, log, step);
+        step("start", "Your level is built. Starting it…");
+        await myLevel.save({files, question, model: ai.model, built: Date.now()});
+        trackEvent("Level built", {provider: ai.provider});
+        location.reload();
+      } catch (e) {
+        console.error("Level build:", e);
+        trackEvent("Level build failed", {provider: ai.provider});
+        state.events = before;
+        note(`Couldn't build it: ${e.message}`, "bad");
+        $("build-go").disabled = $("build-q").disabled = false;
+        building = false;
+      }
+    }
+
+    el.addEventListener("click", e => {
+      if (e.target === el || e.target.closest("[data-close]")) { el.close(); return; }
+      const idea = e.target.closest("[data-idea]");
+      if (idea && !building) $("build-q").value = idea.dataset.idea;
+      if (e.target.closest("#build-go")) build();
+    });
+    return {
+      open(question) {
+        const ai = AI.active(AI.load());
+        if (!building) {
+          if (!buildReady()) { note("Set up your AI and Connect AI in AI settings first.", "bad"); $("build-go").disabled = true; }
+          else { note(""); $("build-go").disabled = false; }
+          const ideas = suggestQuestions(AI.connections() || []);
+          $("build-q").value = question.trim() || ideas[0] || "";
+          $("build-ideas").innerHTML = ideas.map(q => `<button type="button" data-idea="${esc(q)}">${esc(q)}</button>`).join("");
+          $("build-steps").hidden = true;
+        }
+        $("build-lead").textContent = ai ? `${modelName(ai.model)} reads your data through Connect AI, picks the three apps ` +
+          "that best answer your question, and turns their records into the level's monsters. Then you play it." : "";
+        $("build-fine").textContent = ai ? `It takes a minute or two, and uses your own ${AI.PROVIDERS[ai.provider].company} ` +
+          "credits. Its Connect AI calls show in the panel's HOW CLAUDE BUILT IT tab as it goes. The level stays in this browser." : "";
+        el.showModal();
       },
     };
   }
@@ -722,48 +867,79 @@
     if (!settingsDialog) settingsDialog = makeSettings();
     settingsDialog.render();
     settingsDialog.el.showModal();
+    // set up just now: what to do next comes up as the settings close
+    const wasReady = buildReady();
+    settingsDialog.el.addEventListener("close", () => { if (!wasReady && buildReady()) openBuilder(); }, {once: true});
+  }
+
+  // The visitor can build a level: their model and Connect AI are set up, and Connect AI listed their connections
+  function buildReady() {
+    const settings = AI.load();
+    return !!(AI.active(settings) && AI.hasConnectAI(settings) && AI.connections()?.length);
+  }
+
+  // The AI settings' and the level builder's dialogs, styled alike (once)
+  let dialogStyled = false;
+  function styleDialogs() {
+    if (dialogStyled) return;
+    dialogStyled = true;
+    const style = document.createElement("style");
+    style.textContent = `
+      .ai-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; color: var(--clarity);
+                     background: var(--depth); border: 2px solid var(--agility); border-radius: 4px; }
+      .ai-dialog [hidden] { display: none !important; }
+      .ai-dialog::backdrop { background: rgba(13, 13, 18, .8); }
+      .ai-dialog .wrap { padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; }
+      .ai-dialog .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .ai-dialog h2 { margin: 0; font: 12px/1.4 var(--pixel); color: var(--agility); letter-spacing: 1px; }
+      .ai-dialog h3 { margin: 0 0 4px; font: 9px/1.6 var(--pixel); color: var(--clarity); letter-spacing: 1px; }
+      .ai-dialog p, .ai-dialog label { margin: 0; font: 14px/1.45 var(--sans); color: var(--balance); }
+      .ai-dialog section { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+      .ai-dialog .status { font: 15px/1.45 var(--sans); color: #E5E2DA; border-left: 3px solid var(--agility); padding-left: 12px; }
+      .ai-dialog .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+      .ai-dialog .seg button, .ai-dialog .act, .ai-dialog .switch { font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer;
+        padding: 11px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--depth-3); color: var(--clarity); }
+      .ai-dialog .seg button[aria-pressed=true], .ai-dialog .switch[aria-pressed=true] { background: var(--agility); color: var(--depth); border-color: var(--agility); }
+      .ai-dialog .act.danger { color: var(--key-red); background: none; }
+      .ai-dialog button:focus-visible, .ai-dialog input:focus-visible, .ai-dialog select:focus-visible { outline: 3px solid var(--clarity); outline-offset: 2px; }
+      .ai-dialog .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .ai-dialog .field { display: grid; gap: 4px; flex: 1 1 200px; }
+      .ai-dialog input, .ai-dialog select { width: 100%; font: 14px/1.3 var(--mono); color: var(--clarity); background: var(--depth-3);
+        border: 1px solid var(--line); border-radius: 3px; padding: 10px; }
+      .ai-dialog .msg { font-size: 13px; min-height: 1.2em; }
+      .ai-dialog .msg.ok { color: var(--agility); }
+      .ai-dialog .msg.bad { color: var(--key-red); }
+      .ai-dialog a { color: var(--agility); }
+      .ai-dialog .game { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
+      .ai-dialog .fine { font-size: 12px; }
+      .ai-dialog .setup { margin: 0; padding-left: 20px; display: grid; gap: 4px; font: 14px/1.45 var(--sans); color: #E5E2DA; }
+      .ai-dialog .act.go { background: var(--agility); color: var(--depth); border-color: var(--agility); }
+      .ai-dialog .act:disabled { opacity: .5; cursor: default; }
+      .ai-dialog textarea { width: 100%; resize: vertical; font: 15px/1.4 var(--sans); color: var(--clarity); background: var(--depth-3);
+        border: 1px solid var(--line); border-radius: 3px; padding: 10px; }
+      .ai-dialog .ideas { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+      .ai-dialog .ideas button { font: 13px/1.35 var(--sans); text-align: left; color: var(--clarity); background: var(--depth-3);
+        border: 1px solid var(--line); border-radius: 3px; padding: 6px 10px; cursor: pointer; }
+      .ai-dialog .ideas button:hover { border-color: var(--agility); color: var(--agility); }
+      .ai-dialog .steps { margin: 0; padding-left: 22px; display: grid; gap: 4px; font: 14px/1.45 var(--sans); color: var(--balance); }
+      .ai-dialog .steps li.now { color: var(--agility); font-weight: 600; }
+      .ai-dialog .steps li.done { color: var(--clarity); }
+      .ai-dialog .steps li.done::after { content: " ✓"; color: var(--ok); }`;
+    document.head.appendChild(style);
   }
 
   function makeSettings() {
-    const style = document.createElement("style");
-    style.textContent = `
-      #ai-settings { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; color: var(--clarity);
-                     background: var(--depth); border: 2px solid var(--agility); border-radius: 4px; }
-      #ai-settings [hidden] { display: none !important; }
-      #ai-settings::backdrop { background: rgba(13, 13, 18, .8); }
-      #ai-settings .wrap { padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; }
-      #ai-settings .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      #ai-settings h2 { margin: 0; font: 12px/1.4 var(--pixel); color: var(--agility); letter-spacing: 1px; }
-      #ai-settings h3 { margin: 0 0 4px; font: 9px/1.6 var(--pixel); color: var(--clarity); letter-spacing: 1px; }
-      #ai-settings p, #ai-settings label { margin: 0; font: 14px/1.45 var(--sans); color: var(--balance); }
-      #ai-settings section { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
-      #ai-settings .status { font: 15px/1.45 var(--sans); color: #E5E2DA; border-left: 3px solid var(--agility); padding-left: 12px; }
-      #ai-settings .seg { display: flex; flex-wrap: wrap; gap: 6px; }
-      #ai-settings .seg button, #ai-settings .act, #ai-settings .switch { font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer;
-        padding: 11px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--depth-3); color: var(--clarity); }
-      #ai-settings .seg button[aria-pressed=true], #ai-settings .switch[aria-pressed=true] { background: var(--agility); color: var(--depth); border-color: var(--agility); }
-      #ai-settings .act.danger { color: var(--key-red); background: none; }
-      #ai-settings button:focus-visible, #ai-settings input:focus-visible, #ai-settings select:focus-visible { outline: 3px solid var(--clarity); outline-offset: 2px; }
-      #ai-settings .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-      #ai-settings .field { display: grid; gap: 4px; flex: 1 1 200px; }
-      #ai-settings input, #ai-settings select { width: 100%; font: 14px/1.3 var(--mono); color: var(--clarity); background: var(--depth-3);
-        border: 1px solid var(--line); border-radius: 3px; padding: 10px; }
-      #ai-settings .msg { font-size: 13px; min-height: 1.2em; }
-      #ai-settings .msg.ok { color: var(--agility); }
-      #ai-settings .msg.bad { color: var(--key-red); }
-      #ai-settings a { color: var(--agility); }
-      #ai-settings .game { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
-      #ai-settings .fine { font-size: 12px; }
-      #ai-settings .setup { margin: 0; padding-left: 20px; display: grid; gap: 4px; font: 14px/1.45 var(--sans); color: #E5E2DA; }`;
-    document.head.appendChild(style);
+    styleDialogs();
 
     const el = document.createElement("dialog");
     el.id = "ai-settings";
+    el.className = "ai-dialog";
     el.setAttribute("aria-labelledby", "ai-settings-title");
     const providers = Object.entries(AI.PROVIDERS);
     el.innerHTML = `<div class="wrap">
       <div class="head"><h2 id="ai-settings-title">AI SETTINGS</h2><button class="act" type="button" data-close>CLOSE</button></div>
       <p class="status" id="ai-status" role="status"></p>
+      <div class="row" id="ai-next" hidden><button class="act go" type="button" data-build>BUILD A LEVEL FROM YOUR DATA</button></div>
       <section>
         <h3>YOUR AI MODEL</h3>
         <p>Offline, Claude's recorded run plays: no keys needed. Bring your own key and your model plays instead.</p>
@@ -853,6 +1029,7 @@
       $("ai-status").textContent = who + data;
       renderGame();
       renderAILink();
+      $("ai-next").hidden = !buildReady();
     }
 
     // the game's switches as the game has them: the Options menu changes them too
@@ -875,6 +1052,7 @@
 
     el.addEventListener("click", e => {
       if (e.target === el || e.target.closest("[data-close]")) { el.close(); return; }
+      if (e.target.closest("[data-build]")) { openBuilder(); return; }
       const provider = e.target.closest("[data-provider]")?.dataset.provider;
       if (provider) { trackEvent("AI provider", {provider}); update(s => { s.provider = provider; }); note("ai-msg", ""); }
       const option = e.target.closest("[data-option]")?.dataset.option;
@@ -932,7 +1110,8 @@
       note("cai-msg", "Checking…");
       try {
         const {tools, connections} = await AI.checkConnectAI(settings);
-        showIdeas();
+        settingsChanged();
+        render();
         note("cai-msg", `Connected: ${tools} read-only tools${connections.length ? `, ${connectionList(connections)}` : ""}.`, "ok");
         trackEvent("Connect AI checked", {ok: "yes"});
       } catch (e) {

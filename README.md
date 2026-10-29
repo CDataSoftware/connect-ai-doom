@@ -15,7 +15,7 @@
 
 Play it yourself, or let Claude play while a side panel shows every step it takes through Connect AI.
 
-**[Play it in your browser](https://cdatasoftware.github.io/connect-ai-doom/)**, no install: a level Claude built from a demo account, with the side panel, the model leaderboard and Claude playing it if you'd rather watch. Its AI settings let your own model play (Claude, ChatGPT or any OpenRouter model, with your key) and answer questions about your own data through Connect AI; the keys stay in your browser. The rest of this page is the full version, on your own data.
+**[Play it in your browser](https://cdatasoftware.github.io/connect-ai-doom/)**, no install: a level Claude built from a demo account, with the side panel, the model leaderboard and Claude playing it if you'd rather watch. Its AI settings let your own model play (Claude, ChatGPT or any OpenRouter model, with your key), and with your Connect AI token, build a level from your own data and answer questions about it; the keys and your level stay in your browser. The rest of this page is the full version, on your own data.
 
 ## Install
 

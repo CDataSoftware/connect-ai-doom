@@ -62,6 +62,27 @@ rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
 cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/ai.js web/og.jpg "$DIST/"
+# The level builder for a visitor's own level (web/levelkit.py, which web/ai.js runs in Pyodide): the
+# Mac version's own scripts and brand kit, brief.py's instructions for the model, and zdbsp compiled
+# to WebAssembly (Emscripten's libc has getopt, so zdbsp's own copy stays out)
+KIT=$DIST/kit
+mkdir -p "$KIT/tools" "$KIT/assets/brand"
+cp brief.py claude_run.py connect_ai_mcp.py connect_doom.py leaderboard.py web/levelkit.py "$KIT/"
+cp tools/make_arena.py tools/make_branding.py tools/make_deh.py tools/themes.py "$KIT/tools/"
+cp assets/brand/*.png "$KIT/assets/brand/"
+python3 -c '
+import json, os, sys
+import brief
+kit = sys.argv[1]
+files = sorted(os.path.relpath(os.path.join(d, f), kit) for d, _, fs in os.walk(kit) for f in fs)
+json.dump({"files": files, "instructions": brief.INSTRUCTIONS}, open(f"{kit}/kit.json", "w"))' "$KIT"
+(
+  cd vendor/src/zdbsp
+  em++ -O2 -w -DNO_MAP_VIEWER -DDISABLE_SSE -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp -sUSE_ZLIB=1 main.cpp blockmapbuilder.cpp \
+    processor.cpp processor_udmf.cpp sc_man.cpp wad.cpp nodebuild.cpp nodebuild_events.cpp nodebuild_extract.cpp \
+    nodebuild_gl.cpp nodebuild_utility.cpp nodebuild_classify_nosse2.cpp -sMODULARIZE -sEXPORT_NAME=createZdbsp \
+    -sINVOKE_RUN=0 -sALLOW_MEMORY_GROWTH -sFORCE_FILESYSTEM -sEXPORTED_RUNTIME_METHODS=FS,callMain -o "$KIT/zdbsp.js"
+)
 # Freedoom without the maps the game never loads, gzipped: Pages serves it as is, and the page unzips it
 python3 web/trim_wad.py wads/freedoom2.wad "$DIST/freedoom2.wad"
 gzip -9 -n "$DIST/freedoom2.wad"

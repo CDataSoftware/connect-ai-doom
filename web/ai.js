@@ -268,9 +268,20 @@ window.ConnectDoomAI = (() => {
     }
   }
 
-  // The visitor's Connect AI connections, [{name, source}] (getCatalogs' CSV: TABLE_CATALOG,
-  // DATA_SOURCE,...), for the settings and the question box; null until checked. An MCP Gateway
-  // tool server may not offer getCatalogs: then none are listed.
+  // A CSV tool result's rows as arrays (quoted fields may hold commas); the text ends with a 'Query ID' line.
+  function csvRows(text) {
+    const rows = [];
+    for (const line of text.split("\nQuery ID:")[0].trim().split(/\r?\n/)) {
+      const fields = [];
+      for (const m of line.matchAll(/(?:^|,)(?:"((?:[^"]|"")*)"|([^,]*))/g)) fields.push(m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]);
+      rows.push(fields);
+    }
+    return rows;
+  }
+
+  // The visitor's Connect AI connections, [{name, source, permissions}] (getCatalogs: TABLE_CATALOG,
+  // DATA_SOURCE, DRIVER, PERMISSIONS), for the settings, the question box and a level's doors; null
+  // until checked. An MCP Gateway tool server may not offer getCatalogs: then none are listed.
   let connections = null;
 
   async function checkConnectAI(settings) {
@@ -280,8 +291,8 @@ window.ConnectDoomAI = (() => {
     if (catalogs) {
       const text = await client.call(catalogs.name, {});
       if (!text.startsWith("Error:"))
-        connections = text.split("\nQuery ID:")[0].trim().split(/\r?\n/).slice(1).map(line => line.split(","))
-          .filter(([name]) => name).map(([name, source]) => ({name, source: source || name}));
+        connections = csvRows(text).slice(1).filter(([name]) => name).map(([name, source, , permissions]) =>
+          ({name, source: source || name, permissions: (permissions || "Select").split(/,\s*/)}));
     }
     return {tools: tools.length, connections};
   }
@@ -366,6 +377,85 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     return {done, stop(handBack = true) { controller.abort(); doom.stop(handBack); }};
   }
 
+  // ---------- a level from the visitor's own data ----------
+  // What raid.sh does on a Mac, in the page: the visitor's model answers the question through Connect
+  // AI with brief.py's instructions, and plans three rooms; the page runs their queries; then the Mac
+  // version's own scripts build the level in Pyodide (web/levelkit.py) and zdbsp, compiled to
+  // WebAssembly, adds its nodes. Pyodide (Python and Pillow) is fetched only for this.
+  const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.28.0/full/";
+  const loadScript = src => new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    Object.assign(el, {src, onload: resolve, onerror: () => reject(new AIError(`Couldn't load ${src}.`))});
+    document.head.appendChild(el);
+  });
+  let kitLoading = null;
+
+  // The level kit: Pyodide with the Mac version's scripts (kit/kit.json lists them) and Freedoom's
+  // WAD, and zdbsp. wad: the game's Freedoom (the branding takes its palette and textures from it).
+  function loadKit(wad) {
+    return kitLoading ||= (async () => {
+      const kit = await (await fetch("kit/kit.json")).json();
+      await Promise.all([loadScript(`${PYODIDE}pyodide.js`), loadScript("kit/zdbsp.js")]);
+      const [py, zdbsp] = await Promise.all([window.loadPyodide({indexURL: PYODIDE}),
+        window.createZdbsp({locateFile: f => `kit/${f}`, print: () => {}, printErr: () => {}})]);
+      await py.loadPackage("pillow");
+      for (const file of kit.files) {
+        py.FS.mkdirTree(`/kit/${file.split("/").slice(0, -1).join("/")}`);
+        py.FS.writeFile(`/kit/${file}`, new Uint8Array(await (await fetch(`kit/${file}`)).arrayBuffer()));
+      }
+      py.FS.writeFile("/kit/freedoom2.wad", new Uint8Array(wad));
+      py.FS.mkdirTree("/level");
+      py.runPython("import sys; sys.path.insert(0, '/kit')");
+      return {py, levelkit: py.pyimport("levelkit"), zdbsp};
+    })().catch(e => { kitLoading = null; throw e; });
+  }
+
+  // buildLevel(settings, question, wad, log, step): {files: {name: bytes}, mission}. step(name, text)
+  // says where it is: "brief", "records", "map". log feeds the panel the model's steps.
+  async function buildLevel(settings, question, wad, log, step) {
+    const ai = active(settings), kitReady = loadKit(wad);
+    kitReady.catch(() => {});   // awaited below, after the briefing
+    step("brief", `${ai.model} is reading your data through Connect AI and planning three rooms…`);
+    const client = new ConnectAI(settings.connectAI), listed = await client.start();
+    if (!connections) await checkConnectAI(settings);
+    const tools = {};
+    for (const t of listed)
+      tools[`connectai__${t.name}`] = {run: args => client.call(t.name, args), description: t.description || "",
+                                       schema: t.inputSchema || {type: "object", properties: {}}};
+    // every Connect AI call and its answer, for the level's refused and masked requests (brief.build_mission)
+    const calls = [], byId = {}, events = [];
+    const record = (kind, data) => {
+      events.push({t: Date.now() / 1000, kind, ...data});
+      log(kind, data);
+      if (kind === "call") calls.push(byId[data.id] = {server: data.server, tool: data.tool, args: data.args, error: false, text: ""});
+      if (kind === "result" && byId[data.id]) Object.assign(byId[data.id], {error: data.error, text: data.text});
+    };
+    record("question", {text: question});
+    const {instructions} = await fetch("kit/kit.json").then(r => r.json());
+    const final = await runAgent(ai, {prompt: question, system: instructions, tools, log: record, signal: new AbortController().signal});
+
+    step("records", "Reading the rooms' records through Connect AI…");
+    const {py, levelkit, zdbsp} = await kitReady;
+    py.FS.writeFile("/level/run.jsonl", events.map(e => JSON.stringify(e)).join("\n") + "\n");
+    const mission = JSON.parse(levelkit.plan(question, final, JSON.stringify(calls), JSON.stringify(connections)));
+    if (!mission.rooms.length)
+      throw new AIError(`${ai.model} didn't plan any rooms. ${mission.answer ? `It said: ${mission.answer.slice(0, 300)}` : ""}`);
+    const answers = await Promise.all(mission.rooms.slice(0, 3).map(async r => {
+      const text = await client.call("queryData", {query: r.query});
+      return {tool: "queryData", args: {query: r.query}, text, error: text.startsWith("Error:")};
+    }));
+
+    step("map", "Building the map…");
+    await new Promise(r => setTimeout(r, 50));   // let the page show the step before Python takes the main thread
+    levelkit.build(JSON.stringify(answers));
+    zdbsp.FS.writeFile("/raw.wad", py.FS.readFile("/level/level-raw.wad"));
+    if (zdbsp.callMain(["-o", "/level.wad", "/raw.wad"])) throw new AIError("zdbsp couldn't build the map's nodes.");
+    const files = {"level.wad": zdbsp.FS.readFile("/level.wad")};
+    for (const name of ["brand.wad", "level.deh", "labels.tsv", "monsters.txt", "state.json", "cache.json", "mission.json"])
+      files[name] = py.FS.readFile(`/level/${name}`);
+    return {files, mission};
+  }
+
   // ---------- a question about the visitor's own data ----------
   const ASK_SYSTEM = "You answer questions about the user's data with the Connect AI tools, which are " +
     "read-only. Explore only as much as you need: list catalogs, then the few tables you need, then query. People " +
@@ -384,6 +474,6 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     return {done, stop() { controller.abort(); }};
   }
 
-  return {PROVIDERS, OFFLINE, PAT_URL, SIGNUP_URL, QUICKSTART_URL, MCP_URL, AIError, connections: () => connections, checkConnectAI, load, save, clear, active, hasConnectAI, listModels,
+  return {PROVIDERS, OFFLINE, PAT_URL, SIGNUP_URL, QUICKSTART_URL, MCP_URL, AIError, connections: () => connections, checkConnectAI, buildLevel, load, save, clear, active, hasConnectAI, listModels,
           play, ask};
 })();

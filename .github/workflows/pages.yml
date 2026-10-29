@@ -11,6 +11,9 @@ on:
       - patches/**
       - assets/brand/**
       - connect_doom.py
+      - connect_ai_mcp.py   # these four also run in the browser, to build a visitor's own level (web/levelkit.py)
+      - brief.py
+      - claude_run.py
       - leaderboard.py
       - play.py
       - .github/workflows/pages.yml

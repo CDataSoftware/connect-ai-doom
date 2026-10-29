@@ -440,6 +440,10 @@
       .coach-card { position: absolute; inset: 0; z-index: 3; display: flex; align-items: safe center; justify-content: center; overflow-y: auto;
                     background: rgba(13, 13, 18, .88); padding: 24px; }
       .coach-card[hidden], #coach-tip[hidden] { display: none; }
+      #coach-intro { background: rgba(13, 13, 18, .8); transition: opacity .8s ease-out; }   /* Claude plays behind it */
+      #coach-intro.fading { opacity: 0; pointer-events: none; }
+      #coach-intro:not([hidden]):not(.fading) ~ #coach-tip { visibility: hidden; }   /* the card says it all */
+      @media (prefers-reduced-motion: reduce) { #coach-intro { transition: none; } }
       .coach-card .card { max-width: 640px; display: flex; flex-direction: column; gap: 16px; }
       .coach-card .eyebrow { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; }
       .coach-card h3 { margin: 0; font: 700 clamp(24px, 3vw, 36px)/1.15 var(--sans); color: var(--clarity); }
@@ -537,8 +541,11 @@
     }
 
     // Someone else plays: model is the Options menu's Model row, offline Claude or the visitor's model.
-    function watch(model) {
-      intro.hidden = end.hidden = true;
+    // keepIntro: the start card stays up over the game (the page's own start, see ready()).
+    function watch(model, keepIntro = false) {
+      if (!keepIntro) intro.hidden = true;
+      end.hidden = true;
+      if (run) { run.stop(false); run = null; }   // another player takes over where the marine stands
       if (document.pointerLockElement) document.exitPointerLock();
       asking.stop();
       playEvents.length = 0;
@@ -608,11 +615,25 @@
       end.querySelector(".btn").focus();
     }
 
+    // The start card fades once its time is up, unless the pointer is on it (someone's reading)
+    function fadeIntro() {
+      if (intro.hidden || intro.classList.contains("fading")) return;
+      if (intro.matches(":hover")) { setTimeout(fadeIntro, 3000); return; }
+      intro.classList.add("fading");
+      setTimeout(() => { intro.hidden = true; intro.classList.remove("fading"); }, 800);
+    }
+
     intro.addEventListener("click", e => {
+      if (e.target === intro) { fadeIntro(); return; }   // a click beside the card: back to the game
       const go = e.target.closest("[data-go]")?.dataset.go;
       if (go === "play") { trackEvent("Play"); playYourself(); }
-      // the game isn't running yet, so the Model row's pick is the settings' (menuModels)
-      if (go === "watch") { trackEvent("Watch Claude"); watch(menuModels()[1]); }
+      if (go === "watch") {
+        // offline Claude is already playing: the card just goes; the visitor's own model takes over
+        const model = menuModels()[1];
+        trackEvent("Watch Claude", {who: model === AI.OFFLINE ? "offline" : "own model"});
+        if (model === AI.OFFLINE && run) fadeIntro();
+        else watch(model);
+      }
       if (go === "settings") openSettings();
     });
     end.addEventListener("click", e => {
@@ -670,18 +691,25 @@
       loading(loaded, total) {
         intro.querySelector("[data-go=play]").textContent = total ? `LOADING ${mb(loaded)} / ${mb(total)} MB` : `LOADING ${mb(loaded)} MB`;
       },
+      // The game's up: offline Claude starts playing behind the start card (never the visitor's own
+      // model, which would spend their tokens on a page load), and the card fades after 10 s.
       ready() {
         const [play, watchBtn] = intro.querySelectorAll("[data-go]");
         play.textContent = "PLAY";
         play.disabled = watchBtn.disabled = false;
         play.focus();
+        trackEvent("Auto watch");
+        watch(AI.OFFLINE, true);
+        this.settingsChanged();
+        setTimeout(fadeIntro, 10000);
       },
       // who plays instead of the player right now, by name, or null
       playing: () => run?.name || null,
       // the Watch button names the model the Options menu's Model row picks
       settingsChanged() {
         const ai = AI.active(AI.load());
-        intro.querySelector("[data-go=watch]").textContent = `WATCH ${ai ? modelName(ai.model) : "CLAUDE"} PLAY`;
+        intro.querySelector("[data-go=watch]").textContent = ai ? `WATCH ${modelName(ai.model)} PLAY`
+          : run ? "KEEP WATCHING" : "WATCH CLAUDE PLAY";
       },
     };
   }
@@ -765,12 +793,11 @@
           <label class="field">Personal access token<input type="password" id="cai-pat" autocomplete="off" spellcheck="false"></label>
         </div>
         <div class="row">
-          <label class="field">MCP server URL<input type="url" id="cai-url" autocomplete="off" spellcheck="false"
-            placeholder="${AI.MCP_URL}"></label>
+          <label class="field">MCP server URL<input type="url" id="cai-url" autocomplete="off" spellcheck="false"></label>
           <button class="act" type="button" id="cai-check">CHECK</button>
         </div>
-        <p class="fine">Leave the URL empty for Connect AI's MCP server, or paste the Agent URL of one of your
-          MCP Gateway tool servers.</p>
+        <p class="fine">This is Connect AI's MCP server. Change it only to use one of your MCP Gateway tool
+          servers: paste its Agent URL.</p>
         <p class="msg" id="cai-msg" aria-live="polite"></p>
       </section>
       <section id="game-switches">
@@ -816,7 +843,7 @@
       }
       if (document.activeElement !== $("cai-user")) $("cai-user").value = settings.connectAI.user;
       if (document.activeElement !== $("cai-pat")) $("cai-pat").value = settings.connectAI.pat;
-      if (document.activeElement !== $("cai-url")) $("cai-url").value = settings.connectAI.url || "";
+      if (document.activeElement !== $("cai-url")) $("cai-url").value = settings.connectAI.url || AI.MCP_URL;
       const who = ai ? `${modelName(ai.model)} (${AI.PROVIDERS[ai.provider].company}) plays when you watch`
         : p ? `Add ${article(p.company)} ${p.company} key and your model plays. Until then, Claude's recorded run plays`
         : "Offline: Claude's recorded run plays";
@@ -891,7 +918,8 @@
       }
     }
     const saveConnectAI = () => {
-      const url = $("cai-url").value.trim();
+      // Connect AI's own server is kept as no URL: ai.js adds its read-only ?ops= then
+      const typed = $("cai-url").value.trim(), url = typed === AI.MCP_URL ? "" : typed;
       if (url && !/^https:\/\/[^\s/]+/.test(url)) { note("cai-msg", "The MCP server URL starts with https://", "bad"); return false; }
       update(s => { s.connectAI = {user: $("cai-user").value.trim(), pat: $("cai-pat").value.trim(), url}; });
       return true;

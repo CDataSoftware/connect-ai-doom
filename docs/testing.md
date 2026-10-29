@@ -33,7 +33,7 @@ It runs psdoom headless on the current `state/` level, walks to a room through t
 `make test` covers `web/levelkit.py` (a visitor's level, built from recorded Connect AI answers), but not the page. `make web-test` builds `web/dist` and plays it in headless Chromium (`tests/web/smoke.mjs`), with Claude's API and the Connect AI MCP server faked, so it needs no keys:
 
 ```bash
-cd tests/web && npm ci && npx playwright install chromium   # once
+cd tests/web && npm ci && npx playwright-core install chromium   # once
 make web-test
 ```
 

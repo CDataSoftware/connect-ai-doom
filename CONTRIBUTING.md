@@ -32,7 +32,7 @@ Node and shellcheck are optional; the tests that need them skip without them. To
 2. Make your change, and add or update a test when it changes behavior.
 3. Run `make test`.
 4. For anything visible in the game (HUD, menus, branding), run `python3 tools/screenshots.py /tmp/shots` and look at the screenshots. `make test` can't see the game.
-   For the browser version (`web/`), run `make web-test`: it builds the site and plays it end to end in headless Chromium, with Claude and Connect AI faked. It needs Emscripten and Node, and `npx playwright install chromium` once.
+   For the browser version (`web/`), run `make web-test`: it builds the site and plays it end to end in headless Chromium, with Claude and Connect AI faked. It needs Emscripten and Node, and `npx playwright-core install chromium` once.
 5. Open a pull request that says what changed and why.
 
 ### Changing the game's C code

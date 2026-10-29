@@ -1,6 +1,6 @@
 // The browser version, end to end, in headless Chromium: web/dist (web/build.sh) served locally, with
 // Claude's API and the Connect AI MCP server faked, so it needs no keys and no network.
-//   cd tests/web && npm ci && npx playwright install chromium && node smoke.mjs
+//   cd tests/web && npm ci && npx playwright-core install chromium && node smoke.mjs
 // CHROMIUM=<path> runs a Chromium of your own instead of Playwright's.
 import {spawn} from "node:child_process";
 import {fileURLToPath} from "node:url";

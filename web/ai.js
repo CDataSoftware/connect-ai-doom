@@ -310,7 +310,7 @@ window.ConnectDoomAI = (() => {
   }
 
   // ---------- playing the level (play.py's prompt and tools) ----------
-  const PROMPT = `You're playing Doom, and every monster is a live business record that Connect AI found
+  const PROMPT = `You're playing Doom, and every monster is a live record that Connect AI found
 for this question: {question}
 
 The level: a lobby with keycards, a hall, and one room per app behind a keycard door.
@@ -334,7 +334,7 @@ going until the rooms are clear or the moves run out. End with a two-line summar
                  "watching live. Use only those tools.";
   const DOOM_TOOLS = {
     look: ["See where you are, your keycards, each room's app and monsters left, and the monsters you can see " +
-           "right now, each with the business record it stands for.", {}],
+           "right now, each with the record it stands for.", {}],
     go_to: ["Walk somewhere. place: 'keycards' (pick up the keycards in the lobby), 'room 1'..'room 3' or the " +
             "app's name, 'vault' (the PII vault's red door), or 'lobby'. Doors open on arrival if you hold the right keycard.",
             {place: {type: "string"}}],

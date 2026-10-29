@@ -426,8 +426,9 @@
         .lockup .cdata { height: 15px; } .lockup .cailogo { height: 22px; } .lockup .rule { height: 24px; }
         .lockup .x, .lockup .doom { font-size: 15px; }
       }
-      /* the booth's loading screen: here the start card is */
-      #stage-screen .splash { display: none; }
+      /* the booth's loading screen: here the start card is, but for building a visitor's level (body.building) */
+      body:not(.building) #stage-screen .splash { display: none; }
+      body.building #canvas, body.building .coach-card, body.building #coach-tip, body.building #newq { visibility: hidden; }
       /* a narrow, tall panel: the rooms one under another, each with its count beside its name (short
          windows keep them side by side, or the game's events lose their room) */
       section:has(> #rooms-live) { container-type: inline-size; }
@@ -812,6 +813,15 @@
       note(text);
     }
 
+    // While it builds, the page shows what a Mac shows while Claude briefs a level: no game, the stage's
+    // automap drawing the rooms as the model's Connect AI calls come in, and their feed in the panel.
+    function showBuilding(ai) {
+      document.body.classList.add("building");
+      const headline = document.getElementById("stage-headline"), eyebrow = document.querySelector("#stage-screen .splash .eyebrow span");
+      if (headline) headline.innerHTML = `${esc(modelName(ai.model))} is building a Doom level from your <span class="hl">live</span> data`;
+      if (eyebrow) eyebrow.textContent = modelName(ai.model);
+    }
+
     async function build() {
       const settings = AI.load(), ai = AI.active(settings), question = $("build-q").value.trim();
       if (!question) { note("Type a question first.", "bad"); return; }
@@ -820,19 +830,27 @@
       $("build-go").disabled = $("build-q").disabled = true;
       $("build-steps").hidden = false;
       trackEvent("Build level", {provider: ai.provider});
-      // the panel's briefing tab follows the model's steps
-      const before = state.events, events = state.events = [];
-      const log = (kind, data) => events.push({t: Date.now() / 1000, kind, ...data});
+      const before = {events: state.events, game: state.game, mission: state.mission}, events = [];
+      Object.assign(state, {events, game: null});
+      const log = (kind, data) => {
+        events.push({t: Date.now() / 1000, kind, ...data});
+        if (kind === "mission") state.mission = data.mission;   // the automap's rooms
+      };
+      el.close();
+      showBuilding(ai);
       try {
         const {files} = await AI.buildLevel(settings, question, gameWad, log, step);
         step("start", "Your level is built. Starting it…");
         await myLevel.save({files, question, model: ai.model, built: Date.now()});
         trackEvent("Level built", {provider: ai.provider});
+        await new Promise(r => setTimeout(r, 2500));   // the finished automap a moment, as on a Mac before the game opens
         location.reload();
       } catch (e) {
         console.error("Level build:", e);
         trackEvent("Level build failed", {provider: ai.provider});
-        state.events = before;
+        Object.assign(state, before);
+        document.body.classList.remove("building");
+        el.showModal();
         note(`Couldn't build it: ${e.message}`, "bad");
         $("build-go").disabled = $("build-q").disabled = false;
         building = false;

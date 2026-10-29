@@ -440,6 +440,9 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     const mission = JSON.parse(levelkit.plan(question, final, JSON.stringify(calls), JSON.stringify(connections)));
     if (!mission.rooms.length)
       throw new AIError(`${ai.model} didn't plan any rooms. ${mission.answer ? `It said: ${mission.answer.slice(0, 300)}` : ""}`);
+    // brief.py's own "mission" event (it's in run.jsonl too): the panel's automap draws the rooms from it
+    log("mission", {rooms: mission.rooms.map(r => ({app: r.app, title: r.title, writable: r.writable})),
+                    denied: mission.denied.length, masked: mission.masked.length, answer: mission.answer, mission});
     const answers = await Promise.all(mission.rooms.slice(0, 3).map(async r => {
       const text = await client.call("queryData", {query: r.query});
       return {tool: "queryData", args: {query: r.query}, text, error: text.startsWith("Error:")};

@@ -1303,7 +1303,7 @@ function renderStage(s, events) {
   setText($("stage-ask"), q);
   const briefed = events.some(e => e.kind === "mission");
   setText($("stage-mode"), game ? modeText(game, s)
-    : briefed ? "LEVEL READY" : "CLAUDE IS BRIEFING · LIVE");
+    : briefed ? "LEVEL READY" : `${feed.who} IS BRIEFING · LIVE`);   // feed.who: Claude, or the browser version's own model
   const calls = events.filter(e => e.kind === "call").length;
   setText($("stage-progress"), briefed ? `Level built from ${(m?.rooms || []).length} apps. Loading the game...`
     : calls ? `${calls} call${calls === 1 ? "" : "s"} through Connect AI so far` : "");

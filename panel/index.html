@@ -788,6 +788,9 @@ class Feed {
       } else if (e.kind === "result") {
         const c = this.calls.get(e.id) || [...this.calls.values()].find(c => !c.result && c.tool === e.tool && c.connection === e.connection);
         if (c) { c.result = e; this.drawCall(c); }
+      } else if (e.kind === "failed") {     // the run couldn't go on (the browser version: a refused key)
+        this.endLive();
+        this.item("thought", "ERROR", "", esc(e.text), "", "");
       } else if (e.kind === "done") {
         this.endLive();
         this.doneMeta = e;
@@ -1351,12 +1354,13 @@ function renderAsk(s) {
   asking.last = a;
   let msg = "", bad = false, off = true;
   if (a.unavailable) msg = a.unavailable;
+  else if (a.busy) msg = a.busy;     // the browser version: the visitor's model is answering
   else if (a.pending) msg = `Claude is building a new level for: ${a.pending}`;
   else if (!s.game) msg = "You can ask once the game is running.";
   else {
     off = false;
     if (a.failed) { msg = `Claude couldn't build a level for "${a.failed.question}", so the last level is back. Try another question.`; bad = true; }
-    else msg = `${STAGED && !claudePlays(s.game) ? "Press P in the game to free the mouse, then type here. " : ""}Enter builds the level, in about a minute.`;
+    else msg = a.note || `${STAGED && !claudePlays(s.game) ? "Press P in the game to free the mouse, then type here. " : ""}Enter builds the level, in about a minute.`;
   }
   if (asking.sending) off = true;
   if (Date.now() < asking.until) { msg = asking.note; bad = asking.bad; }
@@ -1373,7 +1377,7 @@ async function askNew(e) {
   try {
     const r = await fetch("/ask", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({question})});
     const reply = await r.json();
-    if (r.ok) { $("newq-text").value = ""; askNote("Ending this game. Claude is reading the question...", false); }
+    if (r.ok) { $("newq-text").value = ""; askNote(reply.note || "Ending this game. Claude is reading the question...", false); }
     else askNote(reply.error || "Couldn't ask that.", true);
   } catch (err) { askNote("The game isn't answering. Try again in a moment.", true); }
   asking.sending = false;
@@ -1402,7 +1406,7 @@ async function tick() {
     if ($("tab-brief").hidden && document.body.classList.contains("tab-brief")) showTab("live");
     renderMission(s.mission, events, s.rooms_live, s.game);
     const play = s.play_events || [];
-    $("play").hidden = !play.length || !claudePlays(s.game);
+    $("play").hidden = !play.length || !(claudePlays(s.game) || s.game?.asked);   // asked: the browser version's model answered a question
     if (play.length) playFeed.apply(play);
     setText($("play-who"), playFeed.who);
     // while a model plays (say, Gemini through the LLM Gateway), the MODEL tile names it, not the briefing's

@@ -71,7 +71,7 @@ index 48be83b..1121de5 100644
  
  
 diff --git c/trunk/src/i_video.c w/trunk/src/i_video.c
-index 2e7d77c..8086757 100644
+index 21c4ee9..31dffa8 100644
 --- c/trunk/src/i_video.c
 +++ w/trunk/src/i_video.c
 @@ -25,6 +25,10 @@
@@ -137,7 +137,7 @@ index 2e7d77c..8086757 100644
      // draw to screen
  
      BlitArea(0, 0, SCREENWIDTH, SCREENHEIGHT);
-@@ -1814,6 +1831,14 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
+@@ -1806,6 +1823,14 @@ static void SetVideoMode(screen_mode_t *mode, int w, int h)
      // Blank out the full screen area in case there is any junk in
      // the borders that won't otherwise be overwritten.
  
@@ -246,17 +246,20 @@ index 0000000..a5fb98d
 +}
 +#endif
 diff --git c/trunk/src/m_menu.c w/trunk/src/m_menu.c
-index f9563fc..e33472c 100644
+index f9563fc..9daa6b8 100644
 --- c/trunk/src/m_menu.c
 +++ w/trunk/src/m_menu.c
-@@ -376,6 +376,23 @@ menu_t  NewDef =
+@@ -376,6 +376,28 @@ menu_t  NewDef =
  //
  // OPTIONS MENU
  //
 +#ifdef __EMSCRIPTEN__
-+// The web build: God mode and the mouse. Claude, the booth's switches and sound need the Mac.
++// The web build: Claude plays, the Model row (offline Claude, or the visitor's own model from the
++// page's AI settings), God mode and the mouse. The booth's other switches and sound need the Mac.
 +enum
 +{
++    claudeplays,
++    modelrow,
 +    godmode,
 +    mousesens,
 +    option_empty1,
@@ -265,6 +268,8 @@ index f9563fc..e33472c 100644
 +
 +menuitem_t OptionsMenu[]=
 +{
++    {1,"M_CLAUDE",	M_ChangeClaudePlays,'c'},
++    {2,"M_MODEL",	M_ChangeModel,'l'},
 +    {1,"M_GODMOD",	M_ChangeGodMode,'g'},
 +    {2,"M_MSENS",	M_ChangeSensitivity,'m'},
 +    {-1,"",0,'\0'}
@@ -273,7 +278,7 @@ index f9563fc..e33472c 100644
  enum
  {
      claudeplays,  // connect-doom: the booth's switches, in PR_AgentOption's order
-@@ -410,6 +427,8 @@ menuitem_t OptionsMenu[]=
+@@ -410,6 +432,8 @@ menuitem_t OptionsMenu[]=
      {1,"M_SVOL",	M_Sound,'s'}
  };
  
@@ -282,23 +287,32 @@ index f9563fc..e33472c 100644
  menu_t  OptionsDef =
  {
      opt_end,
-@@ -1036,6 +1055,15 @@ void M_DrawOptions(void)
+@@ -1036,6 +1060,24 @@ void M_DrawOptions(void)
  
      V_DrawPatchDirect (108,4,0,W_CacheLumpName(DEH_String("M_OPTTTL"),PU_CACHE));  // connect-doom: up from 15
  	
 +#ifdef __EMSCRIPTEN__
 +    {
-+        patch_t *label = W_CacheLumpName(OptionsMenu[godmode].name, PU_CACHE);
-+        patch_t *onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(2)]), PU_CACHE);
-+        V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
-+                           OptionsDef.y+LINEHEIGHT*godmode,0,onoff);
++        // the two switches, Claude plays and God mode, with their PR_AgentOption numbers
++        static const int rows[2] = {claudeplays, godmode}, switches[2] = {0, 2};
++        patch_t *label;
++        char model[64];
++        for (i = 0; i < 2; i++)
++        {
++            patch_t *onoff = W_CacheLumpName(DEH_String(msgNames[PR_AgentOption(switches[i])]), PU_CACHE);
++            label = W_CacheLumpName(OptionsMenu[rows[i]].name, PU_CACHE);
++            V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
++                               OptionsDef.y+LINEHEIGHT*rows[i],0,onoff);
++        }
++        label = W_CacheLumpName(OptionsMenu[modelrow].name, PU_CACHE);
++        snprintf(model, sizeof(model), "< %s >", PR_AgentModelLabel());
++        M_WriteText(OptionsDef.x + SHORT(label->width) + 6, OptionsDef.y + LINEHEIGHT*modelrow + 3, model);
 +    }
-+    i = 0;
 +#else
      // connect-doom: ON / OFF just right of each switch's label, and the Model row's model
      for (i = claudeplays; i <= sfxon; i++)
      {
-@@ -1054,6 +1082,7 @@ void M_DrawOptions(void)
+@@ -1054,6 +1096,7 @@ void M_DrawOptions(void)
          V_DrawPatchDirect (OptionsDef.x + SHORT(label->width) + 6 + SHORT(onoff->leftoffset),
                             OptionsDef.y+LINEHEIGHT*i,0,onoff);
      }
@@ -306,7 +320,7 @@ index f9563fc..e33472c 100644
  
      M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(mousesens+1),
  		 10,mouseSensitivity);
-@@ -2096,6 +2125,7 @@ void M_Init (void)
+@@ -2096,6 +2139,7 @@ void M_Init (void)
      messageLastMenuActive = menuactive;
      quickSaveSlot = -1;
  
@@ -314,7 +328,7 @@ index f9563fc..e33472c 100644
      // connect-doom: the switches' labels come from state/brand.wad; without it, blank rows
      for (i = claudeplays; i <= sfxon; i++)
      {
-@@ -2105,6 +2135,7 @@ void M_Init (void)
+@@ -2105,6 +2149,7 @@ void M_Init (void)
              OptionsMenu[i].name[0] = '\0';
          }
      }
@@ -323,7 +337,7 @@ index f9563fc..e33472c 100644
      // Here we could catch other version dependencies,
      //  like HELP1/2, and four episodes.
 diff --git c/trunk/src/pr_process.c w/trunk/src/pr_process.c
-index 86d15dd..c19b4e9 100644
+index 86d15dd..1e0576f 100644
 --- c/trunk/src/pr_process.c
 +++ w/trunk/src/pr_process.c
 @@ -5,6 +5,15 @@
@@ -357,7 +371,7 @@ index 86d15dd..c19b4e9 100644
      if (agent_clock % 4 == 0)
      {
          agent_read_cmd();
-@@ -1495,3 +1506,21 @@ void PR_VaultTouched(void)
+@@ -1495,3 +1506,32 @@ void PR_VaultTouched(void)
      system(buf);
  }
  // *** VAULT END ***
@@ -377,5 +391,16 @@ index 86d15dd..c19b4e9 100644
 +    out[0] = mo ? mo->x >> FRACBITS : 0;
 +    out[1] = mo ? mo->y >> FRACBITS : 0;
 +    out[2] = mo ? (int) ((double) mo->angle * 360.0 / 4294967296.0) : 0;
++}
++
++// The page's AI settings changed: the Options menu's Model row lists `models` now (comma-separated,
++// as PSDOOM_AGENT_MODELS), with `pick` chosen.
++void web_set_models(const char *models, const char *pick)
++{
++    setenv("PSDOOM_AGENT_MODELS", models, 1);
++    setenv("PSDOOM_AGENT_MODEL", pick, 1);
++    agent_nmodels = -1;
++    agent_model = 0;
++    agent_read_models();
 +}
 +#endif

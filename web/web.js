@@ -3,21 +3,26 @@
 // (connect_doom.py) do on a Mac happens here: the panel's /state.json starts from the state
 // web/build.sh baked (connect_doom.py state) and takes this game's kills, hits and red-door tries, and
 // psdoom's list / kill / hit / vault commands are answered from the level's records. replay.js plays
-// the level the way Claude did, for "Watch Claude play".
+// the level the way Claude did, for "Watch Claude play"; with the visitor's own AI set up in the AI
+// settings (ai.js), their model plays instead, and answers their questions through Connect AI.
 (() => {
+  const AI = window.ConnectDoomAI;
   const REPO = "https://github.com/CDataSoftware/connect-ai-doom";
   const CONNECT_AI = "https://www.cdata.com/ai/";
   const external = (href, text, cls = "") =>
     `<a href="${href}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}>${text}</a>`;
+  const esc = text => String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
   // A custom event for the site's Plausible analytics (web/build.sh puts its script on the page)
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
-  // The game takes two thirds of the window at 4:3, with room for the brand bars above and below.
+  // The game takes two thirds of the window at 4:3, with room for the brand bars: 90 px above (the
+  // links and the logos), and 150 px below (the question, Claude's line and the footer).
   function layout() {
     const w = innerWidth, h = innerHeight, split = Math.round(w * 2 / 3);
-    const gh = Math.max(200, Math.min(h - 200, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
-    return [Math.round((split - gw) / 2), Math.round((h - gh) / 2), Math.round(gw), Math.round(gh), split, 0];
+    const gh = Math.max(200, Math.min(h - 240, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
+    const gy = Math.min((h - gh) / 2, h - gh - 150);
+    return [Math.round((split - gw) / 2), Math.round(gy), Math.round(gw), Math.round(gh), split, 0];
   }
   const params = new URLSearchParams(location.search);
   if (!params.has("stage")) {
@@ -45,7 +50,7 @@
               killed: mine.length - left.length};
     });
     return {...state, rooms_live, kills: kills.slice(-12), kill_total: kills.length, hits: hits.slice(-40),
-            standing: alive().length, vault: vault.slice(-5), play_events: playEvents};
+            standing: alive().length, vault: vault.slice(-5), play_events: playEvents, ask: asking.state()};
   }
 
   // Local time without a zone, as connect_doom.py writes killed_at (the panel parses it as local).
@@ -86,14 +91,55 @@
     return "";
   }
 
-  // The panel polls /state.json; nothing here talks to a server.
+  // ---------- a question about the visitor's own data, from the panel's question box ----------
+  // The visitor's model answers through Connect AI (ai.js), its steps in the panel's feed and its
+  // answer under the box. No new level: building one needs the Mac version.
+  const asking = {
+    run: null, answer: "", who: "",
+    // the panel's state.ask: unavailable greys the box out, busy while answering, note under it
+    state() {
+      const settings = AI.load(), ai = AI.active(settings);
+      const ask = {default: state.mission?.question || ""};
+      if (!ai || !AI.hasConnectAI(settings))
+        return {...ask, unavailable: "Ask your own data a question: add your AI key and your Connect AI token in AI settings."};
+      if (coach?.playing()) return {...ask, unavailable: `Ask once ${coach.playing()} is done playing.`};
+      if (this.run) return {...ask, busy: `${modelName(ai.model)} is reading your data through Connect AI…`};
+      return {...ask, note: this.answer ? `${this.who}: ${this.answer}`
+                                        : `Enter asks ${modelName(ai.model)} through Connect AI. Its steps show in the feed.`};
+    },
+    start(question) {
+      const settings = AI.load(), ai = AI.active(settings);
+      if (!ai || !AI.hasConnectAI(settings) || this.run || coach?.playing()) return "Not now: " + (this.state().unavailable || "it's busy.");
+      trackEvent("Ask", {provider: ai.provider});
+      playEvents.length = 0;
+      state.game = {...state.game, asked: true};
+      this.answer = "";
+      this.who = modelName(ai.model);
+      const run = this.run = AI.ask(settings, question, (kind, data) => playEvents.push({t: Date.now() / 1000, kind, ...data}));
+      run.done.then(answer => { this.answer = answer || "No answer came back."; },
+                    e => { this.answer = `Couldn't answer: ${e.message}`; })
+        .finally(() => { if (this.run === run) this.run = null; });
+      return null;
+    },
+    stop() { this.run?.stop(); this.run = null; },
+  };
+
+  // The panel polls /state.json and posts its question box to /ask; nothing here talks to a server.
   const realFetch = window.fetch.bind(window);
   const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {"Content-Type": "application/json"}});
   window.fetch = (url, opts) => {
     const path = new URL(url, location.href).pathname;
     if (path.endsWith("/state.json")) return Promise.resolve(json(state ? currentState() : {}));
+    if (path.endsWith("/ask") && opts?.method === "POST") {
+      const error = asking.start(String(JSON.parse(opts.body).question || "").trim());
+      return Promise.resolve(error ? json({error}, 409) : json({note: `${asking.who} is on it. Watch the feed.`}));
+    }
     return realFetch(url, opts);
   };
+
+  // A model's name as the page shows it: GPT-5.6-SOL, CLAUDE-SONNET-5-5 (OpenRouter's maker/ dropped)
+  const modelName = id => String(id).replace(/^[^/]*\//, "").toUpperCase();
+  let coach = null;
 
   // ---------- the game ----------
   const files = {"/doom/level.wad": "level/level.wad", "/doom/brand.wad": "level/brand.wad",
@@ -147,10 +193,11 @@
       ...Object.values(files).map(u => get(u).then(r => r.arrayBuffer()))]);
     monsters = cache.monsters;
     said = saidJson;
-    // No question box: a new question needs Claude and Connect AI, which the Mac version runs.
-    state = {...baked, game: {mode: "player", started: Date.now() / 1000}, ask: null};
+    // The question box is the visitor's own model's (asking); a new level needs the Mac version.
+    state = {...baked, game: {mode: "player", started: Date.now() / 1000}};
     plainWords();
-    const coach = makeCoach(canvas);
+    coach = makeCoach(canvas);
+    coach.settingsChanged();
     const wad = await downloadWad(coach.loading);
 
     // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
@@ -175,9 +222,10 @@
           "mouseb_fire 0\nmouseb_strafe -1\nmouseb_forward -1\nmouse_sensitivity 6\n");
         FS.writeFile("/doom/extra.cfg", "novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\nfullscreen 0\n" +
           "screen_width 640\nscreen_height 480\n");
+        const [models, pick] = menuModels();
         Object.assign(ENV, {PSDOOMPSCMD: "list", PSDOOMKILLCMD: "kill", PSDOOMRENICECMD: "hit",
           PSDOOMVAULTCMD: "vault", PSDOOM_LABELS: "/doom/labels.tsv", PSDOOM_MONSTERS: monsterKinds.trim(),
-          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom"});
+          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: pick});
       }],
       // No sound yet: Emscripten's SDL mixer can't play the buffers Chocolate Doom builds.
       onRuntimeInitialized: () => {
@@ -190,6 +238,32 @@
     const script = document.createElement("script");
     script.src = "psdoom.js";
     document.body.appendChild(script);
+  }
+
+  // The Options menu's Model row: offline Claude, and the visitor's model when it's set up (picked),
+  // by a name short enough for the menu (OpenRouter's maker/ dropped). It goes into the game's
+  // state.json as it is, so only the characters it allows.
+  function menuModels() {
+    const ai = AI.active(AI.load()), model = ai && ai.model.replace(/^[^/]*\//, "").replace(/[^\w.:-]/g, "").slice(0, 17);
+    return model ? [`${AI.OFFLINE},${model}`, model] : [AI.OFFLINE, AI.OFFLINE];
+  }
+
+  // The AI settings changed: the game's Model row follows.
+  function settingsChanged() {
+    const [models, pick] = menuModels();
+    if (window.Module?._web_set_models) {
+      const list = Module.stringToNewUTF8(models), first = Module.stringToNewUTF8(pick);
+      Module._web_set_models(list, first);
+      Module._free(list);
+      Module._free(first);
+    }
+    coach?.settingsChanged();
+  }
+
+  // What the game says about itself (/doom/agent/state.json): the Options menu's switches, say.
+  function gameState() {
+    try { return JSON.parse(Module.FS.readFile("/doom/agent/state.json", {encoding: "utf8"})); }
+    catch (e) { return null; }   // not started yet, or caught mid-write
   }
 
   // The browser can refuse the pointer lock (say, right after Esc); the next click asks again.
@@ -205,8 +279,11 @@
     const briefing = document.querySelector("#feed")?.parentElement.querySelector("h2");
     if (briefing) briefing.textContent = "DOOMCP · EVERY CALL CLAUDE MADE TO CONNECT AI";
     const fine = document.querySelector("#stage .bar.bottom .fine");
-    if (fine) fine.innerHTML = "Every monster is a record Claude read through the " +
-      external(CONNECT_AI, "CData Connect AI") + " MCP server. Click the game to play; Esc frees the mouse.";
+    // the page's footer: what Connect AI is, the code, and that this is a fan project
+    if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI") +
+      ", one MCP server between AI agents and your business data. " + external(CONNECT_AI, "Try Connect AI") + " · " +
+      external(REPO, "Code on GitHub") + "<br>A fan project, not affiliated with or endorsed by id Software, ZeniMax Media " +
+      "or Microsoft. DOOM is a trademark of id Software LLC.";
     const board = document.querySelector("#board h2");
     if (board) {
       board.firstChild.textContent = "DOOMCP LEADERBOARD: THIS LEVEL";
@@ -218,6 +295,8 @@
       "Stuck: moves with nothing to show for them. Urgent 1st: how often it went for the urgent records first. " +
       "Vault: runs that tried the red door and took Connect AI's no. REF: Claude Code, playing by the same rules " +
       "through its own harness, for reference.";
+    relabel("#newq h2", "ASK YOUR OWN DATA A QUESTION");
+    relabel("#newq-go", "ASK");
     const style = document.createElement("style");
     style.textContent = `.board-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: #E5E2DA; }
       #board-meta, #board .model .data { display: none; }   /* rule versions, data sources, content-filter stops: bench notes */
@@ -258,6 +337,7 @@
       .coach-card .btn { font: 11px/1 var(--pixel); color: var(--depth); background: var(--agility); border: 0; border-radius: 3px;
                          padding: 15px 18px; cursor: pointer; letter-spacing: 1px; text-decoration: none; }
       .coach-card .btn.alt { background: var(--depth-3); color: var(--clarity); border: 1px solid var(--line); }
+      .coach-card .btn.link { background: none; color: var(--balance); padding: 15px 4px; text-decoration: underline; }
       .coach-card .btn:focus-visible { outline: 3px solid var(--clarity); outline-offset: 3px; }
       .coach-card .keys { font: 13px/1.5 var(--mono); color: var(--balance); }
       /* above Doom's status bar (its bottom 16%), clear of Doom's own message line at the top */
@@ -292,7 +372,8 @@
         <li><span><b>Try the red door.</b> It guards data Connect AI blocked.</span></li>
       </ol>
       <div class="row"><button class="btn" type="button" data-go="play" disabled>LOADING…</button>
-        <button class="btn alt" type="button" data-go="watch" disabled>WATCH CLAUDE PLAY</button></div>
+        <button class="btn alt" type="button" data-go="watch" disabled>WATCH CLAUDE PLAY</button>
+        <button class="btn link" type="button" data-go="settings">USE YOUR OWN AI</button></div>
       <div class="keys">WASD move · mouse turn · click fire · walk into doors · Esc frees the mouse</div>`);
     const end = card("coach-end", "");
     end.hidden = true;
@@ -302,7 +383,9 @@
     tip.setAttribute("role", "status");
     screen.append(intro, end, tip);
 
-    let hideAt = 0, step = 0, replay = null, ended = false;
+    // run: whoever plays instead of the player, offline Claude (replay.js) or the visitor's model
+    // (ai.js), as {name, stop(handBack)}; null while the player plays.
+    let hideAt = 0, step = 0, run = null, ended = false;
     const show = (title, text, seconds) => {
       tip.innerHTML = `<b>${title}</b><span>${text}</span>`;
       tip.hidden = false;
@@ -312,7 +395,7 @@
 
     function playYourself() {
       intro.hidden = end.hidden = true;
-      if (replay) { replay.stop(); replay = null; }
+      if (run) { run.stop(); run = null; }
       state.game = {...state.game, mode: "player"};
       canvas.focus();
       lockPointer(canvas);
@@ -322,19 +405,57 @@
       } else tip.hidden = true;
     }
 
-    function watch() {
+    // Someone else plays: model is the Options menu's Model row, offline Claude or the visitor's model.
+    function watch(model) {
       intro.hidden = end.hidden = true;
       if (document.pointerLockElement) document.exitPointerLock();
+      asking.stop();
       playEvents.length = 0;
-      state.game = {...state.game, mode: "replay"};
-      show("WATCHING CLAUDE PLAY", "Claude grabs the keycards, then clears the rooms. Its feed is on the right. Click the game to take over.");
-      const level = {mission, records: monsters, said};
-      replay = window.ConnectDoomReplay.play(level, (kind, data) => playEvents.push({t: Date.now() / 1000, kind, ...data}));
-      replay.done.then(() => { if (replay) { replay = null; finish("watched"); } });
+      state.game = {...state.game, asked: false};
+      const settings = AI.load(), ai = model !== AI.OFFLINE && AI.active(settings);
+      if (ai) watchModel(settings, ai);
+      else watchOffline();
     }
 
-    // The end: what just happened, in a sentence or two, and where to go next.
-    function finish(how) {
+    const level = () => ({mission, records: monsters, said});
+    const log = (kind, data) => playEvents.push({t: Date.now() / 1000, kind, ...data});
+
+    function watchOffline() {
+      state.game = {...state.game, mode: "replay", model: null};
+      show("WATCHING CLAUDE PLAY", "Claude grabs the keycards, then clears the rooms. Its feed is on the right. Click the game to take over.");
+      const replay = window.ConnectDoomReplay.play(level(), log);
+      const mine = run = {name: "Claude", stop: handBack => replay.stop(handBack)};
+      replay.done.then(() => { if (run === mine) { run = null; finish("watched", "Claude"); } });
+    }
+
+    // The visitor's model; when it can't play on (a bad key, a model refused), offline Claude takes over.
+    function watchModel(settings, ai) {
+      const name = modelName(ai.model);
+      trackEvent("Watch own AI", {provider: ai.provider});
+      state.game = {...state.game, mode: "claude", model: ai.model};
+      show(`WATCHING ${name} PLAY`, `${name} plays with the same tools and moves every model gets. Its feed is on the right. Click the game to take over.`);
+      const game = AI.play(settings, level(), log,
+        why => show("CONNECT AI IS OUT", `${why} ${name} plays with the Doom tools only.`, 10));
+      const mine = run = {name, stop: handBack => game.stop(handBack)};
+      game.done.then(() => {
+        if (run !== mine) return;
+        run = null;
+        if (!alive().length) { finish("watched", name); return; }
+        // it stopped short (its moves ran out, or it called it a day): the player's turn
+        playYourself();
+        show(`${name} IS DONE`, `${name} cleared ${kills.length} of ${monsters.length} records. Your turn: finish the level.`, 10);
+      }, e => {
+        if (run !== mine) return;
+        trackEvent("Own AI failed", {provider: ai.provider});
+        log("failed", {text: e.message});
+        run = null;
+        watchOffline();
+        show(`${name} COULDN'T PLAY`, `${e.message} Offline Claude takes over.`, 12);
+      });
+    }
+
+    // The end: what just happened, in a sentence or two, and where to go next. who: who played, when watched.
+    function finish(how, who = "Claude") {
       if (ended) return;
       ended = true;
       trackEvent("Level clear", {how});
@@ -343,8 +464,8 @@
       const n = kills.length;
       end.innerHTML = `<div class="card">
         <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
-        <h3 id="coach-end-title">${how === "watched" ? "Claude" : "You"} just read ${n} records from ${appList}.</h3>
-        <p>All through one MCP server: Connect AI. It let Claude read the apps it was allowed into${denied
+        <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} records from ${appList}.</h3>
+        <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? ", and blocked the one request it shouldn't answer: a customer's Social Security number" : ""}.
           That's what Connect AI does for any AI agent and your business data.</p>
         <div class="row">${external(CONNECT_AI, "TRY CONNECT AI", "btn")}
@@ -359,7 +480,9 @@
     intro.addEventListener("click", e => {
       const go = e.target.closest("[data-go]")?.dataset.go;
       if (go === "play") { trackEvent("Play"); playYourself(); }
-      if (go === "watch") { trackEvent("Watch Claude"); watch(); }
+      // the game isn't running yet, so the Model row's pick is the settings' (menuModels)
+      if (go === "watch") { trackEvent("Watch Claude"); watch(menuModels()[1]); }
+      if (go === "settings") openSettings();
     });
     end.addEventListener("click", e => {
       if (e.target.closest(`a[href="${CONNECT_AI}"]`)) trackEvent("Try Connect AI");
@@ -367,15 +490,28 @@
     });
     // During Claude's run, a click on the game takes the marine over where it stands.
     canvas.addEventListener("click", () => {
-      if (replay) { trackEvent("Take over from Claude"); playYourself(); return; }
+      if (run) { trackEvent("Take over from Claude"); playYourself(); return; }
       canvas.focus();
       lockPointer(canvas);
     });
 
+    // The Options menu's switches, in the game (Esc > Options) or the AI settings: Claude plays on
+    // starts whoever the Model row names, off hands the marine back, and a new model takes over.
+    let options = null;
+    function followOptions(now) {
+      const was = options;
+      options = now;
+      if (!was || !now || ended || !intro.hidden) return;
+      if (now.claude_plays && !was.claude_plays && !run) watch(now.model);
+      else if (!now.claude_plays && was.claude_plays && run) playYourself();
+      else if (now.claude_plays && run && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
+    }
+
     setInterval(() => {
       if (hideAt && Date.now() > hideAt) { tip.hidden = true; hideAt = 0; }
+      followOptions(gameState()?.options);
       const keys = window.Module?._web_keys ? Module._web_keys() : 0;
-      if (step === 1 && !replay && (keys & need) === need) {
+      if (step === 1 && !run && (keys & need) === need) {
         step = 2;
         trackEvent("Got keys");
         show("STEP 2 OF 3 · CLEAR THE ROOMS", "Access granted. Each room is an app, and each monster is a record from it. Shoot one to read it in the panel.", 9);
@@ -383,7 +519,7 @@
     }, 300);
     let endTimer = 0;
     events.addEventListener("cleared", () => {
-      if (replay) return;                                   // Claude's run goes on to the red door itself
+      if (run) return;                                   // Claude's run goes on to the red door itself
       trackEvent("Rooms cleared");
       if (!denied) { finish("played"); return; }
       step = 3;
@@ -391,7 +527,7 @@
       endTimer = setTimeout(() => finish("played"), 30000);  // nobody tried the door: wrap up anyway
     });
     events.addEventListener("vault", () => {
-      if (replay || alive().length) return;
+      if (run || alive().length) return;
       clearTimeout(endTimer);
       trackEvent("Red door");
       show("CONNECT AI SAID NO", "Claude asked for a customer's Social Security number. Connect AI blocked it, so the data never reached Claude.", 6);
@@ -409,14 +545,244 @@
         play.disabled = watchBtn.disabled = false;
         play.focus();
       },
+      // who plays instead of the player right now, by name, or null
+      playing: () => run?.name || null,
+      // the Watch button names the model the Options menu's Model row picks
+      settingsChanged() {
+        const ai = AI.active(AI.load());
+        intro.querySelector("[data-go=watch]").textContent = `WATCH ${ai ? modelName(ai.model) : "CLAUDE"} PLAY`;
+      },
     };
+  }
+
+  // ---------- the AI settings: the visitor's own model and Connect AI, and the game's switches ----------
+  // Like the Options menu, every change takes at once; the settings stay in this browser (ai.js).
+  let settingsDialog = null;
+  function openSettings() {
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (!settingsDialog) settingsDialog = makeSettings();
+    settingsDialog.render();
+    settingsDialog.el.showModal();
+  }
+
+  function makeSettings() {
+    const style = document.createElement("style");
+    style.textContent = `
+      #ai-settings { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; color: var(--clarity);
+                     background: var(--depth); border: 2px solid var(--agility); border-radius: 4px; }
+      #ai-settings [hidden] { display: none !important; }
+      #ai-settings::backdrop { background: rgba(13, 13, 18, .8); }
+      #ai-settings .wrap { padding: 22px 24px; display: flex; flex-direction: column; gap: 18px; }
+      #ai-settings .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      #ai-settings h2 { margin: 0; font: 12px/1.4 var(--pixel); color: var(--agility); letter-spacing: 1px; }
+      #ai-settings h3 { margin: 0 0 4px; font: 9px/1.6 var(--pixel); color: var(--clarity); letter-spacing: 1px; }
+      #ai-settings p, #ai-settings label { margin: 0; font: 14px/1.45 var(--sans); color: var(--balance); }
+      #ai-settings section { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+      #ai-settings .status { font: 15px/1.45 var(--sans); color: #E5E2DA; border-left: 3px solid var(--agility); padding-left: 12px; }
+      #ai-settings .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+      #ai-settings .seg button, #ai-settings .act, #ai-settings .switch { font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer;
+        padding: 11px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--depth-3); color: var(--clarity); }
+      #ai-settings .seg button[aria-pressed=true], #ai-settings .switch[aria-pressed=true] { background: var(--agility); color: var(--depth); border-color: var(--agility); }
+      #ai-settings .act.danger { color: var(--key-red); background: none; }
+      #ai-settings button:focus-visible, #ai-settings input:focus-visible, #ai-settings select:focus-visible { outline: 3px solid var(--clarity); outline-offset: 2px; }
+      #ai-settings .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      #ai-settings .field { display: grid; gap: 4px; flex: 1 1 200px; }
+      #ai-settings input, #ai-settings select { width: 100%; font: 14px/1.3 var(--mono); color: var(--clarity); background: var(--depth-3);
+        border: 1px solid var(--line); border-radius: 3px; padding: 10px; }
+      #ai-settings .msg { font-size: 13px; min-height: 1.2em; }
+      #ai-settings .msg.ok { color: var(--agility); }
+      #ai-settings .msg.bad { color: var(--key-red); }
+      #ai-settings a { color: var(--agility); }
+      #ai-settings .game { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
+      #ai-settings .fine { font-size: 12px; }`;
+    document.head.appendChild(style);
+
+    const el = document.createElement("dialog");
+    el.id = "ai-settings";
+    el.setAttribute("aria-labelledby", "ai-settings-title");
+    const providers = Object.entries(AI.PROVIDERS);
+    el.innerHTML = `<div class="wrap">
+      <div class="head"><h2 id="ai-settings-title">AI SETTINGS</h2><button class="act" type="button" data-close>CLOSE</button></div>
+      <p class="status" id="ai-status" role="status"></p>
+      <section>
+        <h3>YOUR AI MODEL</h3>
+        <p>Offline, Claude's recorded run plays: no keys needed. Bring your own key and your model plays instead.</p>
+        <div class="seg" role="group" aria-label="Who plays">
+          <button type="button" data-provider="offline">OFFLINE</button>
+          ${providers.map(([id, p]) => `<button type="button" data-provider="${id}">${p.name.toUpperCase()}</button>`).join("")}
+        </div>
+        <div id="ai-provider" class="row">
+          <label class="field">API key<input type="password" id="ai-key" autocomplete="off" spellcheck="false"></label>
+          <label class="field">Model<input id="ai-model" list="ai-models" autocomplete="off" spellcheck="false"></label>
+          <datalist id="ai-models"></datalist>
+          <button class="act" type="button" id="ai-check">CHECK KEY</button>
+          <a id="ai-get-key" target="_blank" rel="noopener noreferrer">Get a key</a>
+        </div>
+        <p class="msg" id="ai-msg" aria-live="polite"></p>
+      </section>
+      <section>
+        <h3>CONNECT AI (OPTIONAL)</h3>
+        <p>Your model reads your own business data through the Connect AI MCP server: it can look records up while it
+          plays, and answer the panel's questions. Read-only: nothing is written.</p>
+        <div class="row">
+          <label class="field">Connect AI email<input type="email" id="cai-user" autocomplete="off" spellcheck="false"></label>
+          <label class="field">Personal access token<input type="password" id="cai-pat" autocomplete="off" spellcheck="false"></label>
+          <button class="act" type="button" id="cai-check">CHECK</button>
+          ${external(AI.PAT_URL, "Make a token")}
+        </div>
+        <p class="msg" id="cai-msg" aria-live="polite"></p>
+      </section>
+      <section>
+        <h3>IN THE GAME (ALSO ESC &gt; OPTIONS)</h3>
+        <div class="game">
+          <span>Claude plays</span><div><button class="switch" type="button" data-option="0"></button></div>
+          <span>Model</span><select id="game-model" aria-label="Who plays when Claude plays is on"></select>
+          <span>God mode</span><div><button class="switch" type="button" data-option="2"></button></div>
+        </div>
+      </section>
+      <section>
+        <p class="fine">Your keys stay in this browser (localStorage) and go straight to the provider you pick and to
+          Connect AI. This site has no server, and nothing passes through it. Each run uses your own account's credits.</p>
+        <div class="row"><button class="act danger" type="button" id="ai-forget">FORGET MY KEYS</button></div>
+      </section></div>`;
+    document.body.appendChild(el);
+    const $ = id => el.querySelector(`#${id}`);
+    const note = (id, text, cls = "") => { $(id).textContent = text; $(id).className = `msg ${cls}`; };
+    const listed = {};   // the models each provider's key may use, once checked
+
+    function update(change) {
+      const settings = AI.load();
+      change(settings);
+      try { AI.save(settings); }
+      catch (e) { note("ai-msg", "This browser won't keep settings (private window?): they last until you close the page.", "bad"); }
+      settingsChanged();
+      render();
+    }
+
+    function render() {
+      const settings = AI.load(), ai = AI.active(settings), provider = settings.provider, p = AI.PROVIDERS[provider];
+      el.querySelectorAll("[data-provider]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.provider === provider)));
+      $("ai-provider").hidden = !p;
+      if (p) {
+        if (document.activeElement !== $("ai-key")) $("ai-key").value = settings.keys[provider] || "";
+        $("ai-key").placeholder = p.placeholder;
+        if (document.activeElement !== $("ai-model")) $("ai-model").value = settings.models[provider] || p.defaultModel;
+        $("ai-get-key").href = p.keyUrl;
+        $("ai-get-key").textContent = `Get a ${p.company} key`;
+        $("ai-models").innerHTML = (listed[provider] || []).map(m => `<option value="${esc(m)}">`).join("");
+      }
+      if (document.activeElement !== $("cai-user")) $("cai-user").value = settings.connectAI.user;
+      if (document.activeElement !== $("cai-pat")) $("cai-pat").value = settings.connectAI.pat;
+      const who = ai ? `${modelName(ai.model)} (${AI.PROVIDERS[ai.provider].company}) plays when you watch`
+        : p ? `Add a ${p.company} key and your model plays. Until then, Claude's recorded run plays`
+        : "Offline: Claude's recorded run plays";
+      const data = AI.hasConnectAI(settings) ? (ai ? ", reads your data through Connect AI, and answers your questions."
+                                                   : ". Your Connect AI token is set: add an AI key to use it.")
+        : ". Add a Connect AI token to let it read your own data.";
+      $("ai-status").textContent = who + data;
+      renderGame();
+      const link = document.getElementById("ai-link");
+      if (link) link.textContent = ai ? `AI: ${modelName(ai.model)}` : "AI: OFFLINE";
+    }
+
+    // the game's switches as the game has them: the Options menu changes them too
+    function renderGame() {
+      const options = gameState()?.options, [models, pick] = menuModels();
+      el.querySelectorAll("[data-option]").forEach(b => {
+        const on = !!options?.[b.dataset.option === "0" ? "claude_plays" : "god_mode"];
+        b.setAttribute("aria-pressed", String(on));
+        b.textContent = on ? "ON" : "OFF";
+        b.disabled = !options;
+      });
+      const select = $("game-model"), names = models.split(",");
+      if (select.dataset.models !== models) {
+        select.innerHTML = names.map((m, i) => `<option value="${i}">${m === AI.OFFLINE ? "Offline Claude" : esc(modelName(m))}</option>`).join("");
+        select.dataset.models = models;
+      }
+      if (document.activeElement !== select) select.value = String(Math.max(0, names.indexOf(options?.model || pick)));
+      select.disabled = !options;
+    }
+
+    el.addEventListener("click", e => {
+      if (e.target === el || e.target.closest("[data-close]")) { el.close(); return; }
+      const provider = e.target.closest("[data-provider]")?.dataset.provider;
+      if (provider) { trackEvent("AI provider", {provider}); update(s => { s.provider = provider; }); note("ai-msg", ""); }
+      const option = e.target.closest("[data-option]")?.dataset.option;
+      if (option) {
+        const on = e.target.getAttribute("aria-pressed") !== "true";
+        if (option === "0" && on && !coach) return;
+        window.ConnectDoomReplay.send(`OPTION ${option} ${on ? 1 : 0}`);
+        if (option === "0" && on) el.close();   // to watch
+        setTimeout(renderGame, 300);
+      }
+    });
+    $("game-model").addEventListener("change", e => {
+      window.ConnectDoomReplay.send(`MODEL ${e.target.value}`);
+      setTimeout(renderGame, 300);
+    });
+    $("ai-key").addEventListener("change", e => {
+      const key = e.target.value.trim();
+      update(s => { if (key) s.keys[s.provider] = key; else delete s.keys[s.provider]; });
+      note("ai-msg", key ? "Saved. Check it to see the models it can use." : "Key removed.");
+    });
+    $("ai-model").addEventListener("change", e => {
+      const model = e.target.value.trim();
+      update(s => { if (model) s.models[s.provider] = model; else delete s.models[s.provider]; });
+    });
+    $("ai-check").addEventListener("click", async () => {
+      const settings = AI.load(), provider = settings.provider, key = settings.keys[provider];
+      if (!key) { note("ai-msg", "Paste a key first.", "bad"); return; }
+      note("ai-msg", "Checking…");
+      try {
+        listed[provider] = await AI.listModels(provider, key);
+        const model = settings.models[provider] || AI.PROVIDERS[provider].defaultModel;
+        const known = listed[provider].includes(model);
+        note("ai-msg", `The key works: ${listed[provider].length} models.${known ? "" : ` ${model} isn't one of them: pick one from the Model list.`}`,
+             known ? "ok" : "bad");
+        trackEvent("AI key checked", {provider, ok: "yes"});
+        render();
+      } catch (e) {
+        trackEvent("AI key checked", {provider, ok: "no"});
+        note("ai-msg", e.message, "bad");
+      }
+    });
+    const saveConnectAI = () => update(s => { s.connectAI = {user: $("cai-user").value.trim(), pat: $("cai-pat").value.trim()}; });
+    $("cai-user").addEventListener("change", saveConnectAI);
+    $("cai-pat").addEventListener("change", saveConnectAI);
+    $("cai-check").addEventListener("click", async () => {
+      saveConnectAI();
+      const settings = AI.load();
+      if (!AI.hasConnectAI(settings)) { note("cai-msg", "Add your Connect AI email and token first.", "bad"); return; }
+      note("cai-msg", "Checking…");
+      try {
+        const n = await AI.checkConnectAI(settings);
+        note("cai-msg", `Connected: ${n} read-only tools.`, "ok");
+        trackEvent("Connect AI checked", {ok: "yes"});
+      } catch (e) {
+        trackEvent("Connect AI checked", {ok: "no"});
+        note("cai-msg", e.message, "bad");
+      }
+    });
+    $("ai-forget").addEventListener("click", () => {
+      AI.clear();
+      for (const k in listed) delete listed[k];
+      settingsChanged();
+      render();
+      note("ai-msg", "Forgotten: back to offline.", "ok");
+      note("cai-msg", "");
+    });
+    // while it's open, the switches follow the game (the Options menu, or a run ending)
+    setInterval(() => { if (el.open) renderGame(); }, 500);
+    return {el, render};
   }
 
   // ---------- links, and desktops only ----------
   function addLinks() {
     const style = document.createElement("style");
     style.textContent = `
-      .weblinks { display: flex; gap: 18px; margin-left: auto; }
+      /* their own line above the lockup and the chip: beside them, the bar runs out of room */
+      .weblinks { position: absolute; top: 14px; right: 32px; display: flex; gap: 18px; }
+      .weblinks #ai-link { color: var(--agility); }
       .weblinks a { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
       .weblinks a:hover, .weblinks a:focus-visible { color: var(--agility); }
       #desktop-only { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
@@ -433,7 +799,10 @@
     const nav = document.createElement("nav");
     nav.className = "weblinks";
     nav.setAttribute("aria-label", "About this project");
-    nav.innerHTML = `<a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+    nav.innerHTML = `<a href="#" id="ai-link" role="button">AI: OFFLINE</a><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+    nav.querySelector("#ai-link").addEventListener("click", e => { e.preventDefault(); openSettings(); });
+    const ai = AI.active(AI.load());
+    if (ai) nav.querySelector("#ai-link").textContent = `AI: ${modelName(ai.model)}`;
     const chip = document.getElementById("stage-mode");
     chip.parentNode.insertBefore(nav, chip);
     // the panel's own links leave the game too: a new tab keeps it running

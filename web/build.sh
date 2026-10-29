@@ -35,7 +35,7 @@ rm -rf "$DIST" && mkdir -p "$DIST"
   # shellcheck disable=SC2086
   emcc -O2 -I. -Isrc -Iopl -Ipcsound -Itextscreen -DHAVE_CONFIG_H -sUSE_SDL=1 -Wno-everything $FILES \
     -sASYNCIFY -sALLOW_MEMORY_GROWTH -sINVOKE_RUN=0 -sFORCE_FILESYSTEM \
-    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAP32 -sEXPORTED_FUNCTIONS=_main,_pr_kill,_web_keys,_web_player,_malloc,_free -o "$DIST/psdoom.js"
+    -sEXPORTED_RUNTIME_METHODS=FS,callMain,ENV,HEAP32,stringToNewUTF8 -sEXPORTED_FUNCTIONS=_main,_pr_kill,_web_keys,_web_player,_web_set_models,_malloc,_free -o "$DIST/psdoom.js"
 )
 
 # The level: web/level's snapshot of a real one (web/snapshot.py) played on its saved records,
@@ -61,7 +61,7 @@ python3 connect_doom.py state > "$L/state.json"   # the panel's state before the
 rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/og.jpg "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/ai.js web/og.jpg "$DIST/"
 # Freedoom without the maps the game never loads, gzipped: Pages serves it as is, and the page unzips it
 python3 web/trim_wad.py wads/freedoom2.wad "$DIST/freedoom2.wad"
 gzip -9 -n "$DIST/freedoom2.wad"
@@ -87,7 +87,7 @@ page = open("panel/index.html").read()
 assert page.count("\n<script>\n") == 1, "panel/index.html: expected one inline <script>"
 assert page.count("<title>Connect AI × DOOM</title>") == 1, "panel/index.html: expected its <title>"
 page = page.replace("<title>Connect AI × DOOM</title>", "<title>Connect AI × DOOM (DooMCP)</title>", 1)
-page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
+page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="ai.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
 # what a link to it shows in search results and chat apps
 meta = """<meta name="description" content="Play a Doom level built from business data, read by Claude through the CData Connect AI MCP server. Every monster is a record.">
 <meta property="og:type" content="website">

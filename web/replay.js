@@ -3,7 +3,7 @@
 // /doom/agent/cmd, the game's state back from /doom/agent/state.json (Emscripten's in-memory files).
 // It plays the way Claude did (keycards, each room with the urgent records first, the red door) and
 // narrates each kill with the line Claude wrote about that record in a real run of this level.
-// web.js hands it the level and a log for the panel's Claude feed.
+// web.js hands it the level and a log for the panel's Claude feed; ai.js plays with its Doom tools.
 window.ConnectDoomReplay = (() => {
   const AGENT = "/doom/agent";
   const ARENA_X = [0, 2048, 4096];           // tools/make_arena.py
@@ -14,8 +14,17 @@ window.ConnectDoomReplay = (() => {
   class Stopped extends Error {}
 
   // ---------- the game channel (play.Game) ----------
+  // One command count for everyone writing to the channel (a player, web.js's switches): the game
+  // runs a command only when its number is past the last one.
+  let seq = Math.floor(Date.now() / 1000);
+  function send(line) {
+    seq += 1;
+    Module.FS.writeFile(`${AGENT}/cmd.tmp`, `${seq} ${line}\n`);
+    Module.FS.rename(`${AGENT}/cmd.tmp`, `${AGENT}/cmd`);
+  }
+
   class Game {
-    constructor() { this.seq = Math.floor(Date.now() / 1000); this.stopped = false; }
+    constructor() { this.stopped = false; }
 
     async state() {
       if (this.stopped) throw new Stopped();
@@ -26,26 +35,38 @@ window.ConnectDoomReplay = (() => {
       throw new Error("the game isn't writing its state");
     }
 
-    write(line) {
-      Module.FS.writeFile(`${AGENT}/cmd.tmp`, line + "\n");
-      Module.FS.rename(`${AGENT}/cmd.tmp`, `${AGENT}/cmd`);
-    }
-
     async do(verb, args = [], {timeout = 25, until = null} = {}) {
-      this.seq = Math.max(this.seq, (await this.state()).command?.seq || 0) + 1;
-      this.write(`${this.seq} ${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim());
-      const end = Date.now() + timeout * 1000;
+      seq = Math.max(seq, (await this.state()).command?.seq || 0);
+      send(`${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim());
+      const mine = seq, end = Date.now() + timeout * 1000;
       while (Date.now() < end) {
         const s = await this.state();
-        if (s.command.done_seq >= this.seq) return s.command.result;
-        if (until && until(s)) { this.now("STOP"); return "interrupted"; }
+        if (s.command.done_seq >= mine) return s.command.result;
+        if (until && until(s)) { send("STOP"); return "interrupted"; }
         await sleep(100);
       }
-      this.now("STOP");
+      send("STOP");
       return "timeout";
     }
+  }
 
-    now(verb) { this.seq += 1; this.write(`${this.seq} ${verb}`); }
+  // Someone plays: the game steers the marine (with god mode) and leaves the mouse free. Stopped,
+  // the marine is handed back where it stands, unless handBack is false (another player takes over).
+  function takeOver(game) {
+    send("OPTION 0 1");
+    return (handBack = true) => {
+      if (game.stopped) return;
+      send("STOP");
+      if (handBack) setTimeout(() => send("OPTION 0 0"), 150);
+      game.stopped = true;
+    };
+  }
+
+  // ai.js's Doom tools: look, go_to and attack, each taking the model's arguments.
+  function doomTools(level) {
+    const game = new Game();
+    return {tools: tools(game, level.mission, Object.fromEntries(level.records.map(r => [r.pid, r]))),
+            stop: takeOver(game)};
   }
 
   // ---------- the level (play.py) ----------
@@ -280,19 +301,10 @@ window.ConnectDoomReplay = (() => {
       log("done", {cost_usd: null, duration_ms: Date.now() - started, turns: calls, text: summary});
     }
 
-    // Claude plays on: the game steers the marine (with god mode) and leaves the mouse free
-    game.write(`${++game.seq} OPTION 0 1`);
+    const stop = takeOver(game);
     const done = sleep(300).then(run).catch(e => { if (!(e instanceof Stopped)) console.error("replay:", e); });
-    return {
-      done,
-      stop() {
-        if (game.stopped) return;
-        game.write(`${++game.seq} STOP`);
-        setTimeout(() => game.write(`${++game.seq} OPTION 0 0`), 150);   // hand the marine back where it stands
-        game.stopped = true;
-      },
-    };
+    return {done, stop};
   }
 
-  return {play};
+  return {play, doomTools, send, Stopped};
 })();

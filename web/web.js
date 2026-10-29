@@ -137,6 +137,7 @@
     return realFetch(url, opts);
   };
 
+  const article = word => /^[AEIOU]/i.test(word) ? "an" : "a";
   // A model's name as the page shows it: GPT-5.6-SOL, CLAUDE-SONNET-5-5 (OpenRouter's maker/ dropped)
   const modelName = id => String(id).replace(/^[^/]*\//, "").toUpperCase();
   let coach = null;
@@ -297,6 +298,12 @@
       "through its own harness, for reference.";
     relabel("#newq h2", "ASK YOUR OWN DATA A QUESTION");
     relabel("#newq-go", "ASK");
+    // the question box needs the visitor's own model: the way to set it up, right there
+    const askRow = document.querySelector("#newq .row");
+    if (askRow) {
+      askRow.insertAdjacentHTML("beforeend", '<button type="button" class="link" id="newq-settings">AI settings</button>');
+      document.getElementById("newq-settings").addEventListener("click", openSettings);
+    }
     const style = document.createElement("style");
     style.textContent = `.board-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: #E5E2DA; }
       #board-meta, #board .model .data { display: none; }   /* rule versions, data sources, content-filter stops: bench notes */
@@ -337,7 +344,10 @@
       .coach-card .btn { font: 11px/1 var(--pixel); color: var(--depth); background: var(--agility); border: 0; border-radius: 3px;
                          padding: 15px 18px; cursor: pointer; letter-spacing: 1px; text-decoration: none; }
       .coach-card .btn.alt { background: var(--depth-3); color: var(--clarity); border: 1px solid var(--line); }
-      .coach-card .btn.link { background: none; color: var(--balance); padding: 15px 4px; text-decoration: underline; }
+      .coach-card .byo { display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 10px 12px;
+                         border: 1px dashed var(--line); border-radius: 4px; font: 14px/1.4 var(--sans); color: var(--balance); }
+      .coach-card .byo b { color: var(--clarity); }
+      .coach-card .byo .btn { flex: none; padding: 11px 12px; }
       .coach-card .btn:focus-visible { outline: 3px solid var(--clarity); outline-offset: 3px; }
       .coach-card .keys { font: 13px/1.5 var(--mono); color: var(--balance); }
       /* above Doom's status bar (its bottom 16%), clear of Doom's own message line at the top */
@@ -372,8 +382,9 @@
         <li><span><b>Try the red door.</b> It guards data Connect AI blocked.</span></li>
       </ol>
       <div class="row"><button class="btn" type="button" data-go="play" disabled>LOADING…</button>
-        <button class="btn alt" type="button" data-go="watch" disabled>WATCH CLAUDE PLAY</button>
-        <button class="btn link" type="button" data-go="settings">USE YOUR OWN AI</button></div>
+        <button class="btn alt" type="button" data-go="watch" disabled>WATCH CLAUDE PLAY</button></div>
+      <div class="byo"><span><b>Bring your own AI.</b> Let your Claude, ChatGPT or OpenRouter model play, and ask your
+        own data a question through Connect AI.</span><button class="btn alt" type="button" data-go="settings">AI SETTINGS</button></div>
       <div class="keys">WASD move · mouse turn · click fire · walk into doors · Esc frees the mouse</div>`);
     const end = card("coach-end", "");
     end.hidden = true;
@@ -619,6 +630,8 @@
           <a id="ai-get-key" target="_blank" rel="noopener noreferrer">Get a key</a>
         </div>
         <p class="msg" id="ai-msg" aria-live="polite"></p>
+        <p class="fine">Connect AI's LLM Gateway isn't a choice here yet: it doesn't take requests from web pages.
+          The Mac version plays through it (${external(REPO + "#readme", "README")}).</p>
       </section>
       <section>
         <h3>CONNECT AI (OPTIONAL)</h3>
@@ -627,9 +640,14 @@
         <div class="row">
           <label class="field">Connect AI email<input type="email" id="cai-user" autocomplete="off" spellcheck="false"></label>
           <label class="field">Personal access token<input type="password" id="cai-pat" autocomplete="off" spellcheck="false"></label>
-          <button class="act" type="button" id="cai-check">CHECK</button>
-          ${external(AI.PAT_URL, "Make a token")}
         </div>
+        <div class="row">
+          <label class="field">MCP server URL<input type="url" id="cai-url" autocomplete="off" spellcheck="false"
+            placeholder="${AI.MCP_URL}"></label>
+          <button class="act" type="button" id="cai-check">CHECK</button>
+        </div>
+        <p class="fine">Make a token in ${external(AI.PAT_URL, "Connect AI's Settings, Access Tokens")}. Leave the URL
+          empty for Connect AI's MCP server, or paste the Agent URL of one of your MCP Gateway tool servers.</p>
         <p class="msg" id="cai-msg" aria-live="polite"></p>
       </section>
       <section>
@@ -668,21 +686,21 @@
         $("ai-key").placeholder = p.placeholder;
         if (document.activeElement !== $("ai-model")) $("ai-model").value = settings.models[provider] || p.defaultModel;
         $("ai-get-key").href = p.keyUrl;
-        $("ai-get-key").textContent = `Get a ${p.company} key`;
+        $("ai-get-key").textContent = `Get ${article(p.company)} ${p.company} key`;
         $("ai-models").innerHTML = (listed[provider] || []).map(m => `<option value="${esc(m)}">`).join("");
       }
       if (document.activeElement !== $("cai-user")) $("cai-user").value = settings.connectAI.user;
       if (document.activeElement !== $("cai-pat")) $("cai-pat").value = settings.connectAI.pat;
+      if (document.activeElement !== $("cai-url")) $("cai-url").value = settings.connectAI.url || "";
       const who = ai ? `${modelName(ai.model)} (${AI.PROVIDERS[ai.provider].company}) plays when you watch`
-        : p ? `Add a ${p.company} key and your model plays. Until then, Claude's recorded run plays`
+        : p ? `Add ${article(p.company)} ${p.company} key and your model plays. Until then, Claude's recorded run plays`
         : "Offline: Claude's recorded run plays";
       const data = AI.hasConnectAI(settings) ? (ai ? ", reads your data through Connect AI, and answers your questions."
                                                    : ". Your Connect AI token is set: add an AI key to use it.")
         : ". Add a Connect AI token to let it read your own data.";
       $("ai-status").textContent = who + data;
       renderGame();
-      const link = document.getElementById("ai-link");
-      if (link) link.textContent = ai ? `AI: ${modelName(ai.model)}` : "AI: OFFLINE";
+      renderAILink();
     }
 
     // the game's switches as the game has them: the Options menu changes them too
@@ -746,11 +764,15 @@
         note("ai-msg", e.message, "bad");
       }
     });
-    const saveConnectAI = () => update(s => { s.connectAI = {user: $("cai-user").value.trim(), pat: $("cai-pat").value.trim()}; });
-    $("cai-user").addEventListener("change", saveConnectAI);
-    $("cai-pat").addEventListener("change", saveConnectAI);
+    const saveConnectAI = () => {
+      const url = $("cai-url").value.trim();
+      if (url && !/^https:\/\/[^\s/]+/.test(url)) { note("cai-msg", "The MCP server URL starts with https://", "bad"); return false; }
+      update(s => { s.connectAI = {user: $("cai-user").value.trim(), pat: $("cai-pat").value.trim(), url}; });
+      return true;
+    };
+    ["cai-user", "cai-pat", "cai-url"].forEach(id => $(id).addEventListener("change", saveConnectAI));
     $("cai-check").addEventListener("click", async () => {
-      saveConnectAI();
+      if (!saveConnectAI()) return;
       const settings = AI.load();
       if (!AI.hasConnectAI(settings)) { note("cai-msg", "Add your Connect AI email and token first.", "bad"); return; }
       note("cai-msg", "Checking…");
@@ -776,13 +798,24 @@
     return {el, render};
   }
 
+  // The top bar's button: what it opens, and who plays now
+  const GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';
+  function renderAILink() {
+    const link = document.getElementById("ai-link"), ai = AI.active(AI.load());
+    if (link) link.innerHTML = `${GEAR}AI SETTINGS <span class="who">· ${esc(ai ? modelName(ai.model) : "OFFLINE")}</span>`;
+  }
+
   // ---------- links, and desktops only ----------
   function addLinks() {
     const style = document.createElement("style");
     style.textContent = `
       /* their own line above the lockup and the chip: beside them, the bar runs out of room */
-      .weblinks { position: absolute; top: 14px; right: 32px; display: flex; gap: 18px; }
-      .weblinks #ai-link { color: var(--agility); }
+      .weblinks { position: absolute; top: 10px; right: 32px; display: flex; gap: 18px; align-items: center; }
+      #ai-link { display: flex; align-items: center; gap: 7px; font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer;
+                 color: var(--depth); background: var(--agility); border: 0; border-radius: 3px; padding: 7px 10px; }
+      #ai-link svg { width: 12px; height: 12px; }
+      #ai-link .who { opacity: .75; }
+      #ai-link:hover, #ai-link:focus-visible { filter: brightness(1.1); outline: 2px solid var(--clarity); outline-offset: 2px; }
       .weblinks a { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
       .weblinks a:hover, .weblinks a:focus-visible { color: var(--agility); }
       #desktop-only { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
@@ -799,12 +832,11 @@
     const nav = document.createElement("nav");
     nav.className = "weblinks";
     nav.setAttribute("aria-label", "About this project");
-    nav.innerHTML = `<a href="#" id="ai-link" role="button">AI: OFFLINE</a><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
-    nav.querySelector("#ai-link").addEventListener("click", e => { e.preventDefault(); openSettings(); });
-    const ai = AI.active(AI.load());
-    if (ai) nav.querySelector("#ai-link").textContent = `AI: ${modelName(ai.model)}`;
+    nav.innerHTML = `<button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+    nav.querySelector("#ai-link").addEventListener("click", openSettings);
     const chip = document.getElementById("stage-mode");
     chip.parentNode.insertBefore(nav, chip);
+    renderAILink();
     // the panel's own links leave the game too: a new tab keeps it running
     document.querySelectorAll('a[href^="http"]').forEach(a => { a.target = "_blank"; a.rel = "noopener noreferrer"; });
     const gate = document.createElement("div");

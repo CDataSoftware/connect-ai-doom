@@ -16,7 +16,7 @@ window.ConnectDoomAI = (() => {
   const OFFLINE = "offline-claude";   // the Options menu's Model row: Claude's recorded run (replay.js)
   const MCP_URL = "https://mcp.cloud.cdata.com/mcp";
   const READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData";   // claude_run.py
-  const PAT_URL = "https://cloud.cdata.com/settings/access-tokens";
+  const PAT_URL = "https://cloud.cdata.com/settings?defaultTab=PersonalAccessTokens";
 
   // gateway_run.py's limits, so a model plays here as it does on a Mac
   const MAX_TOKENS = 4096, MAX_TURNS = 200, MAX_MOVES = 100, RETRY_WAITS = [2, 5, 10];
@@ -26,7 +26,7 @@ window.ConnectDoomAI = (() => {
   class AIError extends Error {}
 
   // ---------- the settings ----------
-  const blank = () => ({provider: "offline", keys: {}, models: {}, connectAI: {user: "", pat: ""}});
+  const blank = () => ({provider: "offline", keys: {}, models: {}, connectAI: {user: "", pat: "", url: ""}});
   let unsaved = null;   // the settings, when this browser won't store them (a private window, blocked storage)
 
   function load() {
@@ -64,6 +64,10 @@ window.ConnectDoomAI = (() => {
   const hasConnectAI = settings => !!(settings.connectAI.user && settings.connectAI.pat);
 
   // ---------- the providers ----------
+  // A request the browser itself refused, or that never got an answer: a page can't tell which.
+  const unreachable = (what, url) => new AIError(`${what} didn't answer at ${new URL(url).host}: it's down, ` +
+    "this network blocks it, or it doesn't accept requests from web pages.");
+
   async function request(url, init, what) {
     for (const wait of [...RETRY_WAITS, null]) {
       let r;
@@ -71,7 +75,7 @@ window.ConnectDoomAI = (() => {
         r = await fetch(url, init);
       } catch (e) {
         if (init.signal?.aborted) throw e;
-        if (wait === null) throw new AIError(`${what} didn't answer (${e.message}).`);
+        if (wait === null) throw unreachable(what, url);
         await sleep(wait * 1000);
         continue;
       }
@@ -203,8 +207,17 @@ window.ConnectDoomAI = (() => {
   }
 
   // ---------- the Connect AI MCP server (connect_ai_mcp.py) ----------
+  // Connect AI's MCP server takes ?ops= to offer only the read-only tools; any other URL (an MCP
+  // Gateway tool server's Agent URL) is used as it is.
+  function mcpEndpoint(url) {
+    const u = new URL(url || MCP_URL);
+    if (u.host === new URL(MCP_URL).host && !u.searchParams.has("ops")) u.searchParams.set("ops", READ_ONLY_OPS);
+    return u.toString();
+  }
+
   class ConnectAI {
-    constructor({user, pat}) {
+    constructor({user, pat, url}) {
+      this.url = mcpEndpoint(url);
       this.auth = `Basic ${btoa(`${user}:${pat}`)}`;
       this.session = null;
       this.nextId = 1;
@@ -212,9 +225,14 @@ window.ConnectDoomAI = (() => {
 
     async rpc(method, params, notify = false) {
       const body = {jsonrpc: "2.0", method, ...(params ? {params} : {}), ...(notify ? {} : {id: this.nextId++})};
-      const r = await fetch(`${MCP_URL}?ops=${READ_ONLY_OPS}`, {method: "POST", body: JSON.stringify(body), headers: {
-        "Authorization": this.auth, "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
-        ...(this.session ? {"Mcp-Session-Id": this.session} : {})}});
+      let r;
+      try {
+        r = await fetch(this.url, {method: "POST", body: JSON.stringify(body), headers: {
+          "Authorization": this.auth, "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+          ...(this.session ? {"Mcp-Session-Id": this.session} : {})}});
+      } catch (e) {
+        throw unreachable("The MCP server", this.url);
+      }
       this.session = r.headers.get("Mcp-Session-Id") || this.session;
       const raw = await r.text();
       if (!r.ok) {
@@ -341,6 +359,6 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     return {done, stop() { controller.abort(); }};
   }
 
-  return {PROVIDERS, OFFLINE, PAT_URL, AIError, load, save, clear, active, hasConnectAI, listModels,
+  return {PROVIDERS, OFFLINE, PAT_URL, MCP_URL, AIError, load, save, clear, active, hasConnectAI, listModels,
           checkConnectAI: async settings => Object.keys(await connectAITools(settings)).length, play, ask};
 })();

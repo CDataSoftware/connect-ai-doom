@@ -14,6 +14,8 @@
   const esc = text => String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
   // A custom event for the site's Plausible analytics (web/build.sh puts its script on the page)
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
+  // embed.html (web/build.sh): the game alone, for an iframe in a blog post, starting on a click
+  const EMBED = document.documentElement.hasAttribute("data-embed");
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
   // The header (the links and the logos) along the top, TOP tall; the game at 4:3 in the middle of
@@ -21,8 +23,16 @@
   // header; the footer (the question, Claude's line and the fine print) just under the game, in
   // BOTTOM. When the window's short, the game shrinks to keep all three.
   const PANEL_MIN = 440, TOP = 90, GAP = 40, BOTTOM = 170;
+  // The embed has no panel: the logos in a strip above, the game the window's width, the question
+  // and Claude's line under it.
+  const EMBED_TOP = 52, EMBED_BOTTOM = 84;
   function layout() {
-    const w = innerWidth, h = innerHeight, split = Math.round(Math.min(w * 2 / 3, w - PANEL_MIN));
+    const w = innerWidth, h = innerHeight;
+    if (EMBED) {
+      const gh = Math.max(200, Math.min(h - EMBED_TOP - EMBED_BOTTOM, w * 3 / 4)), gw = gh * 4 / 3;
+      return [Math.round((w - gw) / 2), EMBED_TOP, Math.round(gw), Math.round(gh), w, 0];
+    }
+    const split = Math.round(Math.min(w * 2 / 3, w - PANEL_MIN));
     const gh = Math.max(200, Math.min(h - TOP - GAP - BOTTOM, (split - 64) * 3 / 4)), gw = gh * 4 / 3;
     const gy = Math.min(Math.max((h - gh) / 2, TOP + GAP), h - gh - BOTTOM);
     return [Math.round((split - gw) / 2), Math.round(gy), Math.round(gw), Math.round(gh), split, 0];
@@ -261,7 +271,7 @@
 
     // The level first (small), so the start card is up while Freedoom downloads: the visitor's own,
     // if they built one, else the site's.
-    mine = await myLevel.load().catch(e => { console.warn("Your level:", e); return null; }) || null;
+    mine = EMBED ? null : await myLevel.load().catch(e => { console.warn("Your level:", e); return null; }) || null;
     document.body.classList.toggle("mine", !!mine);   // the visitor's level: no leaderboard (see plainWords)
     const level = mine ? name => Promise.resolve(new Response(mine.files[name])) : name => get(`level/${name}`);
     const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
@@ -590,7 +600,7 @@
 
     function watchOffline() {
       state.game = {...state.game, mode: "replay", model: null};
-      show("WATCHING CLAUDE PLAY", "Claude grabs the keycards, then clears the rooms. Its feed is on the right. Click the game to take over.");
+      show("WATCHING CLAUDE PLAY", `Claude grabs the keycards, then clears the rooms. ${EMBED ? "" : "Its feed is on the right. "}Click the game to take over.`);
       const replay = window.ConnectDoomReplay.play(level(), log);
       const mine = run = {name: "Claude", stop: handBack => replay.stop(handBack)};
       replay.done.then(() => { if (run === mine) { run = null; finish("watched", "Claude"); } });
@@ -732,8 +742,9 @@
         play.disabled = watchBtn.disabled = false;
         play.focus();
         trackEvent("Auto watch");
-        watch(AI.OFFLINE, true);
         this.settingsChanged();
+        if (EMBED) { watch(AI.OFFLINE); return; }   // the poster was the start card
+        watch(AI.OFFLINE, true);
         setTimeout(fadeIntro, 10000);
       },
       // who plays instead of the player right now, by name, or null
@@ -1219,12 +1230,34 @@
     const nav = document.createElement("nav");
     nav.className = "weblinks";
     nav.setAttribute("aria-label", "About this project");
-    nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
-    nav.querySelector("#ai-link").addEventListener("click", openSettings);
-    nav.querySelector("#build-link").addEventListener("click", () => openBuilder());
     const chip = document.getElementById("stage-mode");
-    chip.parentNode.insertBefore(nav, chip);
-    renderAILink();
+    if (EMBED) {
+      // the game alone: the logos, a way to the whole thing, and the question and Claude's line under the game
+      // (html[data-embed] outranks plainWords' styles, which come later)
+      style.textContent += `
+        html[data-embed] body.stage { grid-template-columns: minmax(0, 1fr); }
+        html[data-embed] body.stage #side, html[data-embed] #stage-mode { display: none; }
+        html[data-embed] #stage { border-right: 0; }
+        html[data-embed] #stage .screen::before, html[data-embed] #stage .screen::after { display: none; }   /* the game fills the width: no room for the frame's corners */
+        html[data-embed] #stage .bar { padding: 0 16px; }
+        html[data-embed] #stage .bar.top { height: var(--gy); align-items: center; padding-bottom: 0; }
+        html[data-embed] #stage .bar.bottom { padding-top: 10px; justify-content: flex-start; gap: 5px; }
+        html[data-embed] #stage .bar.bottom .q { font-size: 15px; }
+        html[data-embed] #stage .bar.bottom .say { font-size: 14px; }
+        html[data-embed] #stage .bar.bottom .say .txt { -webkit-line-clamp: 1; }
+        html[data-embed] .lockup { gap: 10px; }
+        html[data-embed] .lockup .cdata { height: 15px; } html[data-embed] .lockup .cailogo { height: 22px; } html[data-embed] .lockup .rule { height: 24px; }
+        html[data-embed] .lockup .x, html[data-embed] .lockup .doom { font-size: 15px; }
+        html[data-embed] .weblinks { position: static; }`;
+      nav.innerHTML = external(new URL("./", location.href).href, "PLAY THE FULL VERSION ↗");
+      chip.parentNode.insertBefore(nav, chip);
+    } else {
+      nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+      nav.querySelector("#ai-link").addEventListener("click", openSettings);
+      nav.querySelector("#build-link").addEventListener("click", () => openBuilder());
+      chip.parentNode.insertBefore(nav, chip);
+      renderAILink();
+    }
     // the panel's own links leave the game too: a new tab keeps it running
     document.querySelectorAll('a[href^="http"]').forEach(a => { a.target = "_blank"; a.rel = "noopener noreferrer"; });
     const gate = document.createElement("div");
@@ -1238,9 +1271,43 @@
     return gate;
   }
 
+  // The embed's start card: nothing downloads until someone asks for the game (about 9 MB), and the
+  // blog post around it loads as fast as it would without it.
+  function showPoster(go) {
+    const style = document.createElement("style");
+    style.textContent = `
+      #poster { position: fixed; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; padding: 24px;
+                background: linear-gradient(rgba(13, 13, 18, .82), rgba(13, 13, 18, .92)), url(og.jpg) center / cover, var(--depth); }
+      #poster .card { max-width: 560px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+      #poster .eyebrow { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; }
+      #poster h3 { margin: 0; font: 700 32px/1.15 var(--sans); color: var(--clarity); }
+      #poster h3 .red { color: var(--doom-red); }
+      #poster p { margin: 0; font: 16px/1.5 var(--sans); color: #E5E2DA; }
+      #poster button { font: 11px/1 var(--pixel); letter-spacing: 1px; color: var(--depth); background: var(--agility);
+                       border: 0; border-radius: 3px; padding: 14px 18px; cursor: pointer; }
+      #poster button:hover, #poster button:focus-visible { filter: brightness(1.1); outline: 2px solid var(--clarity); outline-offset: 2px; }
+      #poster .fine { font: 12px/1.4 var(--mono); color: var(--balance); }`;
+    document.head.appendChild(style);
+    const poster = document.createElement("div");
+    poster.id = "poster";
+    poster.innerHTML = `<div class="card">
+      <div class="eyebrow">CONNECT AI × DOOM · A.K.A. DOOMCP</div>
+      <h3>Every monster is a <span class="red">record</span>.</h3>
+      <p>Claude read a demo company's apps through the CData Connect AI MCP server and built this Doom level from what it
+        found. Watch Claude play it, then click the game to take over.</p>
+      <button type="button">▶ WATCH CLAUDE PLAY</button>
+      <div class="fine">About a 9 MB download · WASD move · mouse turn · click fire · Esc frees the mouse</div></div>`;
+    poster.querySelector("button").addEventListener("click", () => {
+      trackEvent("Embed start");
+      poster.remove();
+      go();
+    });
+    document.body.appendChild(poster);
+  }
+
   // Doom needs a keyboard and a mouse, and room for the stage and the panel side by side.
   const hasMouse = () => matchMedia("(any-pointer: fine)").matches;
-  const roomy = () => innerWidth >= 900 && innerHeight >= 560;
+  const roomy = () => EMBED ? innerWidth >= 480 && innerHeight >= 360 : innerWidth >= 900 && innerHeight >= 560;
 
   addEventListener("DOMContentLoaded", () => {
     const gate = addLinks();
@@ -1250,7 +1317,9 @@
       if (hasMouse() && roomy()) {
         gate.hidden = true;
         started = true;
-        start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
+        const go = () => start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
+        if (EMBED) showPoster(go);
+        else go();
         return;
       }
       if (gate.hidden) trackEvent("Desktop only", {reason: hasMouse() ? "small window" : "no mouse"});

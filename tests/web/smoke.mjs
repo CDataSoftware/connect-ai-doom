@@ -116,6 +116,23 @@ try {
   await back;
   await p.waitForSelector("#coach-intro [data-go=play]:not([disabled])", {timeout: 120000});
   check(/demo company/.test(await text(p, "#coach-intro p")), "Demo level goes back to the site's level");
+  await p.close();
+
+  // 5. The embed, in a blog's 768 px column: nothing downloads before the click, then Claude plays the game alone
+  p = await browser.newPage({viewport: {width: 768, height: 712}});
+  p.on("pageerror", e => check(false, `no page error in the embed (${e.message})`));
+  const fetched = [];
+  p.on("request", r => fetched.push(r.url()));
+  await p.goto(`${SITE}embed.html`);
+  await p.waitForSelector("#poster button");
+  await p.waitForTimeout(1000);
+  check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "the embed downloads no game before its click");
+  await p.click("#poster button");
+  await p.waitForFunction(() => window.Module?._web_keys, null, {timeout: 120000});
+  await p.waitForTimeout(8000);
+  check((await game(p)).options.claude_plays === 1 && !(await p.isVisible("#coach-intro")), "the embed's click starts Claude playing");
+  check(!(await p.isVisible("#side")) && (await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--gw"))) === "768px",
+        "the embed's game fills the column, with no panel");
 } finally {
   await browser.close();
   server.kill();

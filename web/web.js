@@ -104,8 +104,9 @@
         return {...ask, unavailable: "Ask your own data a question: add your AI key and your Connect AI token in AI settings."};
       if (coach?.playing()) return {...ask, unavailable: `Ask once ${coach.playing()} is done playing.`};
       if (this.run) return {...ask, busy: `${modelName(ai.model)} is reading your data through Connect AI…`};
+      const mine = AI.connections();
       return {...ask, note: this.answer ? `${this.who}: ${this.answer}`
-                                        : `Enter asks ${modelName(ai.model)} through Connect AI. Its steps show in the feed.`};
+        : `Enter asks ${modelName(ai.model)} through Connect AI${mine?.length ? `, with ${connectionList(mine)}` : ""}. Its steps show in the feed.`};
     },
     start(question) {
       const settings = AI.load(), ai = AI.active(settings);
@@ -137,6 +138,12 @@
     return realFetch(url, opts);
   };
 
+  // "48 connections, such as Acumatica, ADP and Bullhorn CRM"
+  function connectionList(list) {
+    const names = [...new Set(list.map(c => c.source))].slice(0, 3);
+    const shown = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+    return `${list.length} connection${list.length === 1 ? "" : "s"}, ${list.length > names.length ? "such as " : ""}${shown}`;
+  }
   const article = word => /^[AEIOU]/i.test(word) ? "an" : "a";
   // A model's name as the page shows it: GPT-5.6-SOL, CLAUDE-SONNET-5-5 (OpenRouter's maker/ dropped)
   const modelName = id => String(id).replace(/^[^/]*\//, "").toUpperCase();
@@ -199,6 +206,10 @@
     plainWords();
     coach = makeCoach(canvas);
     coach.settingsChanged();
+    // the visitor's connections, for the question box; when Connect AI won't answer, the box just
+    // doesn't name them, and asking shows the error
+    const saved = AI.load();
+    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).catch(e => console.warn("Connect AI:", e.message));
     const wad = await downloadWad(coach.loading);
 
     // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
@@ -282,7 +293,7 @@
     const fine = document.querySelector("#stage .bar.bottom .fine");
     // the page's footer: what Connect AI is, the code, and that this is a fan project
     if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI") +
-      ", one MCP server between AI agents and your business data. " + external(CONNECT_AI, "Try Connect AI") + " · " +
+      ", one MCP server between AI agents and your business data. " + external(AI.SIGNUP_URL, "Try Connect AI free") + " · " +
       external(REPO, "Code on GitHub") + "<br>A fan project, not affiliated with or endorsed by id Software, ZeniMax Media " +
       "or Microsoft. DOOM is a trademark of id Software LLC.";
     const board = document.querySelector("#board h2");
@@ -479,7 +490,7 @@
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? ", and blocked the one request it shouldn't answer: a customer's Social Security number" : ""}.
           That's what Connect AI does for any AI agent and your business data.</p>
-        <div class="row">${external(CONNECT_AI, "TRY CONNECT AI", "btn")}
+        <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
                               : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
           <a class="btn alt" href="about.html">HOW IT WORKS</a>
@@ -496,7 +507,7 @@
       if (go === "settings") openSettings();
     });
     end.addEventListener("click", e => {
-      if (e.target.closest(`a[href="${CONNECT_AI}"]`)) trackEvent("Try Connect AI");
+      if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
       if (e.target.closest("[data-go=again]")) location.reload();
     });
     // During Claude's run, a click on the game takes the marine over where it stands.
@@ -605,7 +616,8 @@
       #ai-settings .msg.bad { color: var(--key-red); }
       #ai-settings a { color: var(--agility); }
       #ai-settings .game { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
-      #ai-settings .fine { font-size: 12px; }`;
+      #ai-settings .fine { font-size: 12px; }
+      #ai-settings .setup { margin: 0; padding-left: 20px; display: grid; gap: 4px; font: 14px/1.45 var(--sans); color: #E5E2DA; }`;
     document.head.appendChild(style);
 
     const el = document.createElement("dialog");
@@ -637,6 +649,11 @@
         <h3>CONNECT AI (OPTIONAL)</h3>
         <p>Your model reads your own business data through the Connect AI MCP server: it can look records up while it
           plays, and answer the panel's questions. Read-only: nothing is written.</p>
+        <ol class="setup">
+          <li>${external(AI.SIGNUP_URL, "Sign up for Connect AI")}: it's a free trial.</li>
+          <li>Add a data source, or use the sample data, as the ${external(AI.QUICKSTART_URL, "Quick Start")} shows.</li>
+          <li>Make a ${external(AI.PAT_URL, "personal access token")} and paste it below, with your sign-in email.</li>
+        </ol>
         <div class="row">
           <label class="field">Connect AI email<input type="email" id="cai-user" autocomplete="off" spellcheck="false"></label>
           <label class="field">Personal access token<input type="password" id="cai-pat" autocomplete="off" spellcheck="false"></label>
@@ -646,8 +663,8 @@
             placeholder="${AI.MCP_URL}"></label>
           <button class="act" type="button" id="cai-check">CHECK</button>
         </div>
-        <p class="fine">Make a token in ${external(AI.PAT_URL, "Connect AI's Settings, Access Tokens")}. Leave the URL
-          empty for Connect AI's MCP server, or paste the Agent URL of one of your MCP Gateway tool servers.</p>
+        <p class="fine">Leave the URL empty for Connect AI's MCP server, or paste the Agent URL of one of your
+          MCP Gateway tool servers.</p>
         <p class="msg" id="cai-msg" aria-live="polite"></p>
       </section>
       <section>
@@ -777,8 +794,8 @@
       if (!AI.hasConnectAI(settings)) { note("cai-msg", "Add your Connect AI email and token first.", "bad"); return; }
       note("cai-msg", "Checking…");
       try {
-        const n = await AI.checkConnectAI(settings);
-        note("cai-msg", `Connected: ${n} read-only tools.`, "ok");
+        const {tools, connections} = await AI.checkConnectAI(settings);
+        note("cai-msg", `Connected: ${tools} read-only tools${connections.length ? `, ${connectionList(connections)}` : ""}.`, "ok");
         trackEvent("Connect AI checked", {ok: "yes"});
       } catch (e) {
         trackEvent("Connect AI checked", {ok: "no"});

@@ -115,9 +115,15 @@ if [[ "$MODE" == live || "$MODE" == brief ]] && ! command -v claude >/dev/null; 
 fi
 
 if [[ "$MODE" != demo ]]; then
-  # Token lookup: env, then the macOS Keychain (no prompt; ./raid.sh login stores it), then,
-  # if CONNECT_AI_OP_ITEM names one, 1Password once. The 1Password CLI re-asks per terminal
+  # Token lookup: env, then a local .env (gitignored: CONNECT_AI_USER=... and CONNECT_AI_PAT=...
+  # lines), then the macOS Keychain (no prompt; ./raid.sh login stores it), then, if
+  # CONNECT_AI_OP_ITEM names one, 1Password once. The 1Password CLI re-asks per terminal
   # window and after 10 idle minutes, so that read is copied into the Keychain.
+  if [[ -f .env ]]; then
+    while IFS='=' read -r name value; do
+      [[ "$name" =~ ^CONNECT_AI_[A-Z_]+$ && -z "${!name:-}" ]] && printf -v "$name" '%s' "$value"
+    done < .env
+  fi
   if [[ -z "${CONNECT_AI_USER:-}" && -f state/account ]]; then   # the account ./raid.sh login saved
     CONNECT_AI_USER=$(<state/account)
   fi

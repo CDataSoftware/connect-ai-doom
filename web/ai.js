@@ -17,6 +17,11 @@ window.ConnectDoomAI = (() => {
   const MCP_URL = "https://mcp.cloud.cdata.com/mcp";
   const READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData";   // claude_run.py
   const PAT_URL = "https://cloud.cdata.com/settings?defaultTab=PersonalAccessTokens";
+  // Connect AI's free trial sign-up, as cdata.com's Start Free Trial button opens it: its source
+  // tag must not be empty (www.cdata.com/ai/signup/ sends an empty one, and the sign-up fails)
+  const SIGNUP_URL = "https://cloud-login.cdata.com/authorize?prompt=login&screen_hint=signup&response_type=code" +
+    "&client_id=8dtJbDAVHT0exzv9cPDuxxFBhzqsj78m&redirect_uri=https://cloud.cdata.com&ext-utm_source=connect-ai-doom";
+  const QUICKSTART_URL = "https://docs.cloud.cdata.com/en/Quick-Start-Guide";
 
   // gateway_run.py's limits, so a model plays here as it does on a Mac
   const MAX_TOKENS = 4096, MAX_TURNS = 200, MAX_MOVES = 100, RETRY_WAITS = [2, 5, 10];
@@ -261,7 +266,25 @@ window.ConnectDoomAI = (() => {
     }
   }
 
-  // Connect AI's read-only tools for a model, as {"connectai__<tool>": ...}; and how many there are.
+  // The visitor's Connect AI connections, [{name, source}] (getCatalogs' CSV: TABLE_CATALOG,
+  // DATA_SOURCE,...), for the settings and the question box; null until checked. An MCP Gateway
+  // tool server may not offer getCatalogs: then none are listed.
+  let connections = null;
+
+  async function checkConnectAI(settings) {
+    const client = new ConnectAI(settings.connectAI), tools = await client.start();
+    const catalogs = tools.find(t => /get_?catalogs$/i.test(t.name));
+    connections = [];
+    if (catalogs) {
+      const text = await client.call(catalogs.name, {});
+      if (!text.startsWith("Error:"))
+        connections = text.split("\nQuery ID:")[0].trim().split(/\r?\n/).slice(1).map(line => line.split(","))
+          .filter(([name]) => name).map(([name, source]) => ({name, source: source || name}));
+    }
+    return {tools: tools.length, connections};
+  }
+
+  // Connect AI's read-only tools for a model, as {"connectai__<tool>": ...}.
   async function connectAITools(settings) {
     const client = new ConnectAI(settings.connectAI), listed = await client.start(), tools = {};
     for (const t of listed)
@@ -359,6 +382,6 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     return {done, stop() { controller.abort(); }};
   }
 
-  return {PROVIDERS, OFFLINE, PAT_URL, MCP_URL, AIError, load, save, clear, active, hasConnectAI, listModels,
-          checkConnectAI: async settings => Object.keys(await connectAITools(settings)).length, play, ask};
+  return {PROVIDERS, OFFLINE, PAT_URL, SIGNUP_URL, QUICKSTART_URL, MCP_URL, AIError, connections: () => connections, checkConnectAI, load, save, clear, active, hasConnectAI, listModels,
+          play, ask};
 })();

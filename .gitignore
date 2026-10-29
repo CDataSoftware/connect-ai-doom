@@ -7,3 +7,4 @@ panel/sprites/
 panel/brand/
 .claude/
 web/dist/
+.env

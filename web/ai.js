@@ -388,13 +388,15 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     Object.assign(el, {src, onload: resolve, onerror: () => reject(new AIError(`Couldn't load ${src}.`))});
     document.head.appendChild(el);
   });
-  let kitLoading = null;
+  let kitLoading = null, kitList = null;
+  // kit/kit.json: the kit's files, and brief.py's instructions for the model
+  const kitJson = () => kitList ||= fetch("kit/kit.json").then(r => r.json()).catch(e => { kitList = null; throw e; });
 
   // The level kit: Pyodide with the Mac version's scripts (kit/kit.json lists them) and Freedoom's
   // WAD, and zdbsp. wad: the game's Freedoom (the branding takes its palette and textures from it).
   function loadKit(wad) {
     return kitLoading ||= (async () => {
-      const kit = await (await fetch("kit/kit.json")).json();
+      const kit = await kitJson();
       await Promise.all([loadScript(`${PYODIDE}pyodide.js`), loadScript("kit/zdbsp.js")]);
       const [py, zdbsp] = await Promise.all([window.loadPyodide({indexURL: PYODIDE}),
         window.createZdbsp({locateFile: f => `kit/${f}`, print: () => {}, printErr: () => {}})]);
@@ -431,7 +433,7 @@ going until the rooms are clear or the moves run out. End with a two-line summar
       if (kind === "result" && byId[data.id]) Object.assign(byId[data.id], {error: data.error, text: data.text});
     };
     record("question", {text: question});
-    const {instructions} = await fetch("kit/kit.json").then(r => r.json());
+    const {instructions} = await kitJson();
     const final = await runAgent(ai, {prompt: question, system: instructions, tools, log: record, signal: new AbortController().signal});
 
     step("records", "Reading the rooms' records through Connect AI…");

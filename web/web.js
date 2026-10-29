@@ -16,14 +16,16 @@
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
-  // Like a page: the header (the links and the logos) along the top, TOP tall, then the game at 4:3
-  // in two thirds of the window (leaving the panel PANEL_MIN at least), then the footer (the
-  // question, Claude's line and the fine print), 150 px at least. Spare height goes below it all.
-  const PANEL_MIN = 440, TOP = 90;
+  // The header (the links and the logos) along the top, TOP tall; the game at 4:3 in the middle of
+  // the window, in two thirds of it (leaving the panel PANEL_MIN at least) and GAP clear of the
+  // header; the footer (the question, Claude's line and the fine print) just under the game, in
+  // BOTTOM. When the window's short, the game shrinks to keep all three.
+  const PANEL_MIN = 440, TOP = 90, GAP = 40, BOTTOM = 170;
   function layout() {
     const w = innerWidth, h = innerHeight, split = Math.round(Math.min(w * 2 / 3, w - PANEL_MIN));
-    const gh = Math.max(200, Math.min(h - TOP - 150, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
-    return [Math.round((split - gw) / 2), TOP, Math.round(gw), Math.round(gh), split, 0];
+    const gh = Math.max(200, Math.min(h - TOP - GAP - BOTTOM, (split - 64) * 3 / 4)), gw = gh * 4 / 3;
+    const gy = Math.min(Math.max((h - gh) / 2, TOP + GAP), h - gh - BOTTOM);
+    return [Math.round((split - gw) / 2), Math.round(gy), Math.round(gw), Math.round(gh), split, 0];
   }
   const params = new URLSearchParams(location.search);
   if (!params.has("stage")) {
@@ -420,8 +422,15 @@
     style.textContent = `/* the header along the top, the footer just under the game (layout()) */
       #stage .bar.top { top: 0; height: 90px; container-type: inline-size; align-items: flex-end; padding-bottom: 12px; }
       #stage .bar.bottom { justify-content: flex-start; padding-top: 16px; }
-      /* a narrow stage: smaller logos, so the chip beside them fits */
+      /* a narrow stage: smaller logos, so the chip beside them fits, and only the links that fit on one line
+         (the footer links Connect AI too) */
+      #stage .weblinks > * { white-space: nowrap; }
       @container (max-width: 720px) {
+        #stage .weblinks { gap: 12px; }
+        #ai-link .who, #stage .weblinks a[href="${CONNECT_AI}"] { display: none; }
+      }
+      @container (max-width: 600px) {
+        #stage-mode { display: none; }   /* the panel says the same, at the top of its feed */
         .lockup { gap: 10px; }
         .lockup .cdata { height: 15px; } .lockup .cailogo { height: 22px; } .lockup .rule { height: 24px; }
         .lockup .x, .lockup .doom { font-size: 15px; }

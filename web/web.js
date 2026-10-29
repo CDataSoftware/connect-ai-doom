@@ -297,7 +297,8 @@
     // the visitor's connections, for the question box; when Connect AI won't answer, the box just
     // doesn't name them, and asking shows the error
     const saved = AI.load();
-    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(settingsChanged, e => console.warn("Connect AI:", e.message));
+    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(() => { connectAIError = null; settingsChanged(); },
+      e => { connectAIError = e.message; settingsChanged(); });
     const wad = gameWad = await downloadWad(coach.loading);
 
     // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
@@ -752,6 +753,9 @@
           ? `<span><b>Your data is connected.</b> Build a level from it: ${esc(modelName(ai.model))} picks three apps
              that answer your question, and their records become the monsters.</span>
              <button class="btn" type="button" data-go="build">BUILD MY LEVEL</button>`
+          : setupSteps().some(step => step.done)
+          ? `<span><b>Almost there:</b> building a level from your data needs both.${checklist()}</span>
+             <button class="btn alt" type="button" data-go="settings">AI SETTINGS</button>`
           : `<span><b>Bring your own AI.</b> Let your Claude, ChatGPT or OpenRouter model play, and build a level from your
              own data through Connect AI.</span><button class="btn alt" type="button" data-go="settings">AI SETTINGS</button>`;
         intro.querySelector("[data-go=watch]").textContent = ai ? `WATCH ${modelName(ai.model)} PLAY`
@@ -780,9 +784,11 @@
     el.innerHTML = `<div class="wrap">
       <div class="head"><h2 id="ai-build-title">BUILD A LEVEL FROM YOUR DATA</h2><button class="act" type="button" data-close>CLOSE</button></div>
       <p class="status" id="build-lead"></p>
-      <label>Your question<textarea id="build-q" rows="3" maxlength="500"></textarea></label>
-      <div class="ideas" id="build-ideas"></div>
-      <div class="row"><button class="act go" type="button" id="build-go">BUILD MY LEVEL</button></div>
+      <div id="build-setup"><div id="build-checklist"></div>
+        <div class="row"><button class="act go" type="button" data-settings>OPEN AI SETTINGS</button></div></div>
+      <div id="build-form"><label>Your question<textarea id="build-q" rows="3" maxlength="500"></textarea></label>
+        <div class="ideas" id="build-ideas"></div>
+        <div class="row"><button class="act go" type="button" id="build-go">BUILD MY LEVEL</button></div></div>
       <ol class="steps" id="build-steps" hidden>
         <li data-step="brief">Planning three rooms from your data</li>
         <li data-step="records">Reading their records</li>
@@ -838,22 +844,28 @@
       const idea = e.target.closest("[data-idea]");
       if (idea && !building) $("build-q").value = idea.dataset.idea;
       if (e.target.closest("#build-go")) build();
+      if (e.target.closest("[data-settings]")) { el.close(); openSettings(); }
     });
     return {
       open(question) {
-        const ai = AI.active(AI.load());
+        const ai = AI.active(AI.load()), ready = buildReady();
+        $("build-setup").hidden = ready || building;
+        $("build-form").hidden = !ready && !building;
+        $("build-checklist").innerHTML = checklist();
         if (!building) {
-          if (!buildReady()) { note("Set up your AI and Connect AI in AI settings first.", "bad"); $("build-go").disabled = true; }
-          else { note(""); $("build-go").disabled = false; }
+          note("");
           const ideas = suggestQuestions(AI.connections() || []);
           $("build-q").value = question.trim() || ideas[0] || "";
           $("build-ideas").innerHTML = ideas.map(q => `<button type="button" data-idea="${esc(q)}">${esc(q)}</button>`).join("");
           $("build-steps").hidden = true;
         }
-        $("build-lead").textContent = ai ? `${modelName(ai.model)} reads your data through Connect AI, picks the three apps ` +
-          "that best answer your question, and turns their records into the level's monsters. Then you play it." : "";
-        $("build-fine").textContent = ai ? `It takes a minute or two, and uses your own ${AI.PROVIDERS[ai.provider].company} ` +
-          "credits. Its Connect AI calls show in the panel's HOW CLAUDE BUILT IT tab as it goes. The level stays in this browser." : "";
+        $("build-lead").textContent = ready || building ? `${modelName(ai.model)} reads your data through Connect AI, picks the three apps ` +
+          "that best answer your question, and turns their records into the level's monsters. Then you play it."
+          : "Ask a question about your own data, and your AI model builds a Doom level from what it finds through Connect AI. " +
+            "It needs two things first:";
+        $("build-fine").textContent = ready || building ? `It takes a minute or two, and uses your own ${AI.PROVIDERS[ai.provider].company} ` +
+          "credits. Its Connect AI calls show in the panel's HOW CLAUDE BUILT IT tab as it goes. The level stays in this browser."
+          : "Your keys stay in this browser and go straight to the AI provider and to Connect AI.";
         el.showModal();
       },
     };
@@ -874,9 +886,23 @@
 
   // The visitor can build a level: their model and Connect AI are set up, and Connect AI listed their connections
   function buildReady() {
-    const settings = AI.load();
-    return !!(AI.active(settings) && AI.hasConnectAI(settings) && AI.connections()?.length);
+    return setupSteps().every(step => step.done);
   }
+
+  // What building a level needs, each with where it stands: an AI model, and Connect AI's connections
+  let connectAIError = null;   // why Connect AI didn't list the connections, the last time it was asked
+  function setupSteps() {
+    const settings = AI.load(), ai = AI.active(settings), list = AI.connections(), p = AI.PROVIDERS[settings.provider];
+    return [
+      {done: !!ai, text: ai ? `AI model: ${modelName(ai.model)} (${AI.PROVIDERS[ai.provider].company})`
+        : p ? `AI model: paste ${article(p.company)} ${p.company} API key` : "AI model: pick Claude, ChatGPT or OpenRouter, and paste its API key"},
+      {done: !!list?.length, text: !AI.hasConnectAI(settings) ? "Connect AI: add your email and personal access token"
+        : connectAIError ? `Connect AI: ${connectAIError}` : list?.length ? `Connect AI: ${connectionList(list)}`
+        : list ? "Connect AI: connected, but it lists no connections" : "Connect AI: checking…"},
+    ];
+  }
+  const checklist = () => `<ul class="checklist">${setupSteps().map(step =>
+    `<li class="${step.done ? "ok" : "todo"}">${esc(step.text)}</li>`).join("")}</ul>`;
 
   // The AI settings' and the level builder's dialogs, styled alike (once)
   let dialogStyled = false;
@@ -1020,13 +1046,8 @@
       if (document.activeElement !== $("cai-user")) $("cai-user").value = settings.connectAI.user;
       if (document.activeElement !== $("cai-pat")) $("cai-pat").value = settings.connectAI.pat;
       if (document.activeElement !== $("cai-url")) $("cai-url").value = settings.connectAI.url || AI.MCP_URL;
-      const who = ai ? `${modelName(ai.model)} (${AI.PROVIDERS[ai.provider].company}) plays when you watch`
-        : p ? `Add ${article(p.company)} ${p.company} key and your model plays. Until then, Claude's recorded run plays`
-        : "Offline: Claude's recorded run plays";
-      const data = AI.hasConnectAI(settings) ? (ai ? ", reads your data through Connect AI, and answers your questions."
-                                                   : ". Your Connect AI token is set: add an AI key to use it.")
-        : ". Add a Connect AI token to let it read your own data.";
-      $("ai-status").textContent = who + data;
+      $("ai-status").innerHTML = (buildReady() ? "Ready: build a level from your data." :
+        "To build a level from your data, and to ask it questions, you need both:") + checklist();
       renderGame();
       renderAILink();
       $("ai-next").hidden = !buildReady();
@@ -1110,6 +1131,7 @@
       note("cai-msg", "Checking…");
       try {
         const {tools, connections} = await AI.checkConnectAI(settings);
+        connectAIError = null;
         settingsChanged();
         render();
         note("cai-msg", `Connected: ${tools} read-only tools${connections.length ? `, ${connectionList(connections)}` : ""}.`, "ok");
@@ -1148,6 +1170,17 @@
       #ai-link { display: flex; align-items: center; gap: 7px; font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer;
                  color: var(--depth); background: var(--agility); border: 0; border-radius: 3px; padding: 7px 10px; }
       #ai-link svg { width: 12px; height: 12px; }
+      #build-link { font: 9px/1 var(--pixel); letter-spacing: 1px; cursor: pointer; color: var(--agility); background: none;
+                    border: 1px solid var(--agility); border-radius: 3px; padding: 6px 10px; }
+      #build-link:hover, #build-link:focus-visible { background: var(--agility); color: var(--depth); outline: none; }
+      /* what building a level needs (setupSteps), in the dialogs and on the start card */
+      .checklist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+      .checklist li::before { content: "✗ "; color: var(--key-red); font-weight: 700; }
+      .checklist li.ok::before { content: "✓ "; color: var(--ok); }
+      .checklist li.todo { color: var(--clarity); }
+      .coach-card .checklist li { display: block; font: 13px/1.4 var(--sans); counter-increment: none; }   /* not the card's steps */
+      .coach-card .checklist li::before { content: "✗ "; color: var(--key-red); background: none; font: inherit; line-height: inherit; text-align: left; }
+      .coach-card .checklist li.ok::before { content: "✓ "; color: var(--ok); }
       #ai-link .who { opacity: .75; }
       #ai-link:hover, #ai-link:focus-visible { filter: brightness(1.1); outline: 2px solid var(--clarity); outline-offset: 2px; }
       .weblinks a { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
@@ -1166,8 +1199,9 @@
     const nav = document.createElement("nav");
     nav.className = "weblinks";
     nav.setAttribute("aria-label", "About this project");
-    nav.innerHTML = `<button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+    nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
     nav.querySelector("#ai-link").addEventListener("click", openSettings);
+    nav.querySelector("#build-link").addEventListener("click", () => openBuilder());
     const chip = document.getElementById("stage-mode");
     chip.parentNode.insertBefore(nav, chip);
     renderAILink();

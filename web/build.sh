@@ -108,7 +108,11 @@ page = open("panel/index.html").read()
 assert page.count("\n<script>\n") == 1, "panel/index.html: expected one inline <script>"
 assert page.count("<title>Connect AI × DOOM</title>") == 1, "panel/index.html: expected its <title>"
 page = page.replace("<title>Connect AI × DOOM</title>", "<title>Connect AI × DOOM (DooMCP)</title>", 1)
-page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="ai.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
+# each script by its content's hash, so a page from a new deploy never runs the last one's scripts from the cache
+import hashlib
+scripts = "".join(f'<script src="{name}?v={hashlib.sha1(open(f"web/{name}", "rb").read()).hexdigest()[:10]}"></script>\n'
+                  for name in ("replay.js", "ai.js", "web.js"))
+page = page.replace("\n<script>\n", "\n" + scripts + "<script>\n", 1)
 # what a link to it shows in search results and chat apps
 meta = """<meta name="description" content="Play a Doom level built from company data, read by Claude through the CData Connect AI MCP server. Every monster is a record.">
 <meta property="og:type" content="website">

@@ -16,16 +16,14 @@
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
-  // The game takes two thirds of the window at 4:3 (leaving the panel PANEL_MIN at least), with the
-  // brand bars hugging it: TOP above (the links and the logos), BOTTOM below (the question, Claude's
-  // line and the footer). In a tall window the three sit together in the middle, the spare height
-  // above and below them rather than inside the bars (the top bar follows the game: see plainWords).
-  const PANEL_MIN = 440, TOP = 90, BOTTOM = 170;
+  // Like a page: the header (the links and the logos) along the top, TOP tall, then the game at 4:3
+  // in two thirds of the window (leaving the panel PANEL_MIN at least), then the footer (the
+  // question, Claude's line and the fine print), 150 px at least. Spare height goes below it all.
+  const PANEL_MIN = 440, TOP = 90;
   function layout() {
     const w = innerWidth, h = innerHeight, split = Math.round(Math.min(w * 2 / 3, w - PANEL_MIN));
     const gh = Math.max(200, Math.min(h - TOP - 150, (split - 48) * 3 / 4)), gw = gh * 4 / 3;
-    const top = Math.max(0, Math.round((h - TOP - gh - BOTTOM) / 2));
-    return [Math.round((split - gw) / 2), top + TOP, Math.round(gw), Math.round(gh), split, 0];
+    return [Math.round((split - gw) / 2), TOP, Math.round(gw), Math.round(gh), split, 0];
   }
   const params = new URLSearchParams(location.search);
   if (!params.has("stage")) {
@@ -388,8 +386,8 @@
       });
     }
     const style = document.createElement("style");
-    style.textContent = `/* the bars hug the game (layout()): the top one just above it, the footer just under it */
-      #stage .bar.top { top: calc(var(--gy) - 90px); height: 90px; container-type: inline-size; align-items: flex-end; padding-bottom: 12px; }
+    style.textContent = `/* the header along the top, the footer just under the game (layout()) */
+      #stage .bar.top { top: 0; height: 90px; container-type: inline-size; align-items: flex-end; padding-bottom: 12px; }
       #stage .bar.bottom { justify-content: flex-start; padding-top: 16px; }
       /* a narrow stage: smaller logos, so the chip beside them fits */
       @container (max-width: 720px) {

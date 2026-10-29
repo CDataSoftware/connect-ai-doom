@@ -53,7 +53,7 @@
               killed: mine.length - left.length};
     });
     return {...state, rooms_live, kills: kills.slice(-12), kill_total: kills.length, hits: hits.slice(-40),
-            standing: alive().length, vault: vault.slice(-5), play_events: playEvents, ask: asking.state()};
+            standing: alive().length, vault: vault.slice(-5), play_events: playEvents, ask: askState()};
   }
 
   // Local time without a zone, as connect_doom.py writes killed_at (the panel parses it as local).
@@ -94,38 +94,16 @@
     return "";
   }
 
-  // ---------- a question about the visitor's own data, from the panel's question box ----------
-  // The visitor's model answers through Connect AI (ai.js), its steps in the panel's feed and its
-  // answer under the box. No new level: building one needs the Mac version.
-  const asking = {
-    run: null, answer: "", who: "",
-    // the panel's state.ask: unavailable greys the box out, busy while answering, note under it
-    state() {
-      const settings = AI.load(), ai = AI.active(settings);
-      const ask = {default: state.mission?.question || ""};
-      if (!ai || !AI.hasConnectAI(settings)) return null;   // the panel hides the box
-      if (coach?.playing()) return {...ask, unavailable: `Ask once ${coach.playing()} is done playing.`};
-      if (this.run) return {...ask, busy: `${modelName(ai.model)} is reading your data through Connect AI…`};
-      const mine = AI.connections();
-      return {...ask, note: this.answer ? `${this.who}: ${this.answer}`
-        : `Enter asks ${modelName(ai.model)} through Connect AI${mine?.length ? `, with ${connectionList(mine)}` : ""}. Its steps show in the feed.`};
-    },
-    start(question) {
-      const settings = AI.load(), ai = AI.active(settings);
-      if (!ai || !AI.hasConnectAI(settings) || this.run || coach?.playing()) return "Not now: " + (this.state()?.unavailable || "set up your AI and Connect AI in AI settings first.");
-      trackEvent("Ask", {provider: ai.provider});
-      playEvents.length = 0;
-      state.game = {...state.game, asked: true};
-      this.answer = "";
-      this.who = modelName(ai.model);
-      const run = this.run = AI.ask(settings, question, (kind, data) => playEvents.push({t: Date.now() / 1000, kind, ...data}));
-      run.done.then(answer => { this.answer = answer || "No answer came back."; },
-                    e => { this.answer = `Couldn't answer: ${e.message}`; })
-        .finally(() => { if (this.run === run) this.run = null; });
-      return null;
-    },
-    stop() { this.run?.stop(); this.run = null; },
-  };
+  // ---------- the panel's question box: a level from the visitor's own data ----------
+  // A question there builds a level, as the build dialog does (makeBuilder). The panel's state.ask:
+  // null hides the box (nothing set up to build with), busy while a level builds, note under it.
+  function askState() {
+    if (!buildReady()) return null;
+    const ai = AI.active(AI.load()), ask = {default: state.mission?.question || ""};
+    if (builder?.building()) return {...ask, busy: `${modelName(ai.model)} is building your level…`};
+    return {...ask, note: `Enter builds a level from your data: ${modelName(ai.model)} picks the three apps that best ` +
+                          `answer it, through Connect AI, with ${connectionList(AI.connections())}.`};
+  }
 
   // The panel polls /state.json and posts its question box to /ask; nothing here talks to a server.
   const realFetch = window.fetch.bind(window);
@@ -134,8 +112,9 @@
     const path = new URL(url, location.href).pathname;
     if (path.endsWith("/state.json")) return Promise.resolve(json(state ? currentState() : {}));
     if (path.endsWith("/ask") && opts?.method === "POST") {
-      const error = asking.start(String(JSON.parse(opts.body).question || "").trim());
-      return Promise.resolve(error ? json({error}, 409) : json({note: `${asking.who} is on it. Watch the feed.`}));
+      if (!buildReady()) return Promise.resolve(json({error: "Set up your AI and Connect AI in AI settings first."}, 409));
+      openBuilder(String(JSON.parse(opts.body).question || ""), true);
+      return Promise.resolve(json({note: "Building your level…"}));
     }
     return realFetch(url, opts);
   };
@@ -283,6 +262,7 @@
     // The level first (small), so the start card is up while Freedoom downloads: the visitor's own,
     // if they built one, else the site's.
     mine = await myLevel.load().catch(e => { console.warn("Your level:", e); return null; }) || null;
+    document.body.classList.toggle("mine", !!mine);   // the visitor's level: no leaderboard (see plainWords)
     const level = mine ? name => Promise.resolve(new Response(mine.files[name])) : name => get(`level/${name}`);
     const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
       level("state.json").then(r => r.json()), level("cache.json").then(r => r.json()),
@@ -291,13 +271,11 @@
       ...Object.values(files).map(name => level(name).then(r => r.arrayBuffer()))]);
     monsters = cache.monsters;
     said = saidJson;
-    // The question box is the visitor's own model's (asking); a new level needs the Mac version.
     state = {...baked, game: {mode: "player", started: Date.now() / 1000}};
     plainWords();
     coach = makeCoach(canvas);
     coach.settingsChanged();
-    // the visitor's connections, for the question box; when Connect AI won't answer, the box just
-    // doesn't name them, and asking shows the error
+    // the visitor's connections, for building a level from them (setupSteps says when Connect AI won't answer)
     const saved = AI.load();
     if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(() => { connectAIError = null; settingsChanged(); },
       e => { connectAIError = e.message; settingsChanged(); });
@@ -325,10 +303,10 @@
           "mouseb_fire 0\nmouseb_strafe -1\nmouseb_forward -1\nmouse_sensitivity 6\n");
         FS.writeFile("/doom/extra.cfg", "novert 1\ngrabmouse 1\nmouseb_use 1\nshow_endoom 0\nfullscreen 0\n" +
           "screen_width 640\nscreen_height 480\n");
-        const [models, pick] = menuModels();
+        const [models] = menuModels();   // offline Claude picked: it's who plays first (ready())
         Object.assign(ENV, {PSDOOMPSCMD: "list", PSDOOMKILLCMD: "kill", PSDOOMRENICECMD: "hit",
           PSDOOMVAULTCMD: "vault", PSDOOM_LABELS: "/doom/labels.tsv", PSDOOM_MONSTERS: monsterKinds.trim(),
-          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: pick});
+          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: AI.OFFLINE});
       }],
       // No sound yet: Emscripten's SDL mixer can't play the buffers Chocolate Doom builds.
       onRuntimeInitialized: () => {
@@ -351,9 +329,11 @@
     return model ? [`${AI.OFFLINE},${model}`, model] : [AI.OFFLINE, AI.OFFLINE];
   }
 
-  // The AI settings changed: the game's Model row follows.
+  // The AI settings changed: the game's Model row lists the new model, but keeps whoever plays now
+  // (offline Claude when they're gone): a key added mid-game doesn't start a run on its credits.
   function settingsChanged() {
-    const [models, pick] = menuModels();
+    const [models] = menuModels(), now = gameState()?.options?.model;
+    const pick = models.split(",").includes(now) ? now : AI.OFFLINE;
     if (window.Module?._web_set_models) {
       const list = Module.stringToNewUTF8(models), first = Module.stringToNewUTF8(pick);
       Module._web_set_models(list, first);
@@ -399,15 +379,13 @@
       "Stuck: moves with nothing to show for them. Urgent 1st: how often it went for the urgent records first. " +
       "Vault: runs that tried the red door and took Connect AI's no. REF: Claude Code, playing by the same rules " +
       "through its own harness, for reference.";
-    relabel("#newq h2", "ASK YOUR OWN DATA A QUESTION");
-    relabel("#newq-go", "ASK");
+    relabel("#newq h2", "BUILD A LEVEL FROM YOUR DATA");
+    relabel("#newq-go", "BUILD MY LEVEL");
     // the question box needs the visitor's own model: the way to set it up, right there
     const askRow = document.querySelector("#newq .row");
     if (askRow) {
-      askRow.insertAdjacentHTML("beforeend", '<button type="button" id="newq-build">BUILD A LEVEL</button>' +
-        '<button type="button" class="link" id="newq-settings">AI settings</button>');
+      askRow.insertAdjacentHTML("beforeend", '<button type="button" class="link" id="newq-settings">AI settings</button>');
       document.getElementById("newq-settings").addEventListener("click", openSettings);
-      document.getElementById("newq-build").addEventListener("click", () => openBuilder(document.getElementById("newq-text").value));
       askRow.insertAdjacentHTML("afterend", '<div class="ideas" id="newq-ideas" hidden></div>');
       document.getElementById("newq-ideas").addEventListener("click", e => {
         const idea = e.target.closest("[data-idea]");
@@ -419,7 +397,9 @@
       });
     }
     const style = document.createElement("style");
-    style.textContent = `/* the header along the top, the footer just under the game (layout()) */
+    style.textContent = `/* the visitor's own level: no model has a run on it to rank */
+      body.mine #tabs [data-tab=board] { display: none; }
+      /* the header along the top, the footer just under the game (layout()) */
       #stage .bar.top { top: 0; height: 90px; container-type: inline-size; align-items: flex-end; padding-bottom: 12px; }
       #stage .bar.bottom { justify-content: flex-start; padding-top: 16px; }
       /* a narrow stage: smaller logos, so the chip beside them fits, and only the links that fit on one line
@@ -542,8 +522,9 @@
       <p>${mine ? `${esc(modelName(mine.model))} read your ${appList} through the Connect AI MCP server and built this
         level for your question: “${esc(mine.question)}”` : `Claude read a demo company's ${appList} through the Connect AI MCP
         server and built this level from what it found.`}</p>
-      <p class="what">CData Connect AI is one MCP server between AI agents like Claude and your apps. It applies
-        your permissions and your data security rules to every request.</p>
+      <p class="what">${mine?.answer ? `${esc(modelName(mine.model))}'s answer: ${esc(mine.answer)}` : `CData Connect AI is one MCP
+        server between AI agents like Claude and your apps. It applies your permissions and your data security rules to
+        every request.`}</p>
       <ol>
         <li><span><b>Grab your keys.</b> Keycards are your permissions: Connect AI gives you one for each app you can open.</span></li>
         <li><span><b>Clear the rooms.</b> Each room is an app, and each monster is a record from it.</span></li>
@@ -590,9 +571,7 @@
       end.hidden = true;
       if (run) { run.stop(false); run = null; }   // another player takes over where the marine stands
       if (document.pointerLockElement) document.exitPointerLock();
-      asking.stop();
       playEvents.length = 0;
-      state.game = {...state.game, asked: false};
       const settings = AI.load(), ai = model !== AI.OFFLINE && AI.active(settings);
       if (ai) watchModel(settings, ai);
       else watchOffline();
@@ -778,11 +757,13 @@
   // Their model plans it through Connect AI and the page builds it (ai.js); then the page starts
   // over on it. The model's Connect AI calls go to the panel's briefing tab as they happen.
   let builder = null;
-  function openBuilder(question = "") {
+  // go: build at once (the panel's question box), rather than show the question to edit first
+  function openBuilder(question = "", go = false) {
     if (document.pointerLockElement) document.exitPointerLock();
     if (settingsDialog?.el.open) settingsDialog.el.close();
     builder ||= makeBuilder();
     builder.open(question);
+    if (go) builder.build();
   }
 
   function makeBuilder() {
@@ -848,9 +829,9 @@
       el.close();
       showBuilding(ai);
       try {
-        const {files} = await AI.buildLevel(settings, question, gameWad, log, step);
+        const {files, mission} = await AI.buildLevel(settings, question, gameWad, log, step);
         step("start", "Your level is built. Starting it…");
-        await myLevel.save({files, question, model: ai.model, built: Date.now()});
+        await myLevel.save({files, question, model: ai.model, answer: mission.answer, built: Date.now()});
         trackEvent("Level built", {provider: ai.provider});
         await new Promise(r => setTimeout(r, 2500));   // the finished automap a moment, as on a Mac before the game opens
         location.reload();
@@ -874,6 +855,8 @@
       if (e.target.closest("[data-settings]")) { el.close(); openSettings(); }
     });
     return {
+      build,
+      building: () => building,
       open(question) {
         const ai = AI.active(AI.load()), ready = buildReady();
         $("build-setup").hidden = ready || building;
@@ -1082,7 +1065,7 @@
 
     // the game's switches as the game has them: the Options menu changes them too
     function renderGame() {
-      const options = gameState()?.options, [models, pick] = menuModels();
+      const options = gameState()?.options, [models] = menuModels();
       el.querySelectorAll("[data-option]").forEach(b => {
         const on = !!options?.[b.dataset.option === "0" ? "claude_plays" : "god_mode"];
         b.setAttribute("aria-pressed", String(on));
@@ -1093,7 +1076,7 @@
         select.innerHTML = names.map((m, i) => `<option value="${i}">${m === AI.OFFLINE ? "Offline Claude" : esc(modelName(m))}</option>`).join("");
         select.dataset.models = models;
       }
-      if (document.activeElement !== select) select.value = String(Math.max(0, names.indexOf(options?.model || pick)));
+      if (document.activeElement !== select) select.value = String(Math.max(0, names.indexOf(options?.model)));
       $("game-switches").hidden = !options;   // no game yet (the start card is up)
       el.querySelectorAll(".game-model").forEach(e => { e.hidden = names.length < 2; });
     }

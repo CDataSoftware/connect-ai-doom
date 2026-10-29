@@ -76,6 +76,31 @@ import brief
 kit = sys.argv[1]
 files = sorted(os.path.relpath(os.path.join(d, f), kit) for d, _, fs in os.walk(kit) for f in fs)
 json.dump({"files": files, "instructions": brief.INSTRUCTIONS}, open(f"{kit}/kit.json", "w"))' "$KIT"
+# Pyodide (CPython in WebAssembly) and its Pillow, which the level scripts run in, served with the site
+# rather than from a CDN; fetched once into vendor/, with their licenses (licenses.html)
+PYODIDE=0.28.0
+PY_CACHE=vendor/pyodide-$PYODIDE
+PILLOW=pillow-11.2.1-cp313-cp313-pyodide_2025_0_wasm32.whl
+if [[ ! -f $PY_CACHE/$PILLOW ]]; then
+  echo "Fetching Pyodide $PYODIDE..."
+  rm -rf "$PY_CACHE.tmp" && mkdir -p "$PY_CACHE.tmp"
+  for f in pyodide.js pyodide.asm.js pyodide.asm.wasm python_stdlib.zip pyodide-lock.json $PILLOW; do
+    curl -fsSL "https://cdn.jsdelivr.net/pyodide/v$PYODIDE/full/$f" -o "$PY_CACHE.tmp/$f"
+  done
+  python3 -c '
+import hashlib, json, sys
+d, wheel = sys.argv[1], sys.argv[2]
+want = json.load(open(f"{d}/pyodide-lock.json"))["packages"]["pillow"]["sha256"]
+got = hashlib.sha256(open(f"{d}/{wheel}", "rb").read()).hexdigest()
+sys.exit(0 if got == want else f"{wheel}: sha256 {got}, the lock file says {want}")' "$PY_CACHE.tmp" "$PILLOW"
+  curl -fsSL "https://raw.githubusercontent.com/pyodide/pyodide/$PYODIDE/LICENSE" -o "$PY_CACHE.tmp/pyodide.txt"
+  curl -fsSL "https://raw.githubusercontent.com/python/cpython/v3.13.2/LICENSE" -o "$PY_CACHE.tmp/python.txt"
+  curl -fsSL "https://raw.githubusercontent.com/python-pillow/Pillow/11.2.1/LICENSE" -o "$PY_CACHE.tmp/pillow.txt"
+  mv "$PY_CACHE.tmp" "$PY_CACHE"
+fi
+mkdir -p "$KIT/pyodide" "$DIST/licenses"
+for f in pyodide.js pyodide.asm.js pyodide.asm.wasm python_stdlib.zip pyodide-lock.json $PILLOW; do cp "$PY_CACHE/$f" "$KIT/pyodide/"; done
+cp "$PY_CACHE"/pyodide.txt "$PY_CACHE"/python.txt "$PY_CACHE"/pillow.txt "$DIST/licenses/"
 (
   cd vendor/src/zdbsp
   em++ -O2 -w -DNO_MAP_VIEWER -DDISABLE_SSE -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp -sUSE_ZLIB=1 main.cpp blockmapbuilder.cpp \

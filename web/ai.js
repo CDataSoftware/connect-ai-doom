@@ -1,6 +1,6 @@
 // Your own AI in the browser: a visitor's model (Claude, ChatGPT, or any model on OpenRouter) plays
 // the level with the Doom tools, prompt and moves every model gets on a Mac (play.py, gateway_run.py),
-// and answers questions about the visitor's own data through the Connect AI MCP server. The settings,
+// and builds a level from the visitor's own data through the Connect AI MCP server. The settings,
 // keys included, stay in this browser (localStorage) and go straight to each provider: the site has
 // no server. Without them, the page plays offline, as it always has (replay.js).
 window.ConnectDoomAI = (() => {
@@ -381,8 +381,9 @@ going until the rooms are clear or the moves run out. End with a two-line summar
   // What raid.sh does on a Mac, in the page: the visitor's model answers the question through Connect
   // AI with brief.py's instructions, and plans three rooms; the page runs their queries; then the Mac
   // version's own scripts build the level in Pyodide (web/levelkit.py) and zdbsp, compiled to
-  // WebAssembly, adds its nodes. Pyodide (Python and Pillow) is fetched only for this.
-  const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.28.0/full/";
+  // WebAssembly, adds its nodes. Pyodide (Python and Pillow, served with the site: web/build.sh) is
+  // fetched only for this.
+  const PYODIDE = new URL("kit/pyodide/", location.href).href;
   const loadScript = src => new Promise((resolve, reject) => {
     const el = document.createElement("script");
     Object.assign(el, {src, onload: resolve, onerror: () => reject(new AIError(`Couldn't load ${src}.`))});
@@ -461,24 +462,6 @@ going until the rooms are clear or the moves run out. End with a two-line summar
     return {files, mission};
   }
 
-  // ---------- a question about the visitor's own data ----------
-  const ASK_SYSTEM = "You answer questions about the user's data with the Connect AI tools, which are " +
-    "read-only. Explore only as much as you need: list catalogs, then the few tables you need, then query. People " +
-    "watch your steps live: before each tool call, write one short line saying what you're doing. If Connect AI " +
-    "refuses a request, say so plainly; don't work around it. Finish with a plain answer of two to four sentences.";
-
-  // ask(settings, question, log): the settings' model answers through Connect AI. {done, stop}; done
-  // resolves with the answer.
-  function ask(settings, question, log) {
-    const ai = active(settings), controller = new AbortController();
-    const done = (async () => {
-      log("question", {text: question});
-      const tools = await connectAITools(settings);
-      return runAgent(ai, {prompt: question, system: ASK_SYSTEM, tools, log, signal: controller.signal});
-    })();
-    return {done, stop() { controller.abort(); }};
-  }
-
   return {PROVIDERS, OFFLINE, PAT_URL, SIGNUP_URL, QUICKSTART_URL, MCP_URL, AIError, connections: () => connections, checkConnectAI, buildLevel, load, save, clear, active, hasConnectAI, listModels,
-          play, ask};
+          play};
 })();

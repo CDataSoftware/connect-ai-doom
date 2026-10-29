@@ -1406,7 +1406,7 @@ async function tick() {
     if ($("tab-brief").hidden && document.body.classList.contains("tab-brief")) showTab("live");
     renderMission(s.mission, events, s.rooms_live, s.game);
     const play = s.play_events || [];
-    $("play").hidden = !play.length || !(claudePlays(s.game) || s.game?.asked);   // asked: the browser version's model answered a question
+    $("play").hidden = !play.length || !claudePlays(s.game);
     if (play.length) playFeed.apply(play);
     setText($("play-who"), playFeed.who);
     // while a model plays (say, Gemini through the LLM Gateway), the MODEL tile names it, not the briefing's

@@ -14,7 +14,8 @@ import os
 import runpy
 import sys
 
-KIT, LEVEL = "/kit", "/level"
+# where ai.js puts the kit and the level in Pyodide's file system (tests/test_levelkit.py points them elsewhere)
+KIT, LEVEL = os.environ.get("LEVELKIT_KIT", "/kit"), os.environ.get("LEVELKIT_LEVEL", "/level")
 os.environ["CONNECT_DOOM_STATE"] = LEVEL
 sys.path[:0] = [KIT, f"{KIT}/tools"]
 

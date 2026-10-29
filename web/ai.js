@@ -5,14 +5,17 @@
 // no server. Without them, the page plays offline, as it always has (replay.js).
 window.ConnectDoomAI = (() => {
   const STORAGE_KEY = "connect-doom-ai";
+  // models: the settings' Model list until a key's own list comes back (listModels); the first plays by default
   const PROVIDERS = {
-    anthropic: {name: "Claude", company: "Anthropic", keyUrl: "https://console.anthropic.com/settings/keys",
-                placeholder: "sk-ant-…", defaultModel: "claude-sonnet-5-5"},
-    openai: {name: "ChatGPT", company: "OpenAI", keyUrl: "https://platform.openai.com/api-keys",
-             placeholder: "sk-…", defaultModel: "gpt-5.6-sol"},
-    openrouter: {name: "OpenRouter", company: "OpenRouter", keyUrl: "https://openrouter.ai/keys",
-                 placeholder: "sk-or-…", defaultModel: "anthropic/claude-sonnet-5.5"},
+    anthropic: {name: "Claude", company: "Anthropic", keyUrl: "https://console.anthropic.com/settings/keys", placeholder: "sk-ant-…",
+                models: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"]},
+    openai: {name: "ChatGPT", company: "OpenAI", keyUrl: "https://platform.openai.com/api-keys", placeholder: "sk-…",
+             models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]},
+    openrouter: {name: "OpenRouter", company: "OpenRouter", keyUrl: "https://openrouter.ai/keys", placeholder: "sk-or-…",
+                 models: ["anthropic/claude-sonnet-5.5", "openai/gpt-5.6-sol", "google/gemini-3.8-flash",
+                          "anthropic/claude-opus-5.5", "anthropic/claude-haiku-5.5"]},
   };
+  for (const p of Object.values(PROVIDERS)) p.defaultModel = p.models[0];
   const OFFLINE = "offline-claude";   // the Options menu's Model row: Claude's recorded run (replay.js)
   const MCP_URL = "https://mcp.cloud.cdata.com/mcp";
   const READ_ONLY_OPS = "get_catalogs,get_schemas,get_tables,get_columns,get_instructions,queryData";   // claude_run.py
@@ -42,6 +45,7 @@ window.ConnectDoomAI = (() => {
 
   // Throws when the browser won't store them: they last until the page closes, and the panel says so.
   function save(settings) {
+    if (JSON.stringify(settings.connectAI) !== JSON.stringify(load().connectAI)) connections = null;   // another account
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       unsaved = null;
@@ -53,6 +57,7 @@ window.ConnectDoomAI = (() => {
 
   function clear() {
     unsaved = null;
+    connections = null;
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* storage blocked: nothing was saved */ }
   }
 
@@ -362,7 +367,7 @@ going until the rooms are clear or the moves run out. End with a two-line summar
   }
 
   // ---------- a question about the visitor's own data ----------
-  const ASK_SYSTEM = "You answer questions about the user's business data with the Connect AI tools, which are " +
+  const ASK_SYSTEM = "You answer questions about the user's data with the Connect AI tools, which are " +
     "read-only. Explore only as much as you need: list catalogs, then the few tables you need, then query. People " +
     "watch your steps live: before each tool call, write one short line saying what you're doing. If Connect AI " +
     "refuses a request, say so plainly; don't work around it. Finish with a plain answer of two to four sentences.";

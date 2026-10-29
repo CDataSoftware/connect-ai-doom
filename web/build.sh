@@ -89,10 +89,10 @@ assert page.count("<title>Connect AI × DOOM</title>") == 1, "panel/index.html: 
 page = page.replace("<title>Connect AI × DOOM</title>", "<title>Connect AI × DOOM (DooMCP)</title>", 1)
 page = page.replace("\n<script>\n", '\n<script src="replay.js"></script>\n<script src="ai.js"></script>\n<script src="web.js"></script>\n<script>\n', 1)
 # what a link to it shows in search results and chat apps
-meta = """<meta name="description" content="Play a Doom level built from business data, read by Claude through the CData Connect AI MCP server. Every monster is a record.">
+meta = """<meta name="description" content="Play a Doom level built from company data, read by Claude through the CData Connect AI MCP server. Every monster is a record.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Connect AI × DOOM (DooMCP)">
-<meta property="og:description" content="Every monster is a record. Play a Doom level Claude built from business data through the CData Connect AI MCP server, or watch Claude play it.">
+<meta property="og:description" content="Every monster is a record. Play a Doom level Claude built from company data through the CData Connect AI MCP server, or watch Claude play it.">
 <meta property="og:image" content="og.jpg">
 <meta name="twitter:card" content="summary_large_image">"""
 write_with_analytics("index.html", page.replace("</head>", meta + "\n</head>", 1))

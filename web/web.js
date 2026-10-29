@@ -100,8 +100,7 @@
     state() {
       const settings = AI.load(), ai = AI.active(settings);
       const ask = {default: state.mission?.question || ""};
-      if (!ai || !AI.hasConnectAI(settings))
-        return {...ask, unavailable: "Ask your own data a question: add your AI key and your Connect AI token in AI settings."};
+      if (!ai || !AI.hasConnectAI(settings)) return null;   // the panel hides the box
       if (coach?.playing()) return {...ask, unavailable: `Ask once ${coach.playing()} is done playing.`};
       if (this.run) return {...ask, busy: `${modelName(ai.model)} is reading your data through Connect AI…`};
       const mine = AI.connections();
@@ -110,7 +109,7 @@
     },
     start(question) {
       const settings = AI.load(), ai = AI.active(settings);
-      if (!ai || !AI.hasConnectAI(settings) || this.run || coach?.playing()) return "Not now: " + (this.state().unavailable || "it's busy.");
+      if (!ai || !AI.hasConnectAI(settings) || this.run || coach?.playing()) return "Not now: " + (this.state()?.unavailable || "set up your AI and Connect AI in AI settings first.");
       trackEvent("Ask", {provider: ai.provider});
       playEvents.length = 0;
       state.game = {...state.game, asked: true};
@@ -145,6 +144,59 @@
     return `${list.length} connection${list.length === 1 ? "" : "s"}, ${list.length > names.length ? "such as " : ""}${shown}`;
   }
   const article = word => /^[AEIOU]/i.test(word) ? "an" : "a";
+  // ---------- suggested questions, from the visitor's own Connect AI connections ----------
+  // Each kind of app gets a question it can answer; a CRM and a support app together get the
+  // level's own kind of question first. The model finds the connections itself.
+  // [kind, the apps it covers, best known first, question]
+  const IDEAS = [
+    ["crm", ["salesforce", "hubspot", "dynamics 365", "pipedrive", "zoho crm", "bullhorn"], a => `Which ${a} deals are slipping this quarter, and who owns them?`],
+    ["support", ["zendesk", "servicenow", "freshdesk", "intercom", "help scout"], a => `Which ${a} tickets have been open longest, and for which customers?`],
+    ["billing", ["stripe", "quickbooks", "netsuite", "xero", "sage intacct", "business central", "acumatica", "myob", "epicor", "chargebee", "zuora"],
+     a => `Who owes us money in ${a}, and how overdue is it?`],
+    ["projects", ["jira", "asana", "monday", "clickup", "smartsheet", "trello"], a => `Which ${a} issues are overdue or blocked, and who has them?`],
+    ["store", ["shopify", "woocommerce", "bigcommerce", "magento"], a => `What were ${a}'s best-selling products last month?`],
+    ["people", ["workday", "bamboohr", "adp", "gusto", "rippling"], a => `How has headcount changed by department in ${a} this year?`],
+    ["ads", ["google ads", "facebook ads", "linkedin ads", "google analytics", "youtube analytics"],
+     a => `Which ${a} campaigns cost the most for what they brought in last month?`],
+    ["data", ["snowflake", "bigquery", "databricks", "redshift", "postgresql", "sql server", "mysql", "oracle", "sap hana"],
+     a => `What's in our ${a} data? Name the main tables and what they hold.`],
+    ["chat", ["slack", "microsoft teams", "gmail"], a => `What were the busiest ${a} conversations this week, and what were they about?`],
+  ];
+
+  // Up to three questions for these connections ([{name, source}]), most useful first
+  function suggestQuestions(list) {
+    // each app's kind: the longest name in it (Dynamics 365 Business Central is billing, not CRM)
+    const kindOf = source => {
+      const s = source.toLowerCase();
+      let best = null;
+      for (const [kind, apps] of IDEAS)
+        apps.forEach((app, rank) => { if (s.includes(app) && app.length > (best?.length ?? 0)) best = {kind, rank, length: app.length}; });
+      return best;
+    };
+    const found = new Map();   // kind -> its best-known app among these connections
+    for (const source of new Set(list.map(c => c.source))) {
+      const k = kindOf(source);
+      if (k && (!found.has(k.kind) || k.rank < found.get(k.kind).rank)) found.set(k.kind, {source, rank: k.rank});
+    }
+    for (const [kind, {source}] of found) found.set(kind, source);
+    const questions = [];
+    if (found.has("crm") && found.has("support"))
+      questions.push(`Which ${found.get("crm")} customers are at risk right now, with open ${found.get("support")} tickets?`);
+    for (const [kind, , ask] of IDEAS) if (found.has(kind)) questions.push(ask(found.get(kind)));
+    if (!questions.length && list.length) questions.push(`What's in ${list[0].source}? Summarize what it holds.`);
+    return questions.slice(0, 3);
+  }
+
+  // Under the question box, once the visitor's model and Connect AI are set up and checked
+  function showIdeas() {
+    const box = document.getElementById("newq-ideas"), settings = AI.load(), list = AI.connections();
+    if (!box) return;
+    const questions = AI.active(settings) && AI.hasConnectAI(settings) && list ? suggestQuestions(list) : [];
+    box.hidden = !questions.length;
+    box.innerHTML = questions.length ? '<span class="lbl">TRY ONE OF THESE</span>' +
+      questions.map(q => `<button type="button" data-idea="${esc(q)}">${esc(q)}</button>`).join("") : "";
+  }
+
   // A model's name as the page shows it: GPT-5.6-SOL, CLAUDE-SONNET-5-5 (OpenRouter's maker/ dropped)
   const modelName = id => String(id).replace(/^[^/]*\//, "").toUpperCase();
   let coach = null;
@@ -193,6 +245,13 @@
       if (GAME_KEYS.has(e.code) && (document.activeElement === canvas || document.pointerLockElement === canvas))
         e.preventDefault();
     }, true);
+    // Emscripten's SDL takes every key on the page (on document), so Tab never left a field and letters
+    // typed in the question box reached the game: keys for the page's fields and dialogs stop at body
+    for (const type of ["keydown", "keyup", "keypress"])
+      document.body.addEventListener(type, e => {
+        if (document.pointerLockElement !== canvas && e.target.closest?.("input, textarea, select, button, a, dialog"))
+          e.stopPropagation();
+      });
 
     // The level first (small), so the start card is up while Freedoom downloads.
     const [baked, cache, saidJson, monsterKinds, ...bufs] = await Promise.all([
@@ -209,7 +268,7 @@
     // the visitor's connections, for the question box; when Connect AI won't answer, the box just
     // doesn't name them, and asking shows the error
     const saved = AI.load();
-    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).catch(e => console.warn("Connect AI:", e.message));
+    if (AI.hasConnectAI(saved)) AI.checkConnectAI(saved).then(showIdeas, e => console.warn("Connect AI:", e.message));
     const wad = await downloadWad(coach.loading);
 
     // The engine's window caption (SDL_WM_SetCaption) replaces the tab title as the game boots; put this page's back.
@@ -270,6 +329,7 @@
       Module._free(first);
     }
     coach?.settingsChanged();
+    showIdeas();
   }
 
   // What the game says about itself (/doom/agent/state.json): the Options menu's switches, say.
@@ -293,7 +353,7 @@
     const fine = document.querySelector("#stage .bar.bottom .fine");
     // the page's footer: what Connect AI is, the code, and that this is a fan project
     if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI") +
-      ", one MCP server between AI agents and your business data. " + external(AI.SIGNUP_URL, "Try Connect AI free") + " · " +
+      ", one MCP server between AI agents and your data. " + external(AI.SIGNUP_URL, "Try Connect AI free") + " · " +
       external(REPO, "Code on GitHub") + "<br>A fan project, not affiliated with or endorsed by id Software, ZeniMax Media " +
       "or Microsoft. DOOM is a trademark of id Software LLC.";
     const board = document.querySelector("#board h2");
@@ -314,9 +374,27 @@
     if (askRow) {
       askRow.insertAdjacentHTML("beforeend", '<button type="button" class="link" id="newq-settings">AI settings</button>');
       document.getElementById("newq-settings").addEventListener("click", openSettings);
+      askRow.insertAdjacentHTML("afterend", '<div class="ideas" id="newq-ideas" hidden></div>');
+      document.getElementById("newq-ideas").addEventListener("click", e => {
+        const idea = e.target.closest("[data-idea]");
+        const box = document.getElementById("newq-text");
+        if (!idea || box.disabled) return;
+        trackEvent("Suggested question");
+        box.value = idea.dataset.idea;
+        box.focus();
+      });
     }
     const style = document.createElement("style");
-    style.textContent = `.board-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: #E5E2DA; }
+    style.textContent = `/* the question box and its ideas take room: the game's events keep enough to read the latest */
+      body.stage.in-game main > section.grow:has(#events) { min-height: 96px; }
+      body.stage.in-game main > #newq:not([hidden]) { flex: 0 1 auto; overflow-y: auto; }   /* short windows: it scrolls */
+      #newq .ideas { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+      #newq .ideas[hidden] { display: none; }
+      #newq .ideas .lbl { font: 8px/1.6 var(--pixel); color: var(--balance); letter-spacing: 1px; }
+      #newq .ideas button { font: 13px/1.35 var(--sans); text-align: left; color: var(--clarity); background: var(--depth-3);
+                            border: 1px solid var(--line); border-radius: 3px; padding: 6px 10px; cursor: pointer; }
+      #newq .ideas button:hover, #newq .ideas button:focus-visible { border-color: var(--agility); color: var(--agility); }
+      .board-lead { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: #E5E2DA; }
       #board-meta, #board .model .data { display: none; }   /* rule versions, data sources, content-filter stops: bench notes */
       #stage .bar.bottom .fine a { color: var(--agility); }`;
     document.head.appendChild(style);
@@ -385,7 +463,7 @@
       <div class="eyebrow">CONNECT AI × DOOM · A.K.A. DOOMCP</div>
       <h3 id="coach-intro-title">Every monster is a <span class="red">record</span>.</h3>
       <p>Claude read a demo company's ${appList} through the Connect AI MCP server and built this level from what it found.</p>
-      <p class="what">CData Connect AI is one MCP server between AI agents like Claude and your business apps. It applies
+      <p class="what">CData Connect AI is one MCP server between AI agents like Claude and your apps. It applies
         your permissions and your data security rules to every request.</p>
       <ol>
         <li><span><b>Grab your keys.</b> Keycards are your permissions: Connect AI gives you one for each app you can open.</span></li>
@@ -489,7 +567,7 @@
         <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} records from ${appList}.</h3>
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? ", and blocked the one request it shouldn't answer: a customer's Social Security number" : ""}.
-          That's what Connect AI does for any AI agent and your business data.</p>
+          That's what Connect AI does for any AI agent and your data.</p>
         <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
                               : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
@@ -636,18 +714,15 @@
         </div>
         <div id="ai-provider" class="row">
           <label class="field">API key<input type="password" id="ai-key" autocomplete="off" spellcheck="false"></label>
-          <label class="field">Model<input id="ai-model" list="ai-models" autocomplete="off" spellcheck="false"></label>
-          <datalist id="ai-models"></datalist>
+          <label class="field">Model<select id="ai-model"></select></label>
           <button class="act" type="button" id="ai-check">CHECK KEY</button>
           <a id="ai-get-key" target="_blank" rel="noopener noreferrer">Get a key</a>
         </div>
         <p class="msg" id="ai-msg" aria-live="polite"></p>
-        <p class="fine">Connect AI's LLM Gateway isn't a choice here yet: it doesn't take requests from web pages.
-          The Mac version plays through it (${external(REPO + "#readme", "README")}).</p>
       </section>
       <section>
-        <h3>CONNECT AI (OPTIONAL)</h3>
-        <p>Your model reads your own business data through the Connect AI MCP server: it can look records up while it
+        <h3>CONNECT AI</h3>
+        <p>Your model reads your own data through the Connect AI MCP server: it can look records up while it
           plays, and answer the panel's questions. Read-only: nothing is written.</p>
         <ol class="setup">
           <li>${external(AI.SIGNUP_URL, "Sign up for Connect AI")}: pick Sign up under the sign-in box. It's a free trial.</li>
@@ -667,11 +742,11 @@
           MCP Gateway tool servers.</p>
         <p class="msg" id="cai-msg" aria-live="polite"></p>
       </section>
-      <section>
+      <section id="game-switches">
         <h3>IN THE GAME (ALSO ESC &gt; OPTIONS)</h3>
         <div class="game">
           <span>Claude plays</span><div><button class="switch" type="button" data-option="0"></button></div>
-          <span>Model</span><select id="game-model" aria-label="Who plays when Claude plays is on"></select>
+          <span class="game-model">Model</span><select class="game-model" id="game-model" aria-label="Who plays when Claude plays is on"></select>
           <span>God mode</span><div><button class="switch" type="button" data-option="2"></button></div>
         </div>
       </section>
@@ -701,10 +776,12 @@
       if (p) {
         if (document.activeElement !== $("ai-key")) $("ai-key").value = settings.keys[provider] || "";
         $("ai-key").placeholder = p.placeholder;
-        if (document.activeElement !== $("ai-model")) $("ai-model").value = settings.models[provider] || p.defaultModel;
+        // the key's own models once checked, else the usual ones; the saved pick stays on the list either way
+        const model = settings.models[provider] || p.defaultModel, models = listed[provider] || p.models;
+        $("ai-model").innerHTML = [...new Set([model, ...models])].map(m => `<option>${esc(m)}</option>`).join("");
+        $("ai-model").value = model;
         $("ai-get-key").href = p.keyUrl;
         $("ai-get-key").textContent = `Get ${article(p.company)} ${p.company} key`;
-        $("ai-models").innerHTML = (listed[provider] || []).map(m => `<option value="${esc(m)}">`).join("");
       }
       if (document.activeElement !== $("cai-user")) $("cai-user").value = settings.connectAI.user;
       if (document.activeElement !== $("cai-pat")) $("cai-pat").value = settings.connectAI.pat;
@@ -727,7 +804,6 @@
         const on = !!options?.[b.dataset.option === "0" ? "claude_plays" : "god_mode"];
         b.setAttribute("aria-pressed", String(on));
         b.textContent = on ? "ON" : "OFF";
-        b.disabled = !options;
       });
       const select = $("game-model"), names = models.split(",");
       if (select.dataset.models !== models) {
@@ -735,7 +811,8 @@
         select.dataset.models = models;
       }
       if (document.activeElement !== select) select.value = String(Math.max(0, names.indexOf(options?.model || pick)));
-      select.disabled = !options;
+      $("game-switches").hidden = !options;   // no game yet (the start card is up)
+      el.querySelectorAll(".game-model").forEach(e => { e.hidden = names.length < 2; });
     }
 
     el.addEventListener("click", e => {
@@ -758,13 +835,14 @@
     $("ai-key").addEventListener("change", e => {
       const key = e.target.value.trim();
       update(s => { if (key) s.keys[s.provider] = key; else delete s.keys[s.provider]; });
-      note("ai-msg", key ? "Saved. Check it to see the models it can use." : "Key removed.");
+      if (key) checkKey(); else note("ai-msg", "Key removed.");
     });
     $("ai-model").addEventListener("change", e => {
       const model = e.target.value.trim();
       update(s => { if (model) s.models[s.provider] = model; else delete s.models[s.provider]; });
     });
-    $("ai-check").addEventListener("click", async () => {
+    $("ai-check").addEventListener("click", () => checkKey());
+    async function checkKey() {
       const settings = AI.load(), provider = settings.provider, key = settings.keys[provider];
       if (!key) { note("ai-msg", "Paste a key first.", "bad"); return; }
       note("ai-msg", "Checking…");
@@ -772,7 +850,7 @@
         listed[provider] = await AI.listModels(provider, key);
         const model = settings.models[provider] || AI.PROVIDERS[provider].defaultModel;
         const known = listed[provider].includes(model);
-        note("ai-msg", `The key works: ${listed[provider].length} models.${known ? "" : ` ${model} isn't one of them: pick one from the Model list.`}`,
+        note("ai-msg", `The key works: ${listed[provider].length} models in the list.${known ? "" : ` ${model} isn't one of them: pick another.`}`,
              known ? "ok" : "bad");
         trackEvent("AI key checked", {provider, ok: "yes"});
         render();
@@ -780,7 +858,7 @@
         trackEvent("AI key checked", {provider, ok: "no"});
         note("ai-msg", e.message, "bad");
       }
-    });
+    }
     const saveConnectAI = () => {
       const url = $("cai-url").value.trim();
       if (url && !/^https:\/\/[^\s/]+/.test(url)) { note("cai-msg", "The MCP server URL starts with https://", "bad"); return false; }
@@ -795,6 +873,7 @@
       note("cai-msg", "Checking…");
       try {
         const {tools, connections} = await AI.checkConnectAI(settings);
+        showIdeas();
         note("cai-msg", `Connected: ${tools} read-only tools${connections.length ? `, ${connectionList(connections)}` : ""}.`, "ok");
         trackEvent("Connect AI checked", {ok: "yes"});
       } catch (e) {

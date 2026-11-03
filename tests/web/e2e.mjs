@@ -110,7 +110,11 @@ async function eventually(check, what, timeout = 15000) {
     if (await check()) return;
   throw new Error(`timed out waiting for ${what}`);
 }
-const tipSays = (p, re, timeout) => until(p, src => new RegExp(src).test(document.getElementById("coach-tip").textContent), re.source, timeout);
+// the tip says `what`: a RegExp, or text to find as it is
+const tipSays = (p, what, timeout) => until(p, ([src, words]) => {
+  const tip = document.getElementById("coach-tip").textContent;
+  return src === null ? tip.includes(words) : new RegExp(src).test(tip);
+}, what instanceof RegExp ? [what.source, null] : [null, what], timeout);
 const gameSays = (p, fn, timeout = 15000) => until(p, `(() => { try { const s = JSON.parse(Module.FS.readFile("/doom/agent/state.json", {encoding: "utf8"})); return (${fn})(s); } catch (e) { return false; } })()`, undefined, timeout);
 const settingsOpen = p => p.evaluate(() => !!document.getElementById("ai-settings")?.open);
 const builderOpen = p => p.evaluate(() => !!document.getElementById("ai-build")?.open);
@@ -410,7 +414,7 @@ for (const [provider, name] of [["anthropic", "CLAUDE-SONNET-5-5"], ["openai", "
     const p = await open(b, t, {seed: settings(provider)});
     t.check(await text(p, "#coach-intro [data-go=watch]") === `WATCH ${name} PLAY`, `the Watch button names it (${name})`);
     await p.click("#coach-intro [data-go=watch]");
-    await tipSays(p, new RegExp(`WATCHING ${name.replace(/\./g, "\\.")} PLAY`), 5000);
+    await tipSays(p, `WATCHING ${name} PLAY`, 5000);
     await gameSays(p, s => s.options.claude_plays === 1);
     t.check(true, "it plays");
     await tipSays(p, /IS DONE/, 30000);

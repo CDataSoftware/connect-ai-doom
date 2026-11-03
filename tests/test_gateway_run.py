@@ -83,6 +83,17 @@ class RunTest(unittest.TestCase):
         self.assertEqual(tool, {"role": "tool", "tool_call_id": "call_1__thought__abc",
                                 "content": json.dumps({"you_are_in": "lobby"})})
 
+    def test_arguments_that_arent_json_are_an_error_the_model_sees_not_an_empty_call(self):
+        ran = []
+        self.tools["doom__look"] = (lambda args: ran.append(args) or "{}", "Look around.", {"type": "object"})
+        bad = reply(None, [("c1", "doom__look", {})])
+        bad["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = '{"place": "lobby"'
+        self.run_loop([bad, reply("Done.")])
+        self.assertEqual(ran, [])                                  # the tool didn't run on made-up arguments
+        result = next(e for e in self.events if e["kind"] == "result")
+        self.assertTrue(result["error"])
+        self.assertIn("aren't valid JSON", self.sent[1]["messages"][-1]["content"])
+
     def test_a_system_prompt(self):
         gateway_run.run("Play.", "m", self.tools, lambda *a, **k: None, key="k", max_turns=1, system="Be brief.",
                         post=lambda key, body: self.sent.append(body) or reply("Done."))

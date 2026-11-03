@@ -123,16 +123,18 @@ def run(prompt, model, tools, log, *, key, max_turns, post=complete, system=None
         for call in calls:
             name = call["function"]["name"]
             server, _, tool = name.rpartition("__")
+            args, out = {}, None
             try:
                 args = json.loads(call["function"].get("arguments") or "{}")
-            except json.JSONDecodeError:
-                args = {}
+            except json.JSONDecodeError as e:
+                out = f"Error: the arguments aren't valid JSON ({e}). Send them again as a JSON object."
             log("call", id=call["id"], server=server, tool=tool, args=args, connection=claude_run.catalog_of(args))
             start = time.time()
-            try:
-                out = tools[name][0](args) if name in tools else f"Error: there's no tool called {name}."
-            except Exception as e:
-                out = f"Error: {e}"
+            if out is None:
+                try:
+                    out = tools[name][0](args) if name in tools else f"Error: there's no tool called {name}."
+                except Exception as e:
+                    out = f"Error: {e}"
             error = out.startswith("Error:")
             log("result", id=call["id"], tool=tool, connection=claude_run.catalog_of(args), error=error,
                 rows=0 if error else claude_run.count_rows(out), text=out[:4000],

@@ -451,7 +451,9 @@
       } }
       /* the question box and its ideas take room: the game's events keep enough to read the latest */
       body.stage.in-game main > section.grow:has(#events) { min-height: 96px; }
-      body.stage.in-game main > #newq:not([hidden]) { flex: 0 1 auto; max-height: 30vh; overflow-y: auto; }   /* it scrolls */
+      /* the panel scrolls when it holds more than the window (the question box, last, is often below it) */
+      body.stage.in-game #side { overflow-y: auto; }
+      body.stage.in-game main > #newq:not([hidden]) { flex: none; max-height: 30vh; overflow-y: auto; }   /* it keeps its height, and scrolls */
       body.stage.in-game main > #play:not([hidden]) { min-height: 180px; }   /* whoever plays keeps their feed in view */
       #newq .ideas { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
       #newq .ideas[hidden] { display: none; }

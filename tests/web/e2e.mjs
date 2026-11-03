@@ -122,6 +122,9 @@ const gameSays = (p, fn, timeout = 15000) => until(p, `(() => { try { const s = 
 const settingsOpen = p => p.evaluate(() => !!document.getElementById("ai-settings")?.open);
 const builderOpen = p => p.evaluate(() => !!document.getElementById("ai-build")?.open);
 const saved = p => p.evaluate(() => JSON.parse(localStorage.getItem("connect-doom-ai") || "null"));
+// The game holds the mouse (pointer lock) while the visitor plays; Esc frees it in a browser, which
+// Chromium on Linux grants and headless Chromium on a Mac doesn't. Freed, the page's buttons take clicks.
+const freeMouse = p => p.evaluate(() => document.exitPointerLock());
 // take the marine from offline Claude: a click on the game, as a visitor does
 async function takeOver(p) {
   if (await p.isVisible("#coach-intro")) await p.click("#coach-intro [data-go=play]");
@@ -326,6 +329,7 @@ test("AI settings: the game's switches", async (t, b) => {
   await gameSays(p, s => s.options.claude_plays === 0);
   await eventually(async () => (await panel(p)).game.mode === "player", "the visitor's turn", 5000);
   t.check(await sw(0).textContent() === "OFF", "Claude plays off: the visitor plays, and the switch stays OFF");
+  await freeMouse(p);
   await sw(0).click();
   await gameSays(p, s => s.options.claude_plays === 1);
   t.check(!(await settingsOpen(p)), "Claude plays on: the dialog closes to watch");
@@ -454,6 +458,7 @@ for (const [provider, name] of [["anthropic", "CLAUDE-SONNET-5-5"], ["openai", "
     const feed = (await panel(p)).play_events.map(e => e.kind);
     t.check(feed.includes("call") && feed.includes("done"), `its moves are in the panel's feed (${[...new Set(feed)]})`);
     // the Model row: offline Claude or the visitor's model
+    await freeMouse(p);
     await p.click("#ai-link");
     t.check(await p.isVisible("#game-model") && await p.locator("#game-model option").count() === 2, "the Model row offers both");
     await p.selectOption("#game-model", "0");
@@ -557,6 +562,9 @@ test("panel: the question box builds a level", async (t, b) => {
   const p = await open(b, t, {seed: READY});
   await until(p, () => !document.getElementById("newq").hidden && !document.getElementById("newq-ideas").hidden, undefined, 20000);
   t.check(true, "set up, the question box and its suggested questions show");
+  await p.locator("#newq").scrollIntoViewIfNeeded();   // the panel scrolls: the box is last
+  const box = await p.locator("#newq").boundingBox();
+  t.check(box.height > 150 && box.y + box.height <= 900 + 1, `the question box can be reached, at full height (${Math.round(box.y)}, ${Math.round(box.height)}px)`);
   await p.click("#newq-ideas [data-idea]");
   t.check((await p.inputValue("#newq-text")).length > 10, "a suggested question fills the box");
   await p.fill("#newq-text", "");
@@ -641,7 +649,9 @@ try {
       try { await x.run(t, browser); }
       catch (e) {
         const at = (e.stack || "").split("\n").find(l => l.includes("e2e.mjs"))?.match(/e2e\.mjs:(\d+)/)?.[1];
-        t.check(false, `threw${at ? ` at e2e.mjs:${at}` : ""}: ${e.message.split("\n")[0]}`);
+        // Playwright's call log ends with why it waited: what was covering the element, say
+        const why = e.message.split("\n").filter(l => /^\s+-/.test(l)).slice(-3).map(l => l.trim()).join(" | ");
+        t.check(false, `threw${at ? ` at e2e.mjs:${at}` : ""}: ${e.message.split("\n")[0]}${why ? ` (${why})` : ""}`);
       }
       finally { await Promise.all(t.contexts.map(c => c.close().catch(() => {}))); }
       console.log(`${t.failed ? "FAIL" : "ok  "} ${x.name} (${Math.round((Date.now() - began) / 1000)} s)\n${t.lines.join("\n")}`);

@@ -316,7 +316,8 @@
         const [models] = menuModels();   // offline Claude picked: it's who plays first (ready())
         Object.assign(ENV, {PSDOOMPSCMD: "list", PSDOOMKILLCMD: "kill", PSDOOMRENICECMD: "hit",
           PSDOOMVAULTCMD: "vault", PSDOOM_LABELS: "/doom/labels.tsv", PSDOOM_MONSTERS: monsterKinds.trim(),
-          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: AI.OFFLINE});
+          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: AI.OFFLINE,
+          PSDOOM_OPT_GOD: "1"});   // god mode starts on (Esc > Options turns it off)
       }],
       // No sound yet: Emscripten's SDL mixer can't play the buffers Chocolate Doom builds.
       onRuntimeInitialized: () => {
@@ -701,9 +702,30 @@
       else if (now.claude_plays && run && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
     }
 
+    // Killed (god mode off): a few seconds on the floor, then the level starts over, every record back,
+    // as play.py's auto replay does on the Mac.
+    let diedAt = 0;
+    function restartAfterDeath(game) {
+      if (ended || !(game?.player?.health <= 0)) { diedAt = 0; return false; }
+      diedAt = diedAt || Date.now();
+      if (Date.now() - diedAt < 3000) return false;
+      diedAt = 0;
+      if (run) { run.stop(false); run = null; }
+      kills.length = hits.length = vault.length = playEvents.length = 0;
+      clearTimeout(endTimer);
+      state.game = {...state.game, mode: "player", started: Date.now() / 1000};
+      window.ConnectDoomReplay.send("RESTART");
+      trackEvent("Died");
+      if (step) step = 1;   // the keycards are back in the lobby
+      show("YOU DIED · BACK TO THE START", "Every record is back. Grab your keycards in the lobby. God mode (Esc > Options) keeps you alive.", 8);
+      return true;
+    }
+
     setInterval(() => {
       if (hideAt && Date.now() > hideAt) { tip.hidden = true; hideAt = 0; }
-      followOptions(gameState()?.options);
+      const game = gameState();
+      followOptions(game?.options);
+      if (restartAfterDeath(game)) return;   // the old keycards count until the level reloads
       const keys = window.Module?._web_keys ? Module._web_keys() : 0;
       if (step === 1 && !run && (keys & need) === need) {
         step = 2;

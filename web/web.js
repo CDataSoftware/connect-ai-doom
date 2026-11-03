@@ -379,6 +379,7 @@
   function plainWords() {
     const relabel = (sel, text) => { const el = document.querySelector(sel); if (el) el.textContent = text; };
     relabel("#s-model + .lbl", "BUILT BY");
+    document.getElementById("s-model").dataset.builtBy = "1";   // the panel leaves it to the level's builder, not who plays
     relabel("#stage .bar.bottom .line .tag", "THE QUESTION");
     nameBuilder(mine ? mine.model : "claude");
     const fine = document.querySelector("#stage .bar.bottom .fine");
@@ -704,30 +705,33 @@
       else if (now.claude_plays && run && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
     }
 
-    // Killed (god mode off): a few seconds on the floor, then the level starts over, every record back,
-    // as play.py's auto replay does on the Mac.
-    let diedAt = 0;
+    // Killed (god mode off): the page starts the level over at once (every record back on the list),
+    // and a few seconds on the floor later the game does too, as play.py's auto replay does on the Mac.
+    // Pressing use (E, right click) before then respawns the marine into the same fresh level.
+    let diedAt = 0;   // when the marine died; -1 once the game was told to restart
     function restartAfterDeath(game) {
       if (ended || !(game?.player?.health <= 0)) { diedAt = 0; return false; }
-      diedAt = diedAt || Date.now();
-      if (Date.now() - diedAt < 3000) return false;
-      diedAt = 0;
-      if (run) { run.stop(false); run = null; }
-      kills.length = hits.length = vault.length = playEvents.length = 0;
-      clearTimeout(endTimer);
-      state.game = {...state.game, mode: "player", started: Date.now() / 1000};
-      window.ConnectDoomReplay.send("RESTART");
-      trackEvent("Died");
-      if (step) step = 1;   // the keycards are back in the lobby
-      show("YOU DIED · BACK TO THE START", "Every record is back. Grab your keycards in the lobby. God mode (Esc > Options) keeps you alive.", 8);
-      return true;
+      if (!diedAt) {
+        diedAt = Date.now();
+        if (run) { run.stop(false); run = null; }
+        kills.length = hits.length = vault.length = playEvents.length = 0;
+        clearTimeout(endTimer);
+        state.game = {...state.game, mode: "player", started: Date.now() / 1000};
+        trackEvent("Died");
+        if (step) step = 1;   // the keycards are back in the lobby
+        show("YOU DIED · BACK TO THE START", "Every record is back. Grab your keycards in the lobby. God mode (Esc > Options) keeps you alive.", 8);
+      } else if (diedAt > 0 && Date.now() - diedAt >= 3000) {
+        window.ConnectDoomReplay.send("RESTART");
+        diedAt = -1;
+      }
+      return true;   // the old keycards count until the level reloads
     }
 
     setInterval(() => {
       if (hideAt && Date.now() > hideAt) { tip.hidden = true; hideAt = 0; }
       const game = gameState();
       followOptions(game?.options);
-      if (restartAfterDeath(game)) return;   // the old keycards count until the level reloads
+      if (restartAfterDeath(game)) return;
       const keys = window.Module?._web_keys ? Module._web_keys() : 0;
       if (step === 1 && !run && (keys & need) === need) {
         step = 2;

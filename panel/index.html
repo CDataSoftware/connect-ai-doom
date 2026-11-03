@@ -522,7 +522,7 @@
   <section class="ingame"><h2>THE ROOMS: ONE PER APP</h2><div id="rooms-live"></div></section>
   <section class="grow" id="board"><h2>MODEL LEADERBOARD: THIS LEVEL<span class="meta-r" id="board-meta"></span></h2><div id="board-rows"></div>
     <div class="note">Cleared: runs that killed every record. Time: the median to the last kill. Killed: the median share of records. Stuck: three Doom moves in a row with nothing to show for them. Urgent 1st: urgent records killed before anything else in their room. Vault: runs that tried the red door once and took Connect AI's no. Cost: Claude Code's own, or the gateway's tokens at the console's rates. Runs on live data rank apart from saved data, whose records don't change. Blocked: runs the gateway's content filter stopped before the model could play on, left out of the rest. Scored from the game, not from what the model says. Every model gets the same prompt, tools and moves (a look, go_to or attack is one; Connect AI calls are free). REF: Claude Code, the same rules through its own harness, shown for reference. Pick the model in Esc &gt; Options &gt; Model.</div></section>
-  <section id="play" class="grow big" hidden><h2><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL<span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
+  <section id="play" class="grow big" hidden><h2><span><span id="play-who">CLAUDE</span>'S FEED: EVERY DECISION AND TOOL CALL</span><span class="meta-r" id="play-meta"></span></h2><div class="feed" id="playfeed"></div></section>
   <section class="ingame grow"><h2>IN THE GAME: WHAT JUST HAPPENED</h2><div id="events"><div class="empty">Nothing yet. Shoot something.</div></div></section>
   <section class="legend-wrap">
     <details class="legend" id="legend" open>
@@ -1410,7 +1410,8 @@ async function tick() {
     if (play.length) playFeed.apply(play);
     setText($("play-who"), playFeed.who);
     // while a model plays (say, Gemini through the LLM Gateway), the MODEL tile names it, not the briefing's
-    if (!$("play").hidden && playFeed.model) setText($("s-model"), playFeed.model.replace(/^claude-/, "").toUpperCase());
+    // (unless the tile is BUILT BY, as the browser version labels it: then it's the briefing's)
+    if (!$("play").hidden && playFeed.model && !$("s-model").dataset.builtBy) setText($("s-model"), playFeed.model.replace(/^claude-/, "").toUpperCase());
     setText($("play-meta"), playFeed.calls.size ? `${playFeed.calls.size} tool calls${playFeed.model ? ` · ${playFeed.model.replace(/^claude-/, "")}` : ""}` : "");
     renderGame(s);
     renderBoard(s.leaderboard, s.game);

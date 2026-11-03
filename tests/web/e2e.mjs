@@ -11,6 +11,7 @@ const DIST = fileURLToPath(new URL("../../web/dist", import.meta.url));
 const PORT = Number(process.env.PORT || 8799), SITE = `http://127.0.0.1:${PORT}/`;
 const JOBS = Number(process.env.JOBS || 3), ONLY = process.argv[2] || "";
 const CORS = {"access-control-allow-origin": "*"};
+const THINK_MS = 1500;   // how long a fake model takes over a move, so the panel shows it playing
 
 // ---------- the fakes ----------
 // Connect AI: three connections, and the same rows for any query; `deny` refuses the token
@@ -45,6 +46,7 @@ function fakeClaude(mode) {
       ? [{type: "text", text: mode === "badplan" ? "I'd rather not plan a level." : JSON.stringify(PLAN)}]
       : first ? [{type: "text", text: "Looking around."}, {type: "tool_use", id: "t1", name: "doom__look", input: {}}]
       : [{type: "text", text: "Done."}];
+    if (!/Doom level/.test(body.system || "")) await new Promise(r => setTimeout(r, THINK_MS));
     return route.fulfill({json: {content, stop_reason: "end_turn", usage: {input_tokens: 1, output_tokens: 1}}, headers: CORS});
   };
 }
@@ -56,6 +58,7 @@ function fakeChat(models) {
     if (url.endsWith("/key")) return route.fulfill({json: {data: {label: "test"}}, headers: CORS});
     if (url.endsWith("/models")) return route.fulfill({json: {data: models}, headers: CORS});
     const body = JSON.parse(route.request().postData()), looked = body.messages.some(m => m.role === "tool");
+    await new Promise(r => setTimeout(r, THINK_MS));
     const message = looked ? {role: "assistant", content: "Done."}
       : {role: "assistant", content: "Looking around.", tool_calls: [{id: "c1", type: "function", function: {name: "doom__look", arguments: "{}"}}]};
     return route.fulfill({json: {choices: [{message, finish_reason: looked ? "stop" : "tool_calls"}],
@@ -256,13 +259,35 @@ test("dying: the level restarts, every record back", async (t, b) => {
     window.ConnectDoomReplay.send = line => { if (line === "RESTART") window.restarts++; return send(line); };
   });
   await tipSays(p, /YOU DIED · BACK TO THE START/, 8000);
-  await p.waitForTimeout(3000);
+  t.check((await panel(p)).kill_total === 0, "the panel's kill count starts over at once");
+  await until(p, () => window.restarts === 1, undefined, 8000);
+  await gameSays(p, s => s.player.health === 100);
+  await p.waitForTimeout(1000);
   const s = await game(p);
-  t.check(await p.evaluate(() => window.restarts) === 1, "the page restarts the level once");
+  t.check(await p.evaluate(() => window.restarts) === 1, "a few seconds later, the page restarts the level, once");
   t.check(s.player.health === 100 && s.monsters.every(m => m.health > 0), "the marine is back at full health, every record alive");
   t.check(s.player.x !== moved.x || s.player.y !== moved.y, `the marine is back at the start (${moved.x},${moved.y} → ${s.player.x},${s.player.y})`);
   t.check((await panel(p)).kill_total === 0, "the panel's kill count starts over");
   t.check(/YOU DIED/.test(await text(p, "#coach-tip")), "the tip says what happened");
+});
+
+test("dying for real, then E at once: back in a fresh level", async (t, b) => {
+  const p = await open(b, t);
+  await p.click("#coach-intro [data-go=watch]");
+  await eventually(async () => (await panel(p)).kill_total >= 1, "Claude in a room", 150000);   // among the monsters
+  await p.click("#canvas");
+  await gameSays(p, s => s.options.claude_plays === 0);
+  await p.evaluate(() => window.ConnectDoomReplay.send("OPTION 2 0"));
+  await gameSays(p, s => s.player.health <= 0, 180000);   // standing still, god mode off
+  t.check(true, "the monsters kill the marine");
+  await tipSays(p, /YOU DIED/, 2000);
+  t.check((await panel(p)).kill_total === 0, "the page starts the level over at once");
+  await p.keyboard.down("e");   // use, held as a person does (Doom reads keys once a tic): the marine respawns
+  await p.waitForTimeout(150);
+  await p.keyboard.up("e");
+  await gameSays(p, s => s.player.health === 100, 2500);
+  await gameSays(p, s => s.monsters.length === 45 && s.monsters.every(m => m.health > 0), 5000);
+  t.check(true, "the marine is back, with every record");
 });
 
 test("the in-game Options menu: Esc > Options > God mode", async (t, b) => {
@@ -417,6 +442,12 @@ for (const [provider, name] of [["anthropic", "CLAUDE-SONNET-5-5"], ["openai", "
     await tipSays(p, `WATCHING ${name} PLAY`, 5000);
     await gameSays(p, s => s.options.claude_plays === 1);
     t.check(true, "it plays");
+    await until(p, () => !document.getElementById("play").hidden);
+    t.check(await text(p, "#s-model") === "SONNET-5-5", `BUILT BY names who built the level, not who plays (${await text(p, "#s-model")})`);
+    const [who, title] = await p.evaluate(() => [document.getElementById("play-who"), document.getElementById("play-who").parentElement]
+      .map(e => { const r = e.getBoundingClientRect(); return {left: Math.round(r.left), top: Math.round(r.top)}; }));
+    t.check(who.left === title.left && Math.abs(who.top - title.top) <= 2,
+            `the feed's heading reads as one title, the player's name first (${JSON.stringify([who, title])})`);
     await tipSays(p, /IS DONE/, 30000);
     t.check(/Your turn/.test(await text(p, "#coach-tip")), "done, it hands the marine back");
     await gameSays(p, s => s.options.claude_plays === 0);

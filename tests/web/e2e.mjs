@@ -22,10 +22,11 @@ const PLAN = {answer: "Acme Corp is at risk.", rooms: [["Salesforce1", "Salesfor
   ["Zendesk1", "Zendesk", "Angry tickets"], ["Stripe1", "Stripe", "Unpaid invoices"]]
   .map(([connection, app, title]) => ({connection, app, title, query: `SELECT [Id] FROM [${connection}].[dbo].[t]`}))};
 
-function fakeConnectAI(mode) {
+function fakeConnectAI(mode, calls) {
   return async route => {
     if (mode === "deny") return route.fulfill({status: 401, body: "Unauthorized", headers: CORS});
     const body = JSON.parse(route.request().postData());
+    if (body.method === "tools/call") calls.push(body.params);
     const reply = result => route.fulfill({json: {jsonrpc: "2.0", id: body.id, result}, headers: CORS});
     if (!("id" in body)) return route.fulfill({status: 202, body: "", headers: CORS});
     if (body.method === "initialize") return reply({protocolVersion: "2025-06-18", capabilities: {}});
@@ -35,24 +36,37 @@ function fakeConnectAI(mode) {
   };
 }
 
-// Claude: `refuse` turns the key down; `badplan` answers the briefing with prose, not a plan; else it
-// plans the level when briefing, and looks around once when playing
+// Claude, as a real model goes about it: briefing, it reads records through Connect AI, then plans the
+// level; playing, it looks around once (and with `query`, reads records through Connect AI too), then stops.
+// `refuse` turns the key down; `badplan` answers the briefing with prose, not a plan; `greedy` keeps
+// calling Connect AI until it's told the level's calls are spent; `busy` is overloaded at first.
+const QUERY = {query: "SELECT [Id], [Name] FROM [Salesforce1].[dbo].[Account]"};
 function fakeClaude(mode) {
+  let busy = mode === "busy";
   return async route => {
     if (mode === "refuse") return route.fulfill({status: 401, json: {error: {message: "invalid x-api-key"}}, headers: CORS});
     if (route.request().url().includes("/models")) return route.fulfill({json: {data: [{id: "claude-sonnet-5-5"}, {id: "claude-opus-5-5"}]}, headers: CORS});
-    const body = JSON.parse(route.request().postData()), first = body.messages.length === 1;
-    const content = /Doom level/.test(body.system || "")
-      ? [{type: "text", text: mode === "badplan" ? "I'd rather not plan a level." : JSON.stringify(PLAN)}]
-      : first ? [{type: "text", text: "Looking around."}, {type: "tool_use", id: "t1", name: "doom__look", input: {}}]
-      : [{type: "text", text: "Done."}];
-    if (!/Doom level/.test(body.system || "")) await new Promise(r => setTimeout(r, THINK_MS));
+    if (busy) { busy = false; return route.fulfill({status: 529, json: {error: {message: "Overloaded"}}, headers: CORS}); }
+    const body = JSON.parse(route.request().postData()), turn = body.messages.filter(m => m.role === "assistant").length;
+    const lastResult = JSON.stringify(body.messages.at(-1)?.content || "");
+    const use = (name, input) => ({type: "tool_use", id: `t${turn}`, name, input});
+    let content;
+    if (/Doom level/.test(body.system || "")) {
+      const spent = /all the Connect AI calls this level gets/.test(lastResult);
+      content = mode === "badplan" ? [{type: "text", text: "I'd rather not plan a level."}]
+        : (mode === "greedy" && !spent) || turn === 0 ? [{type: "text", text: "Reading the accounts."}, use("connectai__queryData", QUERY)]
+        : [{type: "text", text: JSON.stringify(PLAN)}];
+    } else {
+      const moves = mode === "query" ? [use("doom__look", {}), use("connectai__queryData", QUERY)] : [use("doom__look", {})];
+      content = turn < moves.length ? [{type: "text", text: "Looking around."}, moves[turn]] : [{type: "text", text: "Done."}];
+      await new Promise(r => setTimeout(r, THINK_MS));
+    }
     return route.fulfill({json: {content, stop_reason: "end_turn", usage: {input_tokens: 1, output_tokens: 1}}, headers: CORS});
   };
 }
 
 // OpenAI and OpenRouter (both OpenAI's chat format): the model looks around once, then stops
-function fakeChat(models) {
+function fakeChat(models, {badArgs = false} = {}) {
   return async route => {
     const url = route.request().url();
     if (url.endsWith("/key")) return route.fulfill({json: {data: {label: "test"}}, headers: CORS});
@@ -60,7 +74,7 @@ function fakeChat(models) {
     const body = JSON.parse(route.request().postData()), looked = body.messages.some(m => m.role === "tool");
     await new Promise(r => setTimeout(r, THINK_MS));
     const message = looked ? {role: "assistant", content: "Done."}
-      : {role: "assistant", content: "Looking around.", tool_calls: [{id: "c1", type: "function", function: {name: "doom__look", arguments: "{}"}}]};
+      : {role: "assistant", content: "Looking around.", tool_calls: [{id: "c1", type: "function", function: {name: "doom__look", arguments: badArgs ? '{"x": ' : "{}"}}]};
     return route.fulfill({json: {choices: [{message, finish_reason: looked ? "stop" : "tool_calls"}],
                                  usage: {prompt_tokens: 1, completion_tokens: 1}}, headers: CORS});
   };
@@ -79,7 +93,7 @@ const results = [];
 const tests = [];
 const test = (name, run) => tests.push({name, run});
 
-async function open(browser, t, {claude = "plan", connectAI = "ok", seed = null, viewport = {width: 1440, height: 900},
+async function open(browser, t, {claude = "plan", openaiBadArgs = false, connectAI = "ok", seed = null, viewport = {width: 1440, height: 900},
                                  mobile = false, path = "", wait = true} = {}) {
   const ctx = await browser.newContext({viewport, ...(mobile ? {isMobile: true, hasTouch: true} : {})});
   t.contexts.push(ctx);
@@ -87,9 +101,10 @@ async function open(browser, t, {claude = "plan", connectAI = "ok", seed = null,
   p.on("pageerror", e => t.check(false, `no page error (${e.message})`));
   await p.route("https://plausible.joekarlsson.io/**", r => r.fulfill({status: 204, body: ""}));
   await p.route("https://api.anthropic.com/**", fakeClaude(claude));
-  await p.route("https://api.openai.com/**", fakeChat(OPENAI_MODELS));
+  await p.route("https://api.openai.com/**", fakeChat(OPENAI_MODELS, {badArgs: openaiBadArgs}));
   await p.route("https://openrouter.ai/**", fakeChat(OPENROUTER_MODELS));
-  await p.route("https://mcp.cloud.cdata.com/**", fakeConnectAI(connectAI));
+  p.connectAICalls = [];   // the tools/call requests Connect AI got
+  await p.route("https://mcp.cloud.cdata.com/**", fakeConnectAI(connectAI, p.connectAICalls));
   if (seed) await p.addInitScript(s => {   // once: the page's own changes stay across its reloads
     if (sessionStorage.getItem("seeded")) return;
     sessionStorage.setItem("seeded", "1");
@@ -467,6 +482,40 @@ for (const [provider, name] of [["anthropic", "CLAUDE-SONNET-5-5"], ["openai", "
   });
 }
 
+test("watch: a model's tool call that isn't JSON comes back to it as an error", async (t, b) => {
+  const p = await open(b, t, {openaiBadArgs: true, seed: settings("openai")});
+  await p.click("#coach-intro [data-go=watch]");
+  await tipSays(p, /IS DONE/, 30000);
+  const result = (await panel(p)).play_events.find(e => e.kind === "result");
+  t.check(result?.error && /aren't valid JSON/.test(result.text), `the model is told, and can try again (${result?.text})`);
+});
+
+test("watch: the visitor's model reads records through Connect AI as it plays, and a click takes over", async (t, b) => {
+  const p = await open(b, t, {claude: "query", seed: READY});
+  await p.click("#coach-intro [data-go=watch]");
+  await eventually(async () => (await panel(p)).play_events.some(e => e.kind === "result" && e.server !== "doom" && e.rows > 0),
+                   "a Connect AI result in the feed", 30000);
+  const result = (await panel(p)).play_events.find(e => e.kind === "result" && e.tool === "queryData");
+  t.check(result && !result.error && result.rows === 3, `its query comes back with Connect AI's rows (${result?.rows} rows)`);
+  t.check(p.connectAICalls.some(c => c.name === "queryData" && c.arguments.query === QUERY.query), "the query went to Connect AI as the model wrote it");
+  // still playing (it thinks THINK_MS a move): a click on the game takes the marine
+  const asked = () => p.evaluate(() => performance.getEntriesByType("resource").filter(r => r.name.includes("api.anthropic.com/v1/messages")).length);
+  await p.click("#canvas");
+  await gameSays(p, s => s.options.claude_plays === 0);
+  await tipSays(p, /STEP [12] OF 3/);
+  t.check(true, "a click on the game takes over from the visitor's model");
+  const before = await asked();
+  await p.waitForTimeout(2 * THINK_MS + 500);
+  t.check(await asked() <= before + 1, "and its run stops: no more turns asked of the model");
+});
+
+test("watch: a provider overloaded at first is asked again", async (t, b) => {
+  const p = await open(b, t, {claude: "busy", seed: settings("anthropic")});
+  await p.click("#coach-intro [data-go=watch]");
+  await tipSays(p, /IS DONE/, 30000);
+  t.check(!/COULDN'T PLAY/.test(await text(p, "#coach-tip")), "it plays once the provider answers (the retry waits 2 s)");
+});
+
 test("watch: a model that turns the key down hands the game to offline Claude", async (t, b) => {
   const p = await open(b, t, {claude: "refuse", seed: settings("anthropic")});
   await p.click("[data-go=watch]");
@@ -510,6 +559,7 @@ test("builder: a level from the visitor's data, played, then back to the demo", 
   if (why) throw new Error(`the level didn't build: ${why}`);
   await started(p);
   t.check(/read your Salesforce, Zendesk and Stripe/.test(await text(p, "#coach-intro p")), "the page plays the visitor's level");
+  t.check(p.connectAICalls.some(c => c.name === "queryData" && c.arguments.query === QUERY.query), "the model read records through Connect AI to plan it");
   t.check(/Acme Corp is at risk/.test(await text(p, "#coach-intro p.what")), "its start card has the model's answer");
   await p.waitForTimeout(3000);
   const s = await panel(p);
@@ -528,6 +578,18 @@ test("builder: a level from the visitor's data, played, then back to the demo", 
   await back;
   await started(p);
   t.check(/demo company/.test(await text(p, "#coach-intro p")), "DEMO LEVEL goes back to the site's level");
+});
+
+test("builder: a model that keeps calling Connect AI is stopped at 40 calls, and the level still builds", async (t, b) => {
+  const p = await open(b, t, {claude: "greedy", seed: READY});
+  await p.click("#build-link");
+  const reloaded = p.waitForEvent("load", {timeout: 180000});
+  await p.click("#build-go");
+  await reloaded;
+  await started(p);
+  const queries = p.connectAICalls.filter(c => c.name === "queryData" && c.arguments.query === QUERY.query).length;
+  t.check(queries === 40, `the briefing's queries stop at the cap (${queries}), then the records' own`);
+  t.check(/read your Salesforce, Zendesk and Stripe/.test(await text(p, "#coach-intro p")), "the level builds from what it found");
 });
 
 test("builder: a model that won't plan says why, and the visitor can try again", async (t, b) => {

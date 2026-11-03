@@ -21,9 +21,10 @@ window.ConnectDoomReplay = (() => {
   // each (state.json's command.seq). send returns the command's number.
   let seq = Math.floor(Date.now() / 1000), written = 0, switched = 0;
   const waiting = [];
+  const isSwitch = line => /^(OPTION|MODEL)\b/.test(line);   // what changes the game's options (a player's STOPs don't)
   function send(line) {
     seq += 1;
-    if (/^(OPTION|MODEL|STOP|RESTART)\b/.test(line)) switched = seq;
+    if (isSwitch(line)) switched = seq;
     waiting.push([seq, line]);
     if (waiting.length === 1) writeNext();
     return seq;
@@ -41,9 +42,10 @@ window.ConnectDoomReplay = (() => {
     catch (e) { return 0; }   // the game hasn't started writing its state yet, or caught mid-write
   }
   // The game has run every switch the page sent (its options in state.json show them): a change
-  // there now is someone's, in the Options menu, not the page's own on its way.
+  // there now is someone's, in the Options menu, not the page's own on its way. A player's moves
+  // waiting in line don't count: while one plays there's nearly always one.
   function settled() {
-    if (waiting.length) return false;
+    if (waiting.some(([, line]) => isSwitch(line))) return false;
     try { return JSON.parse(Module.FS.readFile(`${AGENT}/state.json`, {encoding: "utf8"})).command.done_seq >= switched; }
     catch (e) { return false; }
   }

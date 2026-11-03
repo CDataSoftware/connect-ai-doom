@@ -199,13 +199,16 @@ window.ConnectDoomAI = (() => {
       for (const call of calls) {
         if (signal.aborted) break;
         const name = call.function.name, [server, tool] = name.includes("__") ? name.split("__", 2) : ["", name];
-        let args = {};
-        try { args = JSON.parse(call.function.arguments || "{}"); } catch (e) {}
+        let args = {}, badArgs = null;
+        try { args = JSON.parse(call.function.arguments || "{}"); }
+        catch (e) { badArgs = `Error: the arguments aren't valid JSON (${e.message}). Send them again as a JSON object.`; }
         log("call", {id: call.id, server, tool, args, connection: catalogOf(args)});
         const start = Date.now();
-        let out;
-        try { out = tools[name] ? await tools[name].run(args) : `Error: there's no tool called ${name}.`; }
-        catch (e) { if (signal.aborted) break; out = `Error: ${e.message}`; }
+        let out = badArgs;
+        if (!out) {
+          try { out = tools[name] ? await tools[name].run(args) : `Error: there's no tool called ${name}.`; }
+          catch (e) { if (signal.aborted) break; out = `Error: ${e.message}`; }
+        }
         const error = out.startsWith("Error:");
         log("result", {id: call.id, tool, connection: catalogOf(args), error, text: out.slice(0, 4000),
                        rows: error ? 0 : countRows(out), ms: Date.now() - start});

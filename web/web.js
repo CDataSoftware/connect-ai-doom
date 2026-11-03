@@ -696,15 +696,18 @@
 
     // The Options menu's switches, in the game (Esc > Options) or the AI settings: Claude plays on
     // starts whoever the Model row names, off hands the marine back, and a new model takes over.
+    // The page follows what the switch says, not its changes: flipped fast, a change can come and go
+    // between two looks.
     let options = null;
     function followOptions(now) {
-      if (!window.ConnectDoomReplay.settled()) return;   // the page's own switches lag in the game's options
+      // no reading (caught mid-write) says nothing; and the page's own switches lag in the game's options
+      if (!now || !window.ConnectDoomReplay.settled()) return;
       const was = options;
       options = now;
-      if (!was || !now || ended || !intro.hidden) return;
-      if (now.claude_plays && !was.claude_plays && !run) watch(now.model);
-      else if (!now.claude_plays && was.claude_plays && run) playYourself();
-      else if (now.claude_plays && run && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
+      if (ended || !intro.hidden) return;
+      if (now.claude_plays && !run) watch(now.model);
+      else if (!now.claude_plays && run) playYourself();
+      else if (now.claude_plays && run && was && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
     }
 
     // Killed (god mode off): the page starts the level over at once (every record back on the list),
@@ -715,7 +718,7 @@
       if (ended || !(game?.player?.health <= 0)) { diedAt = 0; return false; }
       if (!diedAt) {
         diedAt = Date.now();
-        if (run) { run.stop(false); run = null; }
+        if (run) { run.stop(); run = null; }   // Claude plays goes off too: the visitor plays the fresh level
         kills.length = hits.length = vault.length = playEvents.length = 0;
         clearTimeout(endTimer);
         state.game = {...state.game, mode: "player", started: Date.now() / 1000};
@@ -777,8 +780,6 @@
         watch(AI.OFFLINE, true);
         setTimeout(fadeIntro, 10000);
       },
-      // who plays instead of the player right now, by name, or null
-      playing: () => run?.name || null,
       // the Watch button names the model the Options menu's Model row picks
       settingsChanged() {
         const ai = AI.active(AI.load());

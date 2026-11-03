@@ -1,6 +1,6 @@
 {
   "private": true,
-  "description": "The browser version's end-to-end test (smoke.mjs)",
+  "description": "The browser version's end-to-end tests (e2e.mjs)",
   "type": "module",
   "dependencies": {
     "playwright-core": "1.57.0"

@@ -316,7 +316,8 @@
         const [models] = menuModels();   // offline Claude picked: it's who plays first (ready())
         Object.assign(ENV, {PSDOOMPSCMD: "list", PSDOOMKILLCMD: "kill", PSDOOMRENICECMD: "hit",
           PSDOOMVAULTCMD: "vault", PSDOOM_LABELS: "/doom/labels.tsv", PSDOOM_MONSTERS: monsterKinds.trim(),
-          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: AI.OFFLINE});
+          PSDOOM_AGENT_DIR: "/doom/agent", HOME: "/doom", PSDOOM_AGENT_MODELS: models, PSDOOM_AGENT_MODEL: AI.OFFLINE,
+          PSDOOM_OPT_GOD: "1"});   // god mode starts on (Esc > Options turns it off)
       }],
       // No sound yet: Emscripten's SDL mixer can't play the buffers Chocolate Doom builds.
       onRuntimeInitialized: () => {
@@ -378,6 +379,7 @@
   function plainWords() {
     const relabel = (sel, text) => { const el = document.querySelector(sel); if (el) el.textContent = text; };
     relabel("#s-model + .lbl", "BUILT BY");
+    document.getElementById("s-model").dataset.builtBy = "1";   // the panel leaves it to the level's builder, not who plays
     relabel("#stage .bar.bottom .line .tag", "THE QUESTION");
     nameBuilder(mine ? mine.model : "claude");
     const fine = document.querySelector("#stage .bar.bottom .fine");
@@ -655,23 +657,24 @@
       end.querySelector(".btn").focus();
     }
 
-    // The start card fades once its time is up, unless the pointer is on it (someone's reading)
-    function fadeIntro() {
+    // The start card fades once its time is up, unless the pointer is on it (someone's reading);
+    // asked (the Watch button, a click beside it), it fades wherever the pointer is.
+    function fadeIntro(asked = false) {
       if (intro.hidden || intro.classList.contains("fading")) return;
-      if (intro.matches(":hover")) { setTimeout(fadeIntro, 3000); return; }
+      if (!asked && intro.matches(":hover")) { setTimeout(fadeIntro, 3000); return; }
       intro.classList.add("fading");
       setTimeout(() => { intro.hidden = true; intro.classList.remove("fading"); }, 800);
     }
 
     intro.addEventListener("click", e => {
-      if (e.target === intro) { fadeIntro(); return; }   // a click beside the card: back to the game
+      if (e.target === intro) { fadeIntro(true); return; }   // a click beside the card: back to the game
       const go = e.target.closest("[data-go]")?.dataset.go;
       if (go === "play") { trackEvent("Play"); playYourself(); }
       if (go === "watch") {
         // offline Claude is already playing: the card just goes; the visitor's own model takes over
         const model = menuModels()[1];
         trackEvent("Watch Claude", {who: model === AI.OFFLINE ? "offline" : "own model"});
-        if (model === AI.OFFLINE && run) fadeIntro();
+        if (model === AI.OFFLINE && run) fadeIntro(true);
         else watch(model);
       }
       if (go === "settings") openSettings();
@@ -693,6 +696,7 @@
     // starts whoever the Model row names, off hands the marine back, and a new model takes over.
     let options = null;
     function followOptions(now) {
+      if (!window.ConnectDoomReplay.settled()) return;   // the page's own switches lag in the game's options
       const was = options;
       options = now;
       if (!was || !now || ended || !intro.hidden) return;
@@ -701,9 +705,33 @@
       else if (now.claude_plays && run && now.model !== was.model) { run.stop(false); run = null; watch(now.model); }
     }
 
+    // Killed (god mode off): the page starts the level over at once (every record back on the list),
+    // and a few seconds on the floor later the game does too, as play.py's auto replay does on the Mac.
+    // Pressing use (E, right click) before then respawns the marine into the same fresh level.
+    let diedAt = 0;   // when the marine died; -1 once the game was told to restart
+    function restartAfterDeath(game) {
+      if (ended || !(game?.player?.health <= 0)) { diedAt = 0; return false; }
+      if (!diedAt) {
+        diedAt = Date.now();
+        if (run) { run.stop(false); run = null; }
+        kills.length = hits.length = vault.length = playEvents.length = 0;
+        clearTimeout(endTimer);
+        state.game = {...state.game, mode: "player", started: Date.now() / 1000};
+        trackEvent("Died");
+        if (step) step = 1;   // the keycards are back in the lobby
+        show("YOU DIED · BACK TO THE START", "Every record is back. Grab your keycards in the lobby. God mode (Esc > Options) keeps you alive.", 8);
+      } else if (diedAt > 0 && Date.now() - diedAt >= 3000) {
+        window.ConnectDoomReplay.send("RESTART");
+        diedAt = -1;
+      }
+      return true;   // the old keycards count until the level reloads
+    }
+
     setInterval(() => {
       if (hideAt && Date.now() > hideAt) { tip.hidden = true; hideAt = 0; }
-      followOptions(gameState()?.options);
+      const game = gameState();
+      followOptions(game?.options);
+      if (restartAfterDeath(game)) return;
       const keys = window.Module?._web_keys ? Module._web_keys() : 0;
       if (step === 1 && !run && (keys & need) === need) {
         step = 2;
@@ -1086,8 +1114,9 @@
 
     // the game's switches as the game has them: the Options menu changes them too
     function renderGame() {
-      const options = gameState()?.options, [models] = menuModels();
+      const options = gameState()?.options, [models] = menuModels(), settled = window.ConnectDoomReplay.settled();
       el.querySelectorAll("[data-option]").forEach(b => {
+        if (!settled && b.textContent) return;   // a switch just flipped shows the flip, not the game's options lagging it
         const on = !!options?.[b.dataset.option === "0" ? "claude_plays" : "god_mode"];
         b.setAttribute("aria-pressed", String(on));
         b.textContent = on ? "ON" : "OFF";
@@ -1112,8 +1141,9 @@
         const on = e.target.getAttribute("aria-pressed") !== "true";
         if (option === "0" && on && !coach) return;
         window.ConnectDoomReplay.send(`OPTION ${option} ${on ? 1 : 0}`);
+        e.target.setAttribute("aria-pressed", String(on));
+        e.target.textContent = on ? "ON" : "OFF";
         if (option === "0" && on) el.close();   // to watch
-        setTimeout(renderGame, 300);
       }
     });
     $("game-model").addEventListener("change", e => {

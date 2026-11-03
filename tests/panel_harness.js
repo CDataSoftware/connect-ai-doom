@@ -13,6 +13,7 @@ class El {
     this.tag = tag; this.children = []; this.textContent = ""; this.innerHTML = ""; this.hidden = false;
     this.className = ""; this.scrollHeight = 0; this.scrollTop = 0; this.clientHeight = 0; this.parent = null;
     this.subs = {};
+    this.dataset = {};   // data-* attributes, as a real element has
     this.vars = {};   // CSS variables set with style.setProperty
     this.style = { setProperty: (k, v) => { this.vars[k] = v; } };
     const el = this;

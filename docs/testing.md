@@ -30,11 +30,13 @@ It runs psdoom headless on the current `state/` level, walks to a room through t
 
 ## The browser version
 
-`make test` covers `web/levelkit.py` (a visitor's level, built from recorded Connect AI answers), but not the page. `make web-test` builds `web/dist` and plays it in headless Chromium (`tests/web/smoke.mjs`), with Claude's API and the Connect AI MCP server faked, so it needs no keys:
+`make test` covers `web/levelkit.py` (a visitor's level, built from recorded Connect AI answers), but not the page. `make web-test` builds `web/dist` and plays it in headless Chromium (`tests/web/e2e.mjs`), with Claude's, OpenAI's and OpenRouter's APIs and the Connect AI MCP server faked, so it needs no keys:
 
 ```bash
 cd tests/web && npm ci && npx playwright-core install chromium   # once
 make web-test
 ```
 
-It checks that offline Claude plays on load, that a refused key hands the game back to offline Claude, that a level builds from the visitor's data (Pyodide and zdbsp in the page) and plays, and that Demo level goes back. The Pages workflow runs it before every deploy; a failure stops the deploy.
+It covers every button and flow a visitor can reach, each test in its own browser context: the start card (Play, Watch, its fade), taking over from Claude, the controls, the steps' tips, clearing the level through the red door to the end card and Play again, dying and the restart, god mode (on from the start; the AI settings' switch and Esc > Options), the AI settings (each provider's key checked, kept, refused and forgotten; Connect AI checked and refused; the Model row), each provider's model playing and a refused one handing over to offline Claude, building a level from the visitor's data (Pyodide and zdbsp in the page), a build that fails, Demo level, the panel's tabs and question box, every page's links, the phone and small-window notes, and the blog embed.
+
+`node e2e.mjs <text>` runs only the tests whose names contain it; `JOBS=<n>` sets how many run at once (3 by default). The Pages workflow runs it before every deploy; a failure stops the deploy.

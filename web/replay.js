@@ -15,12 +15,37 @@ window.ConnectDoomReplay = (() => {
 
   // ---------- the game channel (play.Game) ----------
   // One command count for everyone writing to the channel (a player, web.js's switches): the game
-  // runs a command only when its number is past the last one.
-  let seq = Math.floor(Date.now() / 1000);
+  // runs a command only when its number is past the last one. The channel holds one command, and the
+  // game reads it every 4 tics, so a command written before the game took the last one would replace
+  // it (a switch flipped while Claude moves, say): they wait in line, in order, for the game to take
+  // each (state.json's command.seq). send returns the command's number.
+  let seq = Math.floor(Date.now() / 1000), written = 0, switched = 0;
+  const waiting = [];
   function send(line) {
     seq += 1;
-    Module.FS.writeFile(`${AGENT}/cmd.tmp`, `${seq} ${line}\n`);
+    if (/^(OPTION|MODEL|STOP|RESTART)\b/.test(line)) switched = seq;
+    waiting.push([seq, line]);
+    if (waiting.length === 1) writeNext();
+    return seq;
+  }
+  function writeNext() {
+    if (written && takenSeq() < written) { setTimeout(writeNext, 20); return; }
+    const [n, line] = waiting.shift();
+    Module.FS.writeFile(`${AGENT}/cmd.tmp`, `${n} ${line}\n`);
     Module.FS.rename(`${AGENT}/cmd.tmp`, `${AGENT}/cmd`);
+    written = n;
+    if (waiting.length) setTimeout(writeNext, 20);
+  }
+  function takenSeq() {
+    try { return JSON.parse(Module.FS.readFile(`${AGENT}/state.json`, {encoding: "utf8"})).command.seq; }
+    catch (e) { return 0; }   // the game hasn't started writing its state yet, or caught mid-write
+  }
+  // The game has run every switch the page sent (its options in state.json show them): a change
+  // there now is someone's, in the Options menu, not the page's own on its way.
+  function settled() {
+    if (waiting.length) return false;
+    try { return JSON.parse(Module.FS.readFile(`${AGENT}/state.json`, {encoding: "utf8"})).command.done_seq >= switched; }
+    catch (e) { return false; }
   }
 
   class Game {
@@ -37,8 +62,7 @@ window.ConnectDoomReplay = (() => {
 
     async do(verb, args = [], {timeout = 25, until = null} = {}) {
       seq = Math.max(seq, (await this.state()).command?.seq || 0);
-      send(`${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim());
-      const mine = seq, end = Date.now() + timeout * 1000;
+      const mine = send(`${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim()), end = Date.now() + timeout * 1000;
       while (Date.now() < end) {
         const s = await this.state();
         if (s.command.done_seq >= mine) return s.command.result;
@@ -57,7 +81,7 @@ window.ConnectDoomReplay = (() => {
     return (handBack = true) => {
       if (game.stopped) return;
       send("STOP");
-      if (handBack) setTimeout(() => send("OPTION 0 0"), 150);
+      if (handBack) send("OPTION 0 0");
       game.stopped = true;
     };
   }
@@ -306,5 +330,5 @@ window.ConnectDoomReplay = (() => {
     return {done, stop};
   }
 
-  return {play, doomTools, send, Stopped};
+  return {play, doomTools, send, settled, Stopped};
 })();

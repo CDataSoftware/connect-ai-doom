@@ -57,7 +57,7 @@ jobs:
         run: |
           npm ci
           npx playwright-core install --with-deps chromium
-          node smoke.mjs
+          node e2e.mjs
       - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist

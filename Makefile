@@ -3,8 +3,8 @@
 test:
 	python3 -m unittest discover -s tests -t tests $(if $(V),-v,)
 
-# The browser version, built (web/build.sh) and played end to end in headless Chromium (tests/web/smoke.mjs).
+# The browser version, built (web/build.sh) and played end to end in headless Chromium (tests/web/e2e.mjs).
 # CHROMIUM=<path> uses a Chromium of your own instead of Playwright's.
 web-test:
 	web/build.sh
-	cd tests/web && npm ci --silent && node smoke.mjs
+	cd tests/web && npm ci --silent && node e2e.mjs

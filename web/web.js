@@ -656,23 +656,24 @@
       end.querySelector(".btn").focus();
     }
 
-    // The start card fades once its time is up, unless the pointer is on it (someone's reading)
-    function fadeIntro() {
+    // The start card fades once its time is up, unless the pointer is on it (someone's reading);
+    // asked (the Watch button, a click beside it), it fades wherever the pointer is.
+    function fadeIntro(asked = false) {
       if (intro.hidden || intro.classList.contains("fading")) return;
-      if (intro.matches(":hover")) { setTimeout(fadeIntro, 3000); return; }
+      if (!asked && intro.matches(":hover")) { setTimeout(fadeIntro, 3000); return; }
       intro.classList.add("fading");
       setTimeout(() => { intro.hidden = true; intro.classList.remove("fading"); }, 800);
     }
 
     intro.addEventListener("click", e => {
-      if (e.target === intro) { fadeIntro(); return; }   // a click beside the card: back to the game
+      if (e.target === intro) { fadeIntro(true); return; }   // a click beside the card: back to the game
       const go = e.target.closest("[data-go]")?.dataset.go;
       if (go === "play") { trackEvent("Play"); playYourself(); }
       if (go === "watch") {
         // offline Claude is already playing: the card just goes; the visitor's own model takes over
         const model = menuModels()[1];
         trackEvent("Watch Claude", {who: model === AI.OFFLINE ? "offline" : "own model"});
-        if (model === AI.OFFLINE && run) fadeIntro();
+        if (model === AI.OFFLINE && run) fadeIntro(true);
         else watch(model);
       }
       if (go === "settings") openSettings();
@@ -694,6 +695,7 @@
     // starts whoever the Model row names, off hands the marine back, and a new model takes over.
     let options = null;
     function followOptions(now) {
+      if (!window.ConnectDoomReplay.settled()) return;   // the page's own switches lag in the game's options
       const was = options;
       options = now;
       if (!was || !now || ended || !intro.hidden) return;
@@ -1108,8 +1110,9 @@
 
     // the game's switches as the game has them: the Options menu changes them too
     function renderGame() {
-      const options = gameState()?.options, [models] = menuModels();
+      const options = gameState()?.options, [models] = menuModels(), settled = window.ConnectDoomReplay.settled();
       el.querySelectorAll("[data-option]").forEach(b => {
+        if (!settled && b.textContent) return;   // a switch just flipped shows the flip, not the game's options lagging it
         const on = !!options?.[b.dataset.option === "0" ? "claude_plays" : "god_mode"];
         b.setAttribute("aria-pressed", String(on));
         b.textContent = on ? "ON" : "OFF";
@@ -1134,8 +1137,9 @@
         const on = e.target.getAttribute("aria-pressed") !== "true";
         if (option === "0" && on && !coach) return;
         window.ConnectDoomReplay.send(`OPTION ${option} ${on ? 1 : 0}`);
+        e.target.setAttribute("aria-pressed", String(on));
+        e.target.textContent = on ? "ON" : "OFF";
         if (option === "0" && on) el.close();   // to watch
-        setTimeout(renderGame, 300);
       }
     });
     $("game-model").addEventListener("change", e => {

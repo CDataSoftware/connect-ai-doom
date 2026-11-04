@@ -610,7 +610,7 @@
 
     function watchOffline() {
       state.game = {...state.game, mode: "replay", model: null};
-      show("WATCHING CLAUDE PLAY", `Claude grabs the keycards, then clears the rooms. ${EMBED ? "" : "Its feed is on the right. "}Click the game to take over.`);
+      show("WATCHING CLAUDE PLAY", `Claude grabs the keycards, then clears the rooms. ${EMBED ? "Click anywhere to play." : "Its feed is on the right. Click the game to take over."}`);
       const replay = window.ConnectDoomReplay.play(level(), log);
       const mine = run = {name: "Claude", stop: handBack => replay.stop(handBack)};
       replay.done.then(() => { if (run === mine) { run = null; finish("watched", "Claude"); } });
@@ -693,8 +693,10 @@
       if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
       if (e.target.closest("[data-go=again]")) location.reload();
     });
-    // During Claude's run, a click on the game takes the marine over where it stands.
-    canvas.addEventListener("click", () => {
+    // During Claude's run, a click on the game takes the marine over where it stands; in the embed, a
+    // click anywhere but its links and cards (the logo strip, the caption)
+    (EMBED ? document : canvas).addEventListener("click", e => {
+      if (EMBED && e.target.closest("a, button, input, textarea, select, dialog, .coach-card")) return;
       if (run) { trackEvent("Take over from Claude"); playYourself(); return; }
       canvas.focus();
       lockPointer(canvas);

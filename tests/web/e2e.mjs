@@ -685,9 +685,10 @@ test("embed: Claude starts playing the game alone as it loads", async (t, b) => 
           "the game fills the column, with no panel");
   const full = p.locator(".weblinks a");
   t.check(await full.getAttribute("href") === SITE && await full.getAttribute("target") === "_blank", "PLAY THE FULL VERSION opens the site");
-  await p.click("#canvas");
+  t.check(/Click anywhere to play/.test(await text(p, "#coach-tip")), "the caption says click anywhere to play");
+  await p.click(".bar.top", {position: {x: 400, y: 20}});   // the logo strip, off its links
   await gameSays(p, s => s.options.claude_plays === 0);
-  t.check(true, "a click on the game takes over");
+  t.check(true, "a click anywhere, not just on the game, takes over");
 });
 
 test("embed: in a blog post, the game leaves the mouse alone until it's clicked", async (t, b) => {

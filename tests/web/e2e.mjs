@@ -677,16 +677,10 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   t.check(await small.isHidden("#desktop-only"), "made bigger, the game starts");
 });
 
-test("embed: nothing downloads before its click, then Claude plays the game alone", async (t, b) => {
+test("embed: Claude starts playing the game alone as it loads", async (t, b) => {
   const p = await open(b, t, {viewport: {width: 768, height: 712}, path: "embed.html", wait: false});
-  const fetched = [];
-  p.on("request", r => fetched.push(r.url()));
-  await p.waitForSelector("#poster button");
-  await p.waitForTimeout(1000);
-  t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "the embed downloads no game before its click");
-  await p.click("#poster button");
   await gameSays(p, s => s.options.claude_plays === 1, 120000);
-  t.check(!(await p.isVisible("#coach-intro")) && !(await p.isVisible("#poster")), "the click starts Claude playing, no start card");
+  t.check(!(await p.isVisible("#coach-intro")), "with no click, Claude plays, no start card");
   t.check(!(await p.isVisible("#side")) && (await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--gw"))) === "768px",
           "the game fills the column, with no panel");
   const full = p.locator(".weblinks a");
@@ -703,9 +697,7 @@ test("embed: in a blog post, the game leaves the mouse alone until it's clicked"
     <div style="height: 2000px">More of the post</div></body>`}));
   await p.goto(SITE + "blog.html");
   const embed = await (await p.waitForSelector("iframe")).contentFrame();
-  await embed.waitForSelector("#poster button");
   await p.evaluate(() => scrollTo(0, 400));
-  await embed.click("#poster button");
   await gameSays(embed, s => s.options.claude_plays === 1, 120000);
   t.check(await p.evaluate(() => scrollY) === 400, "the game starting doesn't scroll the post");
   t.check(await embed.evaluate(() => getComputedStyle(document.getElementById("canvas")).cursor) === "pointer",

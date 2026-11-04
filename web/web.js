@@ -257,6 +257,12 @@
       "height: 100% !important; z-index: 1; image-rendering: pixelated; background: #000; outline: none; cursor: none; }";
     document.head.appendChild(style);
     document.getElementById("stage-screen").appendChild(canvas);
+    // In a blog post the game must not take the mouse before a click: the cursor shows over it, and
+    // the wheel scrolls the post (Emscripten's SDL cancels every wheel on the canvas) until the pointer lock
+    if (EMBED) {
+      style.textContent += " html[data-embed] #canvas { cursor: pointer; }";
+      addEventListener("wheel", e => { if (document.pointerLockElement !== canvas) e.stopPropagation(); }, true);
+    }
     addEventListener("keydown", e => {
       if (GAME_KEYS.has(e.code) && (document.activeElement === canvas || document.pointerLockElement === canvas))
         e.preventDefault();
@@ -773,7 +779,7 @@
         const [play, watchBtn] = intro.querySelectorAll("[data-go]");
         play.textContent = "PLAY";
         play.disabled = watchBtn.disabled = false;
-        play.focus();
+        if (!EMBED) play.focus();   // the embed's start card is hidden, and focus would pull the post's scroll to the game
         trackEvent("Auto watch");
         this.settingsChanged();
         if (EMBED) { watch(AI.OFFLINE); return; }   // the poster was the start card

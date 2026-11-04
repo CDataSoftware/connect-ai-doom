@@ -696,6 +696,26 @@ test("embed: nothing downloads before its click, then Claude plays the game alon
   t.check(true, "a click on the game takes over");
 });
 
+test("embed: in a blog post, the game leaves the mouse alone until it's clicked", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 1000, height: 800}, path: "about.html", wait: false});
+  await p.route(SITE + "blog.html", r => r.fulfill({contentType: "text/html", body: `<!doctype html><body style="margin: 0">
+    <div style="height: 600px">The post</div><iframe src="embed.html" width="768" height="712" style="border: 0"></iframe>
+    <div style="height: 2000px">More of the post</div></body>`}));
+  await p.goto(SITE + "blog.html");
+  const embed = await (await p.waitForSelector("iframe")).contentFrame();
+  await embed.waitForSelector("#poster button");
+  await p.evaluate(() => scrollTo(0, 400));
+  await embed.click("#poster button");
+  await gameSays(embed, s => s.options.claude_plays === 1, 120000);
+  t.check(await p.evaluate(() => scrollY) === 400, "the game starting doesn't scroll the post");
+  t.check(await embed.evaluate(() => getComputedStyle(document.getElementById("canvas")).cursor) === "pointer",
+          "over the game while Claude plays, the cursor shows");
+  await p.mouse.move(500, 500);   // over the game
+  await p.mouse.wheel(0, 300);
+  await eventually(() => p.evaluate(() => scrollY > 400), "the post to scroll");
+  t.check(true, "the wheel over the game scrolls the post");
+});
+
 // ---------- run ----------
 const server = spawn("python3", ["-m", "http.server", String(PORT), "--bind", "127.0.0.1", "-d", DIST], {stdio: "ignore"});
 const browser = await chromium.launch(process.env.CHROMIUM ? {executablePath: process.env.CHROMIUM} : {});

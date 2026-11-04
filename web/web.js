@@ -14,7 +14,7 @@
   const esc = text => String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
   // A custom event for the site's Plausible analytics (web/build.sh puts its script on the page)
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
-  // embed.html (web/build.sh): the game alone, for an iframe in a blog post, starting on a click
+  // embed.html (web/build.sh): the game alone, for an iframe in a blog post, where offline Claude starts playing as it loads
   const EMBED = document.documentElement.hasAttribute("data-embed");
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
@@ -782,7 +782,7 @@
         if (!EMBED) play.focus();   // the embed's start card is hidden, and focus would pull the post's scroll to the game
         trackEvent("Auto watch");
         this.settingsChanged();
-        if (EMBED) { watch(AI.OFFLINE); return; }   // the poster was the start card
+        if (EMBED) { watch(AI.OFFLINE); return; }   // no start card: the caption says click to take over
         watch(AI.OFFLINE, true);
         setTimeout(fadeIntro, 10000);
       },
@@ -1310,40 +1310,6 @@
     return gate;
   }
 
-  // The embed's start card: nothing downloads until someone asks for the game (about 9 MB), and the
-  // blog post around it loads as fast as it would without it.
-  function showPoster(go) {
-    const style = document.createElement("style");
-    style.textContent = `
-      #poster { position: fixed; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; padding: 24px;
-                background: linear-gradient(rgba(13, 13, 18, .82), rgba(13, 13, 18, .92)), url(og.jpg) center / cover, var(--depth); }
-      #poster .card { max-width: 560px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
-      #poster .eyebrow { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; }
-      #poster h3 { margin: 0; font: 700 32px/1.15 var(--sans); color: var(--clarity); }
-      #poster h3 .red { color: var(--doom-red); }
-      #poster p { margin: 0; font: 16px/1.5 var(--sans); color: #E5E2DA; }
-      #poster button { font: 11px/1 var(--pixel); letter-spacing: 1px; color: var(--depth); background: var(--agility);
-                       border: 0; border-radius: 3px; padding: 14px 18px; cursor: pointer; }
-      #poster button:hover, #poster button:focus-visible { filter: brightness(1.1); outline: 2px solid var(--clarity); outline-offset: 2px; }
-      #poster .fine { font: 12px/1.4 var(--mono); color: var(--balance); }`;
-    document.head.appendChild(style);
-    const poster = document.createElement("div");
-    poster.id = "poster";
-    poster.innerHTML = `<div class="card">
-      <div class="eyebrow">CONNECT AI × DOOM · A.K.A. DOOMCP</div>
-      <h3>Every monster is a <span class="red">record</span>.</h3>
-      <p>Claude read a demo company's apps through the CData Connect AI MCP server and built this Doom level from what it
-        found. Watch Claude play it, then click the game to take over.</p>
-      <button type="button">▶ WATCH CLAUDE PLAY</button>
-      <div class="fine">About a 9 MB download · WASD move · mouse turn · click fire · Esc frees the mouse</div></div>`;
-    poster.querySelector("button").addEventListener("click", () => {
-      trackEvent("Embed start");
-      poster.remove();
-      go();
-    });
-    document.body.appendChild(poster);
-  }
-
   // Doom needs a keyboard and a mouse, and room for the stage and the panel side by side.
   const hasMouse = () => matchMedia("(any-pointer: fine)").matches;
   const roomy = () => EMBED ? innerWidth >= 480 && innerHeight >= 360 : innerWidth >= 900 && innerHeight >= 560;
@@ -1356,9 +1322,7 @@
       if (hasMouse() && roomy()) {
         gate.hidden = true;
         started = true;
-        const go = () => start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
-        if (EMBED) showPoster(go);
-        else go();
+        start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
         return;
       }
       if (gate.hidden) trackEvent("Desktop only", {reason: hasMouse() ? "small window" : "no mouse"});

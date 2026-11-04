@@ -16,6 +16,16 @@
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
   // embed.html (web/build.sh): the game alone, for an iframe in a blog post, where offline Claude starts playing as it loads
   const EMBED = document.documentElement.hasAttribute("data-embed");
+  // The embed's pause: the reader's PAUSE button, or the game out of the post's view or its tab hidden.
+  // The game and Claude wait (psdoom-web.patch: I_Sleep; replay.js: playTime), and the laptop's fan stays off.
+  const pause = {byReader: false, unseen: false};
+  function applyPause() {
+    const paused = pause.byReader || pause.unseen;
+    if (paused === !!Module.paused) return;
+    if (paused) Module.pausedAt = Date.now();
+    else Module.pausedMs = (Module.pausedMs || 0) + Date.now() - Module.pausedAt;
+    Module.paused = paused;
+  }
 
   // ---------- the stage's layout (raid.sh passes it as ?stage=gx,gy,gw,gh,split,top) ----------
   // The header (the links and the logos) along the top, TOP tall; the game at 4:3 in the middle of
@@ -262,6 +272,18 @@
     if (EMBED) {
       style.textContent += " html[data-embed] #canvas { cursor: pointer; }";
       addEventListener("wheel", e => { if (document.pointerLockElement !== canvas) e.stopPropagation(); }, true);
+      // and the keys: Esc (the mouse let go) lets go of them too, so Space and the arrows scroll the post
+      // again; they reach the game while it's focused (a click) or holds the mouse. Key ups always do,
+      // so no key stays held.
+      document.addEventListener("pointerlockchange", () => {
+        if (document.pointerLockElement) return;
+        canvas.blur();
+        window.parent.focus();   // the keys to the post: an iframe's own scroll doesn't reach it
+      });
+      for (const type of ["keydown", "keypress"])
+        addEventListener(type, e => {
+          if (document.activeElement !== canvas && document.pointerLockElement !== canvas) e.stopPropagation();
+        }, true);
     }
     addEventListener("keydown", e => {
       if (GAME_KEYS.has(e.code) && (document.activeElement === canvas || document.pointerLockElement === canvas))
@@ -333,17 +355,9 @@
         coach.ready();
       },
     };
-    // The embed scrolled out of the post's view, or its tab hidden: the game and Claude wait
-    // (psdoom-web.patch: I_Sleep; replay.js: playTime), and the laptop's fan stays off
     if (EMBED) {
       let inView = true;
-      const pauseUnseen = () => {
-        const paused = !inView || document.hidden;
-        if (paused === !!Module.paused) return;
-        if (paused) Module.pausedAt = Date.now();
-        else Module.pausedMs = (Module.pausedMs || 0) + Date.now() - Module.pausedAt;
-        Module.paused = paused;
-      };
+      const pauseUnseen = () => { pause.unseen = !inView || document.hidden; applyPause(); };
       new IntersectionObserver(([seen]) => { inView = seen.isIntersecting; pauseUnseen(); }).observe(canvas);
       document.addEventListener("visibilitychange", pauseUnseen);
     }
@@ -594,7 +608,24 @@
       hideAt = seconds ? Date.now() + seconds * 1000 : 0;
     };
 
+    // The embed's PAUSE button (addLinks): the game stops on its frame until RESUME or a click on it
+    const pauseButton = document.querySelector(".weblinks .pause");
+    function pauseByReader(on) {
+      pause.byReader = on;
+      applyPause();
+      pauseButton.textContent = on ? "RESUME" : "PAUSE";
+      if (on && intro.hidden && end.hidden)
+        show("PAUSED", run ? "Click anywhere to take over, or RESUME to watch Claude." : "Click anywhere or RESUME to play on.");
+      else if (!on && tip.querySelector("b")?.textContent === "PAUSED") tip.hidden = true;
+    }
+    pauseButton?.addEventListener("click", () => {
+      if (!pause.byReader) { trackEvent("Embed pause"); pauseByReader(true); return; }
+      pauseByReader(false);
+      if (!run && state.game?.mode !== "player") watch(AI.OFFLINE);   // still on the start card: Claude plays
+    });
+
     function playYourself() {
+      if (pause.byReader) pauseByReader(false);
       intro.hidden = end.hidden = true;
       if (run) { run.stop(); run = null; }
       state.game = {...state.game, mode: "player"};
@@ -609,6 +640,7 @@
     // Someone else plays: model is the Options menu's Model row, offline Claude or the visitor's model.
     // keepIntro: the start card stays up over the game (the page's own start, see ready()).
     function watch(model, keepIntro = false) {
+      if (pause.byReader) pauseByReader(false);
       if (!keepIntro) intro.hidden = true;
       end.hidden = true;
       if (run) { run.stop(false); run = null; }   // another player takes over where the marine stands
@@ -676,7 +708,24 @@
           <a class="btn alt" href="about.html">HOW IT WORKS</a>
           ${external(REPO, "GITHUB", "btn alt")}</div></div>`;
       end.hidden = false;
-      end.querySelector(".btn").focus();
+      if (!EMBED) end.querySelector(".btn").focus();   // in a blog post, focus would pull the post's scroll to the game
+      if (EMBED && how === "watched") playAgainLater(15);
+    }
+
+    // The embed: Claude's level clear stays up a while (longer with the pointer on it, or paused), then
+    // Claude plays the level again from the start, for whoever scrolls by next
+    function playAgainLater(seconds) {
+      setTimeout(async () => {
+        if (end.hidden || run) return;   // someone took over
+        if (end.matches(":hover") || pause.byReader || pause.unseen) { playAgainLater(3); return; }
+        const seq = window.ConnectDoomReplay.send("RESTART");
+        for (let s; !((s = gameState())?.command.done_seq >= seq && s.player.kills === 0);) await new Promise(r => setTimeout(r, 200));
+        if (end.hidden || run) return;
+        kills.length = hits.length = vault.length = 0;
+        ended = false;
+        trackEvent("Embed replay");
+        watch(AI.OFFLINE);
+      }, seconds * 1000);
     }
 
     // The start card fades once its time is up, unless the pointer is on it (someone's reading);
@@ -689,7 +738,9 @@
     }
 
     intro.addEventListener("click", e => {
-      if (e.target === intro) { fadeIntro(true); return; }   // a click beside the card: back to the game
+      // a click beside the card: back to the game; in the embed, anywhere but its buttons plays
+      if (EMBED && !e.target.closest("[data-go], a")) { trackEvent("Play"); playYourself(); return; }
+      if (e.target === intro) { fadeIntro(true); return; }
       const go = e.target.closest("[data-go]")?.dataset.go;
       if (go === "play") { trackEvent("Play"); playYourself(); }
       if (go === "watch") {
@@ -798,9 +849,11 @@
         if (!EMBED) play.focus();   // the embed's start card is hidden, and focus would pull the post's scroll to the game
         trackEvent("Auto watch");
         this.settingsChanged();
-        if (EMBED) { watch(AI.OFFLINE); return; }   // no start card: the caption says click to take over
+        if (pauseButton) pauseButton.hidden = false;
+        // reduced motion: nothing moves until asked (the start card's buttons, RESUME, a click)
+        if (EMBED && matchMedia("(prefers-reduced-motion: reduce)").matches) { pauseByReader(true); return; }
         watch(AI.OFFLINE, true);
-        setTimeout(fadeIntro, 10000);
+        setTimeout(fadeIntro, EMBED ? 5000 : 10000);
       },
       // the Watch button names the model the Options menu's Model row picks
       settingsChanged() {
@@ -1305,13 +1358,19 @@
         html[data-embed] .lockup .x, html[data-embed] .lockup .doom { font-size: 15px; }
         html[data-embed] .weblinks { position: static; }`;
       style.textContent += `
-        .weblinks .fullscreen { font: 9px/1 var(--pixel); color: var(--balance); letter-spacing: 1px; background: none;
-                                border: 0; padding: 0; cursor: pointer; }
-        .weblinks .fullscreen:hover, .weblinks .fullscreen:focus-visible { color: var(--agility); }
+        .weblinks button { font: 9px/1 var(--pixel); color: var(--balance); letter-spacing: 1px; background: none;
+                           border: 0; padding: 0; cursor: pointer; }
+        .weblinks button:hover, .weblinks button:focus-visible { color: var(--agility); }
+        .weblinks button[hidden] { display: none; }
+        /* the start card: the game shows through it, and only the site's level (no bring your own AI) */
+        html[data-embed] #coach-intro { background: rgba(13, 13, 18, .6); }
+        html[data-embed] #coach-intro .card { text-shadow: 0 1px 3px #000; }
+        html[data-embed] #coach-byo { display: none; }
         #desktop-only .shot { width: 100%; border-radius: 3px; }`;
       // fullscreen when the post's iframe allows it (allow="fullscreen")
-      nav.innerHTML = (document.fullscreenEnabled ? '<button type="button" class="fullscreen">FULLSCREEN</button>' : "") +
-        external(new URL("./", location.href).href, "PLAY THE FULL VERSION ↗");
+      nav.innerHTML = '<button type="button" class="pause" hidden>PAUSE</button>' +
+        (document.fullscreenEnabled ? '<button type="button" class="fullscreen">FULLSCREEN</button>' : "") +
+        external(new URL("./", location.href).href, "FULL VERSION ↗");
       const fullscreen = nav.querySelector(".fullscreen");
       fullscreen?.addEventListener("click", () => {
         if (document.fullscreenElement) document.exitFullscreen();
@@ -1340,6 +1399,7 @@
       <p id="desktop-why"></p>
       <div class="links"><a href="about.html">WHAT IS THIS?</a>${external(REPO, "GITHUB")}</div></div>`;
     document.body.appendChild(gate);
+    document.documentElement.classList.add("embed-ready");   // embed.html's head hides the page until now
     return gate;
   }
 

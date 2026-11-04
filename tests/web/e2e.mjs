@@ -94,8 +94,8 @@ const tests = [];
 const test = (name, run) => tests.push({name, run});
 
 async function open(browser, t, {claude = "plan", openaiBadArgs = false, connectAI = "ok", seed = null, viewport = {width: 1440, height: 900},
-                                 mobile = false, path = "", wait = true} = {}) {
-  const ctx = await browser.newContext({viewport, ...(mobile ? {isMobile: true, hasTouch: true} : {})});
+                                 mobile = false, path = "", wait = true, reducedMotion = "no-preference"} = {}) {
+  const ctx = await browser.newContext({viewport, reducedMotion, ...(mobile ? {isMobile: true, hasTouch: true} : {})});
   t.contexts.push(ctx);
   const p = await ctx.newPage();
   p.on("pageerror", e => t.check(false, `no page error (${e.message})`));
@@ -677,26 +677,72 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   t.check(await small.isHidden("#desktop-only"), "made bigger, the game starts");
 });
 
-test("embed: Claude starts playing the game alone as it loads", async (t, b) => {
+test("embed: Claude starts playing behind the start card as it loads", async (t, b) => {
   const p = await open(b, t, {viewport: {width: 768, height: 712}, path: "embed.html", wait: false});
   await gameSays(p, s => s.options.claude_plays === 1, 120000);
-  t.check(!(await p.isVisible("#coach-intro")), "with no click, Claude plays, no start card");
+  t.check(await p.isVisible("#coach-intro"), "with no click, Claude plays behind the start card");
+  t.check(!(await p.isVisible("#coach-byo")), "the card has no bring your own AI: the embed plays the site's level");
+  await until(p, () => document.getElementById("coach-intro").hidden, undefined, 12000);
+  t.check(true, "the card fades after a few seconds");
   t.check(!(await p.isVisible("#side")) && (await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--gw"))) === "768px",
           "the game fills the column, with no panel");
   const full = p.locator(".weblinks a");
-  t.check(await full.getAttribute("href") === SITE && await full.getAttribute("target") === "_blank", "PLAY THE FULL VERSION opens the site");
+  t.check(await full.getAttribute("href") === SITE && await full.getAttribute("target") === "_blank", "FULL VERSION opens the site");
   t.check(/Click anywhere to play/.test(await text(p, "#coach-tip")), "the caption says click anywhere to play");
+  const tic = () => game(p).then(s => s.tic);
+  await p.click(".weblinks .pause");
+  const paused = await tic();
+  await p.waitForTimeout(1000);
+  t.check(await tic() === paused && await text(p, ".weblinks .pause") === "RESUME" && /PAUSED/.test(await text(p, "#coach-tip")),
+          "PAUSE stops the game on its frame");
   await p.click(".bar.top", {position: {x: 400, y: 20}});   // the logo strip, off its links
   await gameSays(p, s => s.options.claude_plays === 0);
-  t.check(true, "a click anywhere, not just on the game, takes over");
+  t.check(!(await p.evaluate(() => Module.paused)), "a click anywhere, not just on the game, takes over, paused or not");
+  const before = (await game(p)).player;
+  await p.keyboard.down("ArrowUp"); await p.waitForTimeout(500); await p.keyboard.up("ArrowUp");
+  await p.waitForTimeout(1000);   // the marine slides to a stop
+  const moved = (await game(p)).player;
+  t.check(moved.x !== before.x || moved.y !== before.y, "playing, the arrows move the marine");
+  await p.evaluate(() => { document.exitPointerLock(); document.dispatchEvent(new Event("pointerlockchange")); });   // Esc
+  t.check(await p.evaluate(() => document.activeElement !== document.getElementById("canvas")), "Esc lets go of the keyboard too");
+  await p.keyboard.down("ArrowUp"); await p.waitForTimeout(500); await p.keyboard.up("ArrowUp");
+  await p.waitForTimeout(1000);
+  const after = (await game(p)).player;
+  t.check(after.x === moved.x && after.y === moved.y, "and the arrows no longer move the marine");
+});
+
+test("embed: reduced motion, nothing moves until asked", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 768, height: 712}, path: "embed.html", wait: false, reducedMotion: "reduce"});
+  await p.waitForSelector("#coach-intro [data-go=play]:not([disabled])", {timeout: 120000});
+  await p.waitForTimeout(6000);
+  t.check(await p.evaluate(() => Module.paused) && await p.isVisible("#coach-intro"), "the game waits on its first frame, the start card up");
+  t.check(await text(p, ".weblinks .pause") === "RESUME", "the button says RESUME");
+  await p.click("#coach-intro [data-go=watch]");
+  await gameSays(p, s => s.options.claude_plays === 1);
+  t.check(!(await p.evaluate(() => Module.paused)) && await p.isHidden("#coach-intro"), "WATCH CLAUDE PLAY starts Claude");
+});
+
+test("embed: after Claude clears the level, it plays it again", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 768, height: 712}, path: "embed.html", wait: false});
+  await gameSays(p, s => s.options.claude_plays === 1, 120000);
+  await killAll(p);
+  await p.waitForSelector("#coach-end:not([hidden])", {timeout: 60000});
+  t.check(/LEVEL CLEAR/.test(await text(p, "#coach-end")), "Claude's level clear shows");
+  await p.mouse.move(400, 20);   // off the card, on the logo strip
+  await p.waitForSelector("#coach-end", {state: "hidden", timeout: 30000});
+  await gameSays(p, s => s.options.claude_plays === 1 && s.player.kills === 0 && s.monsters.length === 45, 20000);
+  t.check(true, "then Claude plays a fresh level, every record back");
 });
 
 test("embed: in a blog post, the game leaves the mouse alone until it's clicked", async (t, b) => {
   const p = await open(b, t, {viewport: {width: 1000, height: 800}, path: "about.html", wait: false});
-  await p.route(SITE + "blog.html", r => r.fulfill({contentType: "text/html", body: `<!doctype html><body style="margin: 0">
-    <div style="height: 600px">The post</div><iframe src="embed.html" width="768" height="712" style="border: 0" allow="fullscreen"></iframe>
+  // the post on another site, as the blog is: the embed's a cross-origin iframe (both public, or
+  // Chrome's local network checks block a public post's iframe of 127.0.0.1)
+  await p.route("http://game.test/**", async r => r.fulfill({response: await r.fetch({url: r.request().url().replace("http://game.test/", SITE)})}));
+  await p.route("http://blog.test/post.html", r => r.fulfill({contentType: "text/html", body: `<!doctype html><body style="margin: 0">
+    <div style="height: 600px">The post</div><iframe src="http://game.test/embed.html" width="768" height="712" style="border: 0" allow="fullscreen"></iframe>
     <div style="height: 2000px">More of the post</div></body>`}));
-  await p.goto(SITE + "blog.html");
+  await p.goto("http://blog.test/post.html");
   const embed = await (await p.waitForSelector("iframe")).contentFrame();
   await p.evaluate(() => scrollTo(0, 400));
   await gameSays(embed, s => s.options.claude_plays === 1, 120000);
@@ -722,6 +768,15 @@ test("embed: in a blog post, the game leaves the mouse alone until it's clicked"
   await until(embed, () => !!document.fullscreenElement && document.querySelector(".weblinks .fullscreen").textContent === "EXIT FULLSCREEN");
   t.check(true, "FULLSCREEN fills the screen with the game, and its button says EXIT FULLSCREEN");
   t.check((await game(embed)).options.claude_plays === 1, "and Claude plays on");
+  await embed.evaluate(() => document.exitFullscreen());
+  await p.evaluate(() => scrollTo(0, 400));
+  await p.mouse.click(500, 500);   // on the game: take over
+  await gameSays(embed, s => s.options.claude_plays === 0);
+  await embed.evaluate(() => { document.exitPointerLock(); document.dispatchEvent(new Event("pointerlockchange")); });   // Esc
+  const y = await p.evaluate(() => scrollY);
+  await p.keyboard.press("Space");
+  await eventually(() => p.evaluate(y => scrollY > y, y), "Space to scroll the post");
+  t.check(true, "after Esc, Space scrolls the post again");
 });
 
 test("embed: on a phone, a picture of the game", async (t, b) => {

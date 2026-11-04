@@ -150,7 +150,10 @@ write_with_analytics("index.html", page)
 # the game alone, for an iframe in a blog post (web.js: EMBED); search engines list index.html instead
 assert page.count('<html lang="en">') == 1, "panel/index.html: expected its <html> tag"
 embed = page.replace('<html lang="en">', '<html lang="en" data-embed>', 1)
-write_with_analytics("embed.html", embed.replace("</head>", '<meta name="robots" content="noindex">\n</head>', 1))
+# hidden until web.js styles it as the embed (html.embed-ready): no flash of the whole site's layout
+embed = embed.replace("</head>", '<meta name="robots" content="noindex">\n'
+                      '<style>html:not(.embed-ready) { background: #0D0D12; } html:not(.embed-ready) body { visibility: hidden; }</style>\n</head>', 1)
+write_with_analytics("embed.html", embed)
 PY
 echo "Built web/dist."
 if [[ "${1:-}" == serve ]]; then

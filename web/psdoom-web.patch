@@ -53,17 +53,25 @@ index 48be83b..1121de5 100644
  //-----------------------------------------------------------------------------
  
 +#ifdef __EMSCRIPTEN__
-+void emscripten_sleep(unsigned int ms);
++#include <emscripten.h>
 +#endif
  #include "SDL.h"
  
  #include "i_timer.h"
-@@ -70,7 +73,11 @@ int I_GetTimeMS(void)
+@@ -70,7 +73,19 @@
  
  void I_Sleep(int ms)
  {
 +#ifdef __EMSCRIPTEN__
 +    emscripten_sleep(ms);  // hand the browser its turn
++    // The embed out of view (web.js sets Module.paused): the game waits, and its clock with it, so it
++    // doesn't run the missed tics when it's back
++    while (EM_ASM_INT({ return Module.paused ? 1 : 0; }))
++    {
++        Uint32 start = SDL_GetTicks();
++        emscripten_sleep(250);
++        basetime += SDL_GetTicks() - start;
++    }
 +#else
      SDL_Delay(ms);
 +#endif

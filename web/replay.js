@@ -9,6 +9,8 @@ window.ConnectDoomReplay = (() => {
   const ARENA_X = [0, 2048, 4096];           // tools/make_arena.py
   const ENGAGED = 160, STALL = 6;            // play.py: stop walking into monsters crowding a door
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // the clock, less the time the embed sat paused out of view (web.js: Module.paused): the game waits too
+  const playTime = () => Date.now() - (Module.pausedMs || 0) - (Module.paused ? Date.now() - Module.pausedAt : 0);
   const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 
   class Stopped extends Error {}
@@ -64,8 +66,8 @@ window.ConnectDoomReplay = (() => {
 
     async do(verb, args = [], {timeout = 25, until = null} = {}) {
       seq = Math.max(seq, (await this.state()).command?.seq || 0);
-      const mine = send(`${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim()), end = Date.now() + timeout * 1000;
-      while (Date.now() < end) {
+      const mine = send(`${verb} ${args.map(a => Math.trunc(a)).join(" ")}`.trim()), end = playTime() + timeout * 1000;
+      while (playTime() < end) {
         const s = await this.state();
         if (s.command.done_seq >= mine) return s.command.result;
         if (until && until(s)) { send("STOP"); return "interrupted"; }

@@ -693,7 +693,7 @@ test("embed: Claude starts playing the game alone as it loads", async (t, b) => 
 test("embed: in a blog post, the game leaves the mouse alone until it's clicked", async (t, b) => {
   const p = await open(b, t, {viewport: {width: 1000, height: 800}, path: "about.html", wait: false});
   await p.route(SITE + "blog.html", r => r.fulfill({contentType: "text/html", body: `<!doctype html><body style="margin: 0">
-    <div style="height: 600px">The post</div><iframe src="embed.html" width="768" height="712" style="border: 0"></iframe>
+    <div style="height: 600px">The post</div><iframe src="embed.html" width="768" height="712" style="border: 0" allow="fullscreen"></iframe>
     <div style="height: 2000px">More of the post</div></body>`}));
   await p.goto(SITE + "blog.html");
   const embed = await (await p.waitForSelector("iframe")).contentFrame();
@@ -706,6 +706,28 @@ test("embed: in a blog post, the game leaves the mouse alone until it's clicked"
   await p.mouse.wheel(0, 300);
   await eventually(() => p.evaluate(() => scrollY > 400), "the post to scroll");
   t.check(true, "the wheel over the game scrolls the post");
+  const tic = () => game(embed).then(s => s.tic);
+  await p.evaluate(() => scrollTo(0, 2500));   // the game out of view
+  await until(embed, () => Module.paused);
+  const away = await tic();
+  await p.waitForTimeout(1500);
+  t.check(await tic() === away, "scrolled out of view, the game pauses");
+  await p.evaluate(() => scrollTo(0, 400));
+  await until(embed, () => !Module.paused);
+  await eventually(async () => await tic() > away, "the game to run again");
+  t.check(await tic() - away < 35 * 2, "back in view, it carries on, without running the time it was away");
+  t.check((await game(embed)).options.claude_plays === 1, "and Claude still plays");
+  await embed.click(".weblinks .fullscreen");
+  await until(embed, () => !!document.fullscreenElement && document.querySelector(".weblinks .fullscreen").textContent === "EXIT FULLSCREEN");
+  t.check(true, "FULLSCREEN fills the screen with the game, and its button says EXIT FULLSCREEN");
+  t.check((await game(embed)).options.claude_plays === 1, "and Claude plays on");
+});
+
+test("embed: on a phone, a picture of the game", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 390, height: 712}, mobile: true, path: "embed.html", wait: false});
+  await p.waitForSelector("#desktop-only:not([hidden]) .shot");
+  t.check(await p.evaluate(() => document.querySelector("#desktop-only .shot").naturalWidth > 0), "the screenshot loads");
+  t.check(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing wider than the phone");
 });
 
 // ---------- run ----------

@@ -333,6 +333,20 @@
         coach.ready();
       },
     };
+    // The embed scrolled out of the post's view, or its tab hidden: the game and Claude wait
+    // (psdoom-web.patch: I_Sleep; replay.js: playTime), and the laptop's fan stays off
+    if (EMBED) {
+      let inView = true;
+      const pauseUnseen = () => {
+        const paused = !inView || document.hidden;
+        if (paused === !!Module.paused) return;
+        if (paused) Module.pausedAt = Date.now();
+        else Module.pausedMs = (Module.pausedMs || 0) + Date.now() - Module.pausedAt;
+        Module.paused = paused;
+      };
+      new IntersectionObserver(([seen]) => { inView = seen.isIntersecting; pauseUnseen(); }).observe(canvas);
+      document.addEventListener("visibilitychange", pauseUnseen);
+    }
     const script = document.createElement("script");
     script.src = "psdoom.js";
     document.body.appendChild(script);
@@ -1288,7 +1302,22 @@
         html[data-embed] .lockup .cdata { height: 15px; } html[data-embed] .lockup .cailogo { height: 22px; } html[data-embed] .lockup .rule { height: 24px; }
         html[data-embed] .lockup .x, html[data-embed] .lockup .doom { font-size: 15px; }
         html[data-embed] .weblinks { position: static; }`;
-      nav.innerHTML = external(new URL("./", location.href).href, "PLAY THE FULL VERSION ↗");
+      style.textContent += `
+        .weblinks .fullscreen { font: 9px/1 var(--pixel); color: var(--balance); letter-spacing: 1px; background: none;
+                                border: 0; padding: 0; cursor: pointer; }
+        .weblinks .fullscreen:hover, .weblinks .fullscreen:focus-visible { color: var(--agility); }
+        #desktop-only .shot { width: 100%; border-radius: 3px; }`;
+      // fullscreen when the post's iframe allows it (allow="fullscreen")
+      nav.innerHTML = (document.fullscreenEnabled ? '<button type="button" class="fullscreen">FULLSCREEN</button>' : "") +
+        external(new URL("./", location.href).href, "PLAY THE FULL VERSION ↗");
+      const fullscreen = nav.querySelector(".fullscreen");
+      fullscreen?.addEventListener("click", () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(e => console.warn("Fullscreen:", e));
+      });
+      document.addEventListener("fullscreenchange", () => {
+        fullscreen.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
+      });
       chip.parentNode.insertBefore(nav, chip);
     } else {
       nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
@@ -1302,7 +1331,9 @@
     const gate = document.createElement("div");
     gate.id = "desktop-only";
     gate.hidden = true;
-    gate.innerHTML = `<div class="box"><img src="brand/connect-ai.svg" alt="Connect AI" height="32">
+    // on a phone, the embed shows what the game looks like
+    gate.innerHTML = `<div class="box">${EMBED ? '<img class="shot" src="og.jpg" alt="Claude playing a Doom level built from a company\'s app data">' : ""}
+      <img src="brand/connect-ai.svg" alt="Connect AI" height="32">
       <div class="doom">DOOM</div>
       <p id="desktop-why"></p>
       <div class="links"><a href="about.html">WHAT IS THIS?</a>${external(REPO, "GITHUB")}</div></div>`;

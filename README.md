@@ -19,9 +19,9 @@ Play it yourself, or let Claude play while a side panel shows every step it take
 
 ## Recording (November 2026)
 
-[![Claude playing a Doom level built from live Connect AI data, shooting a pink demon labeled with an urgent Salesforce deal while a side panel logs every kill](.github/readme/2026-11-recording.webp)](.github/readme/2026-11-recording.mp4)
+![Claude playing a Doom level built from live Connect AI data, shooting a pink demon labeled with an urgent Salesforce deal while a side panel logs every kill](.github/readme/2026-11-recording.gif)
 
-What Connect AI × DOOM looked like in November 2026, recorded for [its page on joekarlsson.com](https://www.joekarlsson.com/work/connect-ai-doom/). Click the picture to play the video.
+What Connect AI × DOOM looked like in November 2026, recorded for [its page on joekarlsson.com](https://www.joekarlsson.com/work/connect-ai-doom/). The full-quality video is [2026-11-recording.mp4](.github/readme/2026-11-recording.mp4).
 
 ## Install
 

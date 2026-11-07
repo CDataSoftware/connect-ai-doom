@@ -17,6 +17,12 @@ Play it yourself, or let Claude play while a side panel shows every step it take
 
 **[Play it in your browser](https://cdatasoftware.github.io/connect-ai-doom/)**, no install: a level Claude built from a demo account, with the side panel, the model leaderboard and Claude playing it if you'd rather watch. Its AI settings let your own model play (Claude, ChatGPT or any OpenRouter model, with your key), and with your Connect AI token, build a level from your own data and answer questions about it; the keys and your level stay in your browser. The rest of this page is the full version, on your own data.
 
+## Recording (November 2026)
+
+[![Claude playing a Doom level built from live Connect AI data, shooting a pink demon labeled with an urgent Salesforce deal while a side panel logs every kill](.github/readme/2026-11-recording.webp)](.github/readme/2026-11-recording.mp4)
+
+What Connect AI × DOOM looked like in November 2026, recorded for [its page on joekarlsson.com](https://www.joekarlsson.com/work/connect-ai-doom/). Click the picture to play the video.
+
 ## Install
 
 You need a Mac (Apple Silicon or Intel) and about 10 minutes.

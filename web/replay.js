@@ -55,13 +55,16 @@ window.ConnectDoomReplay = (() => {
   class Game {
     constructor() { this.stopped = false; }
 
+    // Two seconds of play time, not of the clock: an embed paused out of view (a blog post loads
+    // it below the fold) isn't writing its state either, and two clock seconds there failed the replay
     async state() {
-      if (this.stopped) throw new Stopped();
-      for (let i = 0; i < 20; i++) {
+      const giveUp = playTime() + 2000;
+      for (;;) {
+        if (this.stopped) throw new Stopped();
         try { return JSON.parse(Module.FS.readFile(`${AGENT}/state.json`, {encoding: "utf8"})); }
-        catch (e) { await sleep(100); }
+        catch (e) { if (playTime() > giveUp) throw new Error("the game isn't writing its state"); }
+        await sleep(100);
       }
-      throw new Error("the game isn't writing its state");
     }
 
     async do(verb, args = [], {timeout = 25, until = null} = {}) {
@@ -330,7 +333,12 @@ window.ConnectDoomReplay = (() => {
     }
 
     const stop = takeOver(game);
-    const done = sleep(300).then(run).catch(e => { if (!(e instanceof Stopped)) console.error("replay:", e); });
+    // A replay that breaks rejects, so the page says so instead of showing a level clear
+    const done = sleep(300).then(run).catch(e => {
+      if (e instanceof Stopped) return;
+      console.error("replay:", e);
+      throw e;
+    });
     return {done, stop};
   }
 

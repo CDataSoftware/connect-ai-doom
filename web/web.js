@@ -659,7 +659,13 @@
       show("WATCHING CLAUDE PLAY", `Claude grabs the keycards, then clears the rooms. ${EMBED ? "Click anywhere to play." : "Its feed is on the right. Click the game to take over."}`);
       const replay = window.ConnectDoomReplay.play(level(), log);
       const mine = run = {name: "Claude", stop: handBack => replay.stop(handBack)};
-      replay.done.then(() => { if (run === mine) { run = null; finish("watched", "Claude"); } });
+      replay.done.then(() => { if (run === mine) { run = null; finish("watched", "Claude"); } }, e => {
+        if (run !== mine) return;
+        run = null;
+        log("failed", {text: e.message});
+        playYourself();
+        show("CLAUDE COULDN'T PLAY", `The replay stopped (${e.message}). The level is yours: ${EMBED ? "click anywhere to play" : "click the game to play"}.`, 12);
+      });
     }
 
     // The visitor's model; when it can't play on (a bad key, a model refused), offline Claude takes over.

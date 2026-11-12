@@ -697,22 +697,26 @@
     }
 
     // The end: what just happened, in a sentence or two, and where to go next. who: who played, when watched.
+    // how: "watched", "played", or "break" (a player partway through: the card, then KEEP PLAYING)
     function finish(how, who = "Claude") {
       if (ended) return;
       ended = true;
-      trackEvent("Level clear", {how});
+      const partway = how === "break";
+      trackEvent(partway ? "Break offered" : "Level clear", {how});
       tip.hidden = true;
       if (document.pointerLockElement) document.exitPointerLock();
+      if (partway) { pause.byReader = true; applyPause(); }   // the monsters wait while the card is up
       const n = kills.length;
       end.innerHTML = `<div class="card">
-        <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
-        <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} records from ${appList}.</h3>
+        <div class="eyebrow">DOOMCP · ${partway ? "SO FAR" : "LEVEL CLEAR"} · ${n}/${monsters.length} RECORDS</div>
+        <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} record${n === 1 ? "" : "s"} from ${appList}.</h3>
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? `, and blocked the one request it shouldn't answer${mine ? "" : ": a customer's Social Security number"}` : ""}.
           That's what Connect AI does for any AI agent and your data.</p>
         <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
-                              : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
+            : partway ? '<button class="btn alt" type="button" data-go="resume">KEEP PLAYING</button>'
+            : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
           <a class="btn alt" href="about.html">HOW IT WORKS</a>
           ${external(REPO, "GITHUB", "btn alt")}</div></div>`;
       end.hidden = false;
@@ -765,6 +769,15 @@
     end.addEventListener("click", e => {
       if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
       if (e.target.closest("[data-go=again]")) location.reload();
+      if (e.target.closest("[data-go=resume]")) {
+        trackEvent("Keep playing");
+        end.hidden = true;
+        ended = false;
+        pause.byReader = false;
+        applyPause();
+        canvas.focus();
+        lockPointer(canvas);
+      }
     });
     // During Claude's run, a click on the game takes the marine over where it stands; in the embed, a
     // click anywhere but its links and cards (the logo strip, the caption)
@@ -823,8 +836,16 @@
         step = 2;
         trackEvent("Got keys");
         show("STEP 2 OF 3 · CLEAR THE ROOMS", "Access granted. Each room is an app, and each monster is a record from it. Shoot one to read it in the panel.", 9);
+        setTimeout(offerBreak, 60000);
       }
     }, 300);
+    // 45 records is a long level: 11 of 12 players who got the keys left before the last one, so
+    // they never saw the end card (Oct-Nov 2026). A minute into step 2 it shows, with KEEP PLAYING.
+    function offerBreak() {
+      if (ended || run || step !== 2) return;
+      if (!kills.length) { setTimeout(offerBreak, 15000); return; }   // the card counts the records read
+      finish("break");
+    }
     let endTimer = 0;
     events.addEventListener("cleared", () => {
       if (run) return;                                   // Claude's run goes on to the red door itself
@@ -1405,6 +1426,7 @@
       <img src="brand/connect-ai.svg" alt="Connect AI" height="32">
       <div class="doom">DOOM</div>
       <p id="desktop-why"></p>
+      <button class="btn" type="button" data-go="anyway" hidden>I HAVE A MOUSE: PLAY</button>
       <div class="links"><a href="about.html">WHAT IS THIS?</a>${EMBED ? "" : external(WRITEUP, "BLOG POST")}${external(REPO, "GITHUB")}</div></div>`;
     document.body.appendChild(gate);
     document.documentElement.classList.add("embed-ready");   // embed.html's head hides the page until now
@@ -1417,10 +1439,10 @@
 
   addEventListener("DOMContentLoaded", () => {
     const gate = addLinks();
-    let started = false;
+    let started = false, mouseClaimed = false;
     const check = () => {
       if (started) return;
-      if (hasMouse() && roomy()) {
+      if ((hasMouse() || mouseClaimed) && roomy()) {
         gate.hidden = true;
         started = true;
         start().catch(e => { console.error("connect-doom web:", e); trackEvent("Load failed", {error: String(e).slice(0, 200)}); });
@@ -1431,7 +1453,14 @@
       document.getElementById("desktop-why").textContent = hasMouse()
         ? "Connect AI × DOOM needs a bigger window. Make this one wider to play."
         : "Connect AI × DOOM plays on a desktop browser, with a keyboard and a mouse. Open this page on your computer to play.";
+      // some desktops report no mouse (remote desktops, a few touchscreen laptops): let them say so
+      gate.querySelector("[data-go=anyway]").hidden = hasMouse() || !roomy();
     };
+    gate.querySelector("[data-go=anyway]").addEventListener("click", () => {
+      trackEvent("Play anyway");
+      mouseClaimed = true;
+      check();
+    });
     check();
     addEventListener("resize", check);
   });

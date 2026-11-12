@@ -247,6 +247,28 @@ test("clearing the level: step 3, the red door, and the end card", async (t, b) 
   t.check((await panel(p)).kill_total === 0, "PLAY AGAIN starts over");
 });
 
+test("a minute into step 2 the end card offers a break, and KEEP PLAYING plays on", async (t, b) => {
+  const p = await open(b, t);
+  await p.click("#coach-intro [data-go=watch]");
+  await gameSays(p, s => s.player.keys.blue && s.player.keys.yellow, 120000);   // Claude has every keycard
+  await p.waitForTimeout(500);
+  await p.click("#canvas");
+  await tipSays(p, /STEP 2 OF 3/);
+  const pid = (await game(p)).monsters[0].pid;
+  await p.evaluate(pid => Module.bridge(`kill ${pid}`), pid);
+  await p.waitForSelector("#coach-end:not([hidden])", {timeout: 75000});
+  t.check(/SO FAR · 1\/45 RECORDS/.test(await text(p, "#coach-end")), "the card counts the records read so far");
+  t.check(await p.isVisible("#coach-end a:has-text('TRY CONNECT AI FREE')"), "with the sign-up on it");
+  const tic = () => game(p).then(s => s.tic);
+  const paused = await tic();
+  await p.waitForTimeout(1000);
+  t.check(await tic() === paused, "the game waits while the card is up");
+  await p.click("#coach-end [data-go=resume]");
+  t.check(await p.isHidden("#coach-end"), "KEEP PLAYING closes the card");
+  await p.waitForTimeout(1000);
+  t.check(await tic() !== paused, "and the game runs again");
+});
+
 test("clearing the level without trying the red door still ends", async (t, b) => {
   const p = await open(b, t);
   await takeOver(p);
@@ -670,6 +692,7 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   await phone.waitForSelector("#desktop-only:not([hidden])");
   t.check(/desktop browser/.test(await text(phone, "#desktop-why")), "a phone: play on a computer");
   t.check(await phone.isVisible("#desktop-only a:has-text('BLOG POST')"), "with the blog post to read instead");
+  t.check(await phone.isHidden("#desktop-only [data-go=anyway]"), "and no way past it: a phone has no room for the game");
   await phone.waitForTimeout(1500);
   t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "and nothing of the game downloads");
   const small = await open(b, t, {viewport: {width: 800, height: 500}, wait: false});
@@ -678,6 +701,24 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   await small.setViewportSize({width: 1440, height: 900});
   await started(small);
   t.check(await small.isHidden("#desktop-only"), "made bigger, the game starts");
+});
+
+test("a desktop that reports no mouse can say it has one and play", async (t, b) => {
+  const ctx = await b.newContext({viewport: {width: 1440, height: 900}});
+  t.contexts.push(ctx);
+  const p = await ctx.newPage();
+  p.on("pageerror", e => t.check(false, `no page error (${e.message})`));
+  await p.route("https://plausible.joekarlsson.io/**", r => r.fulfill({status: 204, body: ""}));
+  await p.addInitScript(() => {   // as a remote desktop reports it: no fine pointer anywhere
+    const real = matchMedia.bind(window);
+    window.matchMedia = q => q === "(any-pointer: fine)" ? {...real(q), matches: false} : real(q);
+  });
+  await p.goto(SITE);
+  await p.waitForSelector("#desktop-only:not([hidden])");
+  t.check(await p.isVisible("#desktop-only [data-go=anyway]"), "the note offers I HAVE A MOUSE: PLAY");
+  await p.click("#desktop-only [data-go=anyway]");
+  await started(p);
+  t.check(await p.isHidden("#desktop-only"), "and the game starts");
 });
 
 test("embed: Claude starts playing behind the start card as it loads", async (t, b) => {

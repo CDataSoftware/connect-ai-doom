@@ -560,6 +560,17 @@
                    pointer-events: none; display: flex; flex-direction: column; gap: 6px; animation: coach-in .35s ease-out; }
       #coach-tip b { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; }
       #coach-tip span { font: 16px/1.4 var(--sans); color: var(--clarity); }
+      /* the player freed the mouse themselves: how far they've got, and a way on; never shown while they play */
+      #coach-release { position: absolute; z-index: 2; top: 16px; right: 16px; width: min(320px, 60%); display: flex; flex-direction: column;
+                       gap: 8px; background: rgba(13, 13, 18, .92); border: 2px solid var(--agility); border-radius: 4px; padding: 12px 14px; }
+      #coach-release[hidden] { display: none; }
+      #coach-release b { font: 9px/1.6 var(--pixel); color: var(--agility); letter-spacing: 1px; }
+      #coach-release span { font: 14px/1.4 var(--sans); color: var(--clarity); }
+      #coach-release .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      #coach-release .btn { font: 10px/1 var(--pixel); color: var(--depth); background: var(--agility); border: 0; border-radius: 3px;
+                            padding: 10px 12px; cursor: pointer; letter-spacing: 1px; text-decoration: none; }
+      #coach-release .btn.alt { background: var(--depth-3); color: var(--clarity); border: 1px solid var(--line); }
+      #coach-release .btn:focus-visible { outline: 3px solid var(--clarity); outline-offset: 3px; }
       @keyframes coach-in { from { opacity: 0; transform: translate(-50%, 8px); } }
       @media (prefers-reduced-motion: reduce) { #coach-tip { animation: none; } }`;
     document.head.appendChild(style);
@@ -598,7 +609,11 @@
     tip.id = "coach-tip";
     tip.hidden = true;
     tip.setAttribute("role", "status");
-    screen.append(intro, end, tip);
+    const release = document.createElement("div");
+    release.id = "coach-release";
+    release.hidden = true;
+    release.setAttribute("role", "status");
+    screen.append(intro, end, tip, release);
 
     // run: whoever plays instead of the player, offline Claude (replay.js) or the visitor's model
     // (ai.js), as {name, stop(handBack)}; null while the player plays.
@@ -644,7 +659,7 @@
     function watch(model, keepIntro = false) {
       if (pause.byReader) pauseByReader(false);
       if (!keepIntro) intro.hidden = true;
-      end.hidden = true;
+      end.hidden = release.hidden = true;
       if (run) { run.stop(false); run = null; }   // another player takes over where the marine stands
       if (document.pointerLockElement) document.exitPointerLock();
       playEvents.length = 0;
@@ -697,26 +712,22 @@
     }
 
     // The end: what just happened, in a sentence or two, and where to go next. who: who played, when watched.
-    // how: "watched", "played", or "break" (a player partway through: the card, then KEEP PLAYING)
     function finish(how, who = "Claude") {
       if (ended) return;
       ended = true;
-      const partway = how === "break";
-      trackEvent(partway ? "Break offered" : "Level clear", {how});
-      tip.hidden = true;
+      trackEvent("Level clear", {how});
+      tip.hidden = release.hidden = true;
       if (document.pointerLockElement) document.exitPointerLock();
-      if (partway) { pause.byReader = true; applyPause(); }   // the monsters wait while the card is up
       const n = kills.length;
       end.innerHTML = `<div class="card">
-        <div class="eyebrow">DOOMCP · ${partway ? "SO FAR" : "LEVEL CLEAR"} · ${n}/${monsters.length} RECORDS</div>
+        <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
         <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} record${n === 1 ? "" : "s"} from ${appList}.</h3>
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? `, and blocked the one request it shouldn't answer${mine ? "" : ": a customer's Social Security number"}` : ""}.
           That's what Connect AI does for any AI agent and your data.</p>
         <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
-            : partway ? '<button class="btn alt" type="button" data-go="resume">KEEP PLAYING</button>'
-            : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
+                              : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
           <a class="btn alt" href="about.html">HOW IT WORKS</a>
           ${external(REPO, "GITHUB", "btn alt")}</div></div>`;
       end.hidden = false;
@@ -766,18 +777,39 @@
       if (go === "build") openBuilder();
       if (go === "demo") { trackEvent("Back to the demo level"); myLevel.clear().finally(() => location.reload()); }
     });
+    // The player's own pause: they freed the mouse (Esc, a click outside the game) partway through their
+    // run. Players who got the keys left about 2.5 minutes in, before the end card's sign-up (Oct-Nov 2026),
+    // so this shows how far they got and the sign-up. They stopped playing themselves, so it costs them nothing.
+    let releaseTracked = false;
+    function showRelease() {
+      if (ended || run || !step || document.pointerLockElement || !intro.hidden || !end.hidden
+          || document.querySelector("dialog[open]")) return;   // Claude's run, a dialog, a card: not the player's pause
+      release.innerHTML = `<b>MOUSE FREE · ${kills.length}/${monsters.length} RECORDS</b>
+        <span>Every monster here is MCP data from Connect AI.</span>
+        <div class="row"><button class="btn" type="button" data-go="resume">RESUME</button>
+          ${external(AI.SIGNUP_URL, "TRY CONNECT AI", "btn alt")}</div>`;
+      tip.hidden = true;
+      release.hidden = false;
+      if (!releaseTracked) { releaseTracked = true; trackEvent("Release screen"); }
+    }
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement) { release.hidden = true; return; }
+      setTimeout(showRelease);   // once whatever freed it (a dialog, Claude, the end card) has had its say
+    });
+    release.addEventListener("click", e => {
+      if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI", {from: "release screen"});
+      if (!e.target.closest("[data-go=resume]")) return;
+      release.hidden = true;
+      canvas.focus();
+      lockPointer(canvas);
+    });
+    // the panel's record card links the sign-up too (panel/index.html)
+    document.getElementById("now")?.addEventListener("click", e => {
+      if (e.target.closest("a.try")) trackEvent("Try Connect AI", {from: "record"});
+    });
     end.addEventListener("click", e => {
       if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
       if (e.target.closest("[data-go=again]")) location.reload();
-      if (e.target.closest("[data-go=resume]")) {
-        trackEvent("Keep playing");
-        end.hidden = true;
-        ended = false;
-        pause.byReader = false;
-        applyPause();
-        canvas.focus();
-        lockPointer(canvas);
-      }
     });
     // During Claude's run, a click on the game takes the marine over where it stands; in the embed, a
     // click anywhere but its links and cards (the logo strip, the caption)
@@ -836,16 +868,8 @@
         step = 2;
         trackEvent("Got keys");
         show("STEP 2 OF 3 · CLEAR THE ROOMS", "Access granted. Each room is an app, and each monster is a record from it. Shoot one to read it in the panel.", 9);
-        setTimeout(offerBreak, 60000);
       }
     }, 300);
-    // 45 records is a long level: 11 of 12 players who got the keys left before the last one, so
-    // they never saw the end card (Oct-Nov 2026). A minute into step 2 it shows, with KEEP PLAYING.
-    function offerBreak() {
-      if (ended || run || step !== 2) return;
-      if (!kills.length) { setTimeout(offerBreak, 15000); return; }   // the card counts the records read
-      finish("break");
-    }
     let endTimer = 0;
     events.addEventListener("cleared", () => {
       if (run) return;                                   // Claude's run goes on to the red door itself

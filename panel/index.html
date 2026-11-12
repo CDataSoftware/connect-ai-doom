@@ -439,6 +439,8 @@
   body.stage .rl .acc-s { display: inline; }
   body.stage .rl .rn { display: none; }   /* the stage's narrow cards: the access, not the room number */
   .src { font: 12.5px/1.45 var(--mono); color: var(--balance); margin-top: 4px; }
+  .src.try a { color: var(--agility); text-decoration: none; }
+  .src.try a:hover, .src.try a:focus-visible { text-decoration: underline; }
   .src .tag { font: 8px/1.8 var(--pixel); color: var(--agility); margin-right: 6px; }
   /* the vault: one short row under the rooms, so Claude's feed keeps the height */
   body.stage .rl.vault { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
@@ -859,6 +861,9 @@ function source(k, m) {
   return `<div class="src"><span class="tag">VIA MCP</span>Read through Connect AI from ${esc(k.app)} › ${esc(table)}</div>`;
 }
 
+// The web build's record card: the sign-up, one quiet line (web.js tracks the click)
+const tryLine = `<div class="src try">This record is MCP data from Connect AI. <a class="try" href="https://cloud.cdata.com/" target="_blank" rel="noopener">Turn your own into a level →</a></div>`;
+
 function liveRead(k, demo, saved, snapshot) {
   if (snapshot) return "";
   if (demo) return `<div class="lread"><span class="tag">OFFLINE</span>Sample level: not read live</div>`;
@@ -1016,7 +1021,7 @@ function renderGame(s) {
     : last.kind === "kill"
     ? `<div class="verb">KILLED ${last.demon ? "AN URGENT " : "A "}${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${esc(last.detail)}</div>${source(last, m)}${liveRead(last, demo, saved, snapshot)}
-       ${last.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(last.said)}</div>` : ""}`
+       ${last.said ? `<div class="said"><span class="tag">CLAUDE</span>${esc(last.said)}</div>` : ""}${snapshot ? tryLine : ""}`
     : `<div class="verb hit">SHOOTING A ${esc(last.app.toUpperCase())} RECORD</div>
        <div class="who">${esc(last.label)}</div><div class="d">${last.demon ? "Urgent: " : ""}${esc(last.detail)}</div>`;
   if (fresh) { const n = $("now"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash"); }

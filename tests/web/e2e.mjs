@@ -247,26 +247,38 @@ test("clearing the level: step 3, the red door, and the end card", async (t, b) 
   t.check((await panel(p)).kill_total === 0, "PLAY AGAIN starts over");
 });
 
-test("a minute into step 2 the end card offers a break, and KEEP PLAYING plays on", async (t, b) => {
+test("freeing the mouse mid-run shows how far you got, the sign-up and RESUME; never during Claude's run", async (t, b) => {
   const p = await open(b, t);
-  await p.click("#coach-intro [data-go=watch]");
-  await gameSays(p, s => s.player.keys.blue && s.player.keys.yellow, 120000);   // Claude has every keycard
-  await p.waitForTimeout(500);
-  await p.click("#canvas");
-  await tipSays(p, /STEP 2 OF 3/);
+  const esc = () => p.evaluate(() => { document.exitPointerLock(); document.dispatchEvent(new Event("pointerlockchange")); });
+  await takeOver(p);
   const pid = (await game(p)).monsters[0].pid;
   await p.evaluate(pid => Module.bridge(`kill ${pid}`), pid);
-  await p.waitForSelector("#coach-end:not([hidden])", {timeout: 75000});
-  t.check(/SO FAR · 1\/45 RECORDS/.test(await text(p, "#coach-end")), "the card counts the records read so far");
-  t.check(await p.isVisible("#coach-end a:has-text('TRY CONNECT AI FREE')"), "with the sign-up on it");
-  const tic = () => game(p).then(s => s.tic);
-  const paused = await tic();
-  await p.waitForTimeout(1000);
-  t.check(await tic() === paused, "the game waits while the card is up");
-  await p.click("#coach-end [data-go=resume]");
-  t.check(await p.isHidden("#coach-end"), "KEEP PLAYING closes the card");
-  await p.waitForTimeout(1000);
-  t.check(await tic() !== paused, "and the game runs again");
+  await esc();
+  await p.waitForSelector("#coach-release:not([hidden])", {timeout: 3000});
+  t.check(/MOUSE FREE · 1\/45 RECORDS/.test(await text(p, "#coach-release")), "the player's own pause counts the records so far");
+  const signup = p.locator("#coach-release a", {hasText: "TRY CONNECT AI"});
+  t.check(await signup.getAttribute("href") === "https://cloud.cdata.com/" && await signup.getAttribute("target") === "_blank",
+          "TRY CONNECT AI opens the sign-up in a new tab");
+  await p.click("#coach-release [data-go=resume]");
+  t.check(await p.isHidden("#coach-release"), "RESUME closes it");
+  t.check(await p.evaluate(() => document.activeElement?.id === "canvas"), "and hands the keys back to the game");
+  await p.evaluate(() => window.ConnectDoomReplay.send("OPTION 0 1"));   // Claude plays on
+  await gameSays(p, s => s.options.claude_plays === 1);
+  await esc();
+  await p.waitForTimeout(500);
+  t.check(await p.isHidden("#coach-release"), "while Claude plays, freeing the mouse shows nothing");
+});
+
+test("the panel's record card links the sign-up after a kill", async (t, b) => {
+  const p = await open(b, t);
+  await takeOver(p);
+  const pid = (await game(p)).monsters[0].pid;
+  await p.evaluate(pid => Module.bridge(`kill ${pid}`), pid);
+  const link = p.locator("#now a.try");
+  await link.waitFor({timeout: 5000});
+  t.check(/MCP data from Connect AI/.test(await text(p, "#now .src.try")), "one line under the record says where it came from");
+  t.check(await link.getAttribute("href") === "https://cloud.cdata.com/" && await link.getAttribute("target") === "_blank",
+          "and links the sign-up in a new tab");
 });
 
 test("clearing the level without trying the red door still ends", async (t, b) => {

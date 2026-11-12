@@ -9,6 +9,8 @@
   const AI = window.ConnectDoomAI;
   const REPO = "https://github.com/CDataSoftware/connect-ai-doom";
   const CONNECT_AI = "https://www.cdata.com/ai/";
+  // The writeup: how Claude plays, how the level is built, the model runs. The full version links it; the embed sits inside it.
+  const WRITEUP = "https://www.cdata.com/blog/doom-mcp-server";
   const external = (href, text, cls = "") =>
     `<a href="${href}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}>${text}</a>`;
   const esc = text => String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
@@ -461,7 +463,7 @@
       #stage .weblinks > * { white-space: nowrap; }
       @container (max-width: 720px) {
         #stage .weblinks { gap: 12px; }
-        #ai-link .who, #stage .weblinks a[href="${CONNECT_AI}"] { display: none; }
+        #ai-link .who, #stage .weblinks a[href="${CONNECT_AI}"], #stage .weblinks a[href="${WRITEUP}"] { display: none; }
       }
       @container (max-width: 600px) {
         #stage-mode { display: none; }   /* the panel says the same, at the top of its feed */
@@ -1387,7 +1389,7 @@
       });
       chip.parentNode.insertBefore(nav, chip);
     } else {
-      nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+      nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(WRITEUP, "BLOG POST")}${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
       nav.querySelector("#ai-link").addEventListener("click", openSettings);
       nav.querySelector("#build-link").addEventListener("click", () => openBuilder());
       chip.parentNode.insertBefore(nav, chip);
@@ -1403,7 +1405,7 @@
       <img src="brand/connect-ai.svg" alt="Connect AI" height="32">
       <div class="doom">DOOM</div>
       <p id="desktop-why"></p>
-      <div class="links"><a href="about.html">WHAT IS THIS?</a>${external(REPO, "GITHUB")}</div></div>`;
+      <div class="links"><a href="about.html">WHAT IS THIS?</a>${EMBED ? "" : external(WRITEUP, "BLOG POST")}${external(REPO, "GITHUB")}</div></div>`;
     document.body.appendChild(gate);
     document.documentElement.classList.add("embed-ready");   // embed.html's head hides the page until now
     return gate;

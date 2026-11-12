@@ -247,6 +247,40 @@ test("clearing the level: step 3, the red door, and the end card", async (t, b) 
   t.check((await panel(p)).kill_total === 0, "PLAY AGAIN starts over");
 });
 
+test("freeing the mouse mid-run shows how far you got, the sign-up and RESUME; never during Claude's run", async (t, b) => {
+  const p = await open(b, t);
+  const esc = () => p.evaluate(() => { document.exitPointerLock(); document.dispatchEvent(new Event("pointerlockchange")); });
+  await takeOver(p);
+  const pid = (await game(p)).monsters[0].pid;
+  await p.evaluate(pid => Module.bridge(`kill ${pid}`), pid);
+  await esc();
+  await p.waitForSelector("#coach-release:not([hidden])", {timeout: 3000});
+  t.check(/MOUSE FREE · 1\/45 RECORDS/.test(await text(p, "#coach-release")), "the player's own pause counts the records so far");
+  const signup = p.locator("#coach-release a", {hasText: "TRY CONNECT AI"});
+  t.check(await signup.getAttribute("href") === "https://cloud.cdata.com/" && await signup.getAttribute("target") === "_blank",
+          "TRY CONNECT AI opens the sign-up in a new tab");
+  await p.click("#coach-release [data-go=resume]");
+  t.check(await p.isHidden("#coach-release"), "RESUME closes it");
+  t.check(await p.evaluate(() => document.activeElement?.id === "canvas"), "and hands the keys back to the game");
+  await p.evaluate(() => window.ConnectDoomReplay.send("OPTION 0 1"));   // Claude plays on
+  await gameSays(p, s => s.options.claude_plays === 1);
+  await esc();
+  await p.waitForTimeout(500);
+  t.check(await p.isHidden("#coach-release"), "while Claude plays, freeing the mouse shows nothing");
+});
+
+test("the panel's record card links the sign-up after a kill", async (t, b) => {
+  const p = await open(b, t);
+  await takeOver(p);
+  const pid = (await game(p)).monsters[0].pid;
+  await p.evaluate(pid => Module.bridge(`kill ${pid}`), pid);
+  const link = p.locator("#now a.try");
+  await link.waitFor({timeout: 5000});
+  t.check(/MCP data from Connect AI/.test(await text(p, "#now .src.try")), "one line under the record says where it came from");
+  t.check(await link.getAttribute("href") === "https://cloud.cdata.com/" && await link.getAttribute("target") === "_blank",
+          "and links the sign-up in a new tab");
+});
+
 test("clearing the level without trying the red door still ends", async (t, b) => {
   const p = await open(b, t);
   await takeOver(p);
@@ -670,6 +704,7 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   await phone.waitForSelector("#desktop-only:not([hidden])");
   t.check(/desktop browser/.test(await text(phone, "#desktop-why")), "a phone: play on a computer");
   t.check(await phone.isVisible("#desktop-only a:has-text('BLOG POST')"), "with the blog post to read instead");
+  t.check(await phone.isHidden("#desktop-only [data-go=anyway]"), "and no way past it: a phone has no room for the game");
   await phone.waitForTimeout(1500);
   t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "and nothing of the game downloads");
   const small = await open(b, t, {viewport: {width: 800, height: 500}, wait: false});
@@ -678,6 +713,24 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   await small.setViewportSize({width: 1440, height: 900});
   await started(small);
   t.check(await small.isHidden("#desktop-only"), "made bigger, the game starts");
+});
+
+test("a desktop that reports no mouse can say it has one and play", async (t, b) => {
+  const ctx = await b.newContext({viewport: {width: 1440, height: 900}});
+  t.contexts.push(ctx);
+  const p = await ctx.newPage();
+  p.on("pageerror", e => t.check(false, `no page error (${e.message})`));
+  await p.route("https://plausible.joekarlsson.io/**", r => r.fulfill({status: 204, body: ""}));
+  await p.addInitScript(() => {   // as a remote desktop reports it: no fine pointer anywhere
+    const real = matchMedia.bind(window);
+    window.matchMedia = q => q === "(any-pointer: fine)" ? {...real(q), matches: false} : real(q);
+  });
+  await p.goto(SITE);
+  await p.waitForSelector("#desktop-only:not([hidden])");
+  t.check(await p.isVisible("#desktop-only [data-go=anyway]"), "the note offers I HAVE A MOUSE: PLAY");
+  await p.click("#desktop-only [data-go=anyway]");
+  await started(p);
+  t.check(await p.isHidden("#desktop-only"), "and the game starts");
 });
 
 test("embed: Claude starts playing behind the start card as it loads", async (t, b) => {

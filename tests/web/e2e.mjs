@@ -656,6 +656,8 @@ test("links: every page loads, internal links work, external ones open new tabs"
   }
   await p.goto(SITE);
   await started(p);
+  t.check(await p.locator(".weblinks a", {hasText: "BLOG POST"}).getAttribute("href") === "https://www.cdata.com/blog/doom-mcp-server",
+          "BLOG POST links the writeup");
   await p.click(".weblinks a[href='about.html']");
   await p.waitForURL(/about\.html/);
   t.check(/Connect AI/.test(await p.title()), `ABOUT opens the about page (${await p.title()})`);
@@ -667,6 +669,7 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   phone.on("request", r => fetched.push(r.url()));
   await phone.waitForSelector("#desktop-only:not([hidden])");
   t.check(/desktop browser/.test(await text(phone, "#desktop-why")), "a phone: play on a computer");
+  t.check(await phone.isVisible("#desktop-only a:has-text('BLOG POST')"), "with the blog post to read instead");
   await phone.waitForTimeout(1500);
   t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "and nothing of the game downloads");
   const small = await open(b, t, {viewport: {width: 800, height: 500}, wait: false});

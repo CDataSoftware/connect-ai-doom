@@ -286,6 +286,12 @@
         addEventListener(type, e => {
           if (document.activeElement !== canvas && document.pointerLockElement !== canvas) e.stopPropagation();
         }, true);
+      // and Tab: without the mouse, Tab and Shift+Tab move on through the post, so a keyboard
+      // reader isn't trapped in the game (WCAG 2.1.2). Ahead of the game keys below and SDL, which
+      // would cancel it; while the game holds the mouse, Tab still opens the map.
+      addEventListener("keydown", e => {
+        if (e.code === "Tab" && document.pointerLockElement !== canvas) e.stopImmediatePropagation();
+      }, true);
     }
     addEventListener("keydown", e => {
       if (GAME_KEYS.has(e.code) && (document.activeElement === canvas || document.pointerLockElement === canvas))

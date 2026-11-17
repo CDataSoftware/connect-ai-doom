@@ -780,6 +780,15 @@ test("embed: in a blog post, the game leaves the mouse alone until it's clicked"
   await p.keyboard.press("Space");
   await eventually(() => p.evaluate(y => scrollY > y, y), "Space to scroll the post");
   t.check(true, "after Esc, Space scrolls the post again");
+  // A keyboard reader who tabs into the game can tab out again (WCAG 2.1.2, no keyboard trap)
+  await embed.focus("#canvas");
+  await p.keyboard.press("Tab");
+  t.check(await embed.evaluate(() => document.activeElement !== document.getElementById("canvas")),
+          "Tab moves focus on from the game, not into the map");
+  await embed.focus("#canvas");
+  await p.keyboard.press("Shift+Tab");
+  t.check(await embed.evaluate(() => document.activeElement !== document.getElementById("canvas")),
+          "and so does Shift+Tab");
 });
 
 test("embed: on a phone, a picture of the game", async (t, b) => {

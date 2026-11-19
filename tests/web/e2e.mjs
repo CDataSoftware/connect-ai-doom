@@ -134,6 +134,15 @@ const tipSays = (p, what, timeout) => until(p, ([src, words]) => {
   return src === null ? tip.includes(words) : new RegExp(src).test(tip);
 }, what instanceof RegExp ? [what.source, null] : [null, what], timeout);
 const gameSays = (p, fn, timeout = 15000) => until(p, `(() => { try { const s = JSON.parse(Module.FS.readFile("/doom/agent/state.json", {encoding: "utf8"})); return (${fn})(s); } catch (e) { return false; } })()`, undefined, timeout);
+// a click on a Connect AI link, kept from opening its tab: the where of each "Try Connect AI" event it sent
+// (the Plausible script isn't served here, so its queue on the page holds every event)
+const connectAIClick = (p, sel) => p.evaluate(sel => {
+  const sent = () => (window.plausible.q || []).filter(a => a[0] === "Try Connect AI").map(a => a[1]?.props?.where);
+  const before = sent().length;
+  addEventListener("click", e => e.preventDefault(), {once: true});
+  document.querySelector(sel).click();
+  return sent().slice(before).join();
+}, sel);
 const settingsOpen = p => p.evaluate(() => !!document.getElementById("ai-settings")?.open);
 const builderOpen = p => p.evaluate(() => !!document.getElementById("ai-build")?.open);
 const saved = p => p.evaluate(() => JSON.parse(localStorage.getItem("connect-doom-ai") || "null"));
@@ -238,6 +247,7 @@ test("clearing the level: step 3, the red door, and the end card", async (t, b) 
   const signup = p.locator("#coach-end a", {hasText: "TRY CONNECT AI FREE"});
   t.check(await signup.getAttribute("href") === "https://cloud.cdata.com/" && await signup.getAttribute("target") === "_blank",
           "TRY CONNECT AI FREE opens the sign-up in a new tab");
+  t.check(await connectAIClick(p, "#coach-end a[href='https://cloud.cdata.com/']") === "end-card", "TRY CONNECT AI FREE counts, where=end-card");
   t.check(await p.locator("#coach-end a", {hasText: "HOW IT WORKS"}).getAttribute("href") === "about.html", "HOW IT WORKS links the about page");
   t.check(/github\.com/.test(await p.locator("#coach-end a", {hasText: "GITHUB"}).getAttribute("href")), "GITHUB links the code");
   const reload = p.waitForEvent("load");
@@ -658,6 +668,10 @@ test("links: every page loads, internal links work, external ones open new tabs"
   await started(p);
   t.check(await p.locator(".weblinks a", {hasText: "BLOG POST"}).getAttribute("href") === "https://www.cdata.com/blog/doom-mcp-server",
           "BLOG POST links the writeup");
+  for (const [sel, where] of [[".weblinks a[href='https://www.cdata.com/ai/']", "nav"],
+                              ["#stage .bar.bottom .fine a[href='https://www.cdata.com/ai/']", "footer"],
+                              ["#stage .bar.bottom .fine a[href='https://cloud.cdata.com/']", "footer"]])
+    t.check(await p.isVisible(sel) && await connectAIClick(p, sel) === where, `${sel} counts as Try Connect AI, where=${where}`);
   await p.click(".weblinks a[href='about.html']");
   await p.waitForURL(/about\.html/);
   t.check(/Connect AI/.test(await p.title()), `ABOUT opens the about page (${await p.title()})`);
@@ -670,6 +684,9 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   await phone.waitForSelector("#desktop-only:not([hidden])");
   t.check(/desktop browser/.test(await text(phone, "#desktop-why")), "a phone: play on a computer");
   t.check(await phone.isVisible("#desktop-only a:has-text('BLOG POST')"), "with the blog post to read instead");
+  t.check(await phone.isVisible("#desktop-only a:has-text('CONNECT AI')") &&
+          await connectAIClick(phone, "#desktop-only a[href='https://www.cdata.com/ai/']") === "phone-note",
+          "and Connect AI, counted as Try Connect AI, where=phone-note");
   await phone.waitForTimeout(1500);
   t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "and nothing of the game downloads");
   const small = await open(b, t, {viewport: {width: 800, height: 500}, wait: false});

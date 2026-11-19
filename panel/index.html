@@ -861,8 +861,8 @@ function source(k, m) {
   return `<div class="src"><span class="tag">VIA MCP</span>Read through Connect AI from ${esc(k.app)} › ${esc(table)}</div>`;
 }
 
-// The web build's record card: the sign-up, one quiet line (web.js tracks the click)
-const tryLine = `<div class="src try">This record is MCP data from Connect AI. <a class="try" href="https://cloud.cdata.com/" target="_blank" rel="noopener">Turn your own into a level →</a></div>`;
+// The web build's record card: the sign-up, one quiet line (web.js counts the click as Try Connect AI, where=record)
+const tryLine = `<div class="src try">This record is MCP data from Connect AI. <a class="try" href="https://cloud.cdata.com/" target="_blank" rel="noopener noreferrer" data-where="record">Turn your own into a level →</a></div>`;
 
 function liveRead(k, demo, saved, snapshot) {
   if (snapshot) return "";

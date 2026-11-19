@@ -11,11 +11,17 @@
   const CONNECT_AI = "https://www.cdata.com/ai/";
   // The writeup: how Claude plays, how the level is built, the model runs. The full version links it; the embed sits inside it.
   const WRITEUP = "https://www.cdata.com/blog/doom-mcp-server";
-  const external = (href, text, cls = "") =>
-    `<a href="${href}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}>${text}</a>`;
+  // where: a Connect AI link, counted as a "Try Connect AI" event with where it was clicked (data-where)
+  const external = (href, text, cls = "", where = "") =>
+    `<a href="${href}" target="_blank" rel="noopener noreferrer"${cls ? ` class="${cls}"` : ""}${where ? ` data-where="${where}"` : ""}>${text}</a>`;
   const esc = text => String(text).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
   // A custom event for the site's Plausible analytics (web/build.sh puts its script on the page)
   const trackEvent = (name, props) => window.plausible?.(name, props ? {props} : undefined);
+  // Every Connect AI link (the end card, the nav, the footer, the phone note) sends the same event
+  document.addEventListener("click", e => {
+    const link = e.target.closest?.("a[data-where]");
+    if (link) trackEvent("Try Connect AI", {where: link.dataset.where});
+  });
   // embed.html (web/build.sh): the game alone, for an iframe in a blog post, where offline Claude starts playing as it loads
   const EMBED = document.documentElement.hasAttribute("data-embed");
   // The embed's pause: the reader's PAUSE button, or the game out of the post's view or its tab hidden.
@@ -426,8 +432,8 @@
     nameBuilder(mine ? mine.model : "claude");
     const fine = document.querySelector("#stage .bar.bottom .fine");
     // the page's footer: what Connect AI is, the code, and that this is a fan project
-    if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI") +
-      ", one MCP server between AI agents and your data. " + external(AI.SIGNUP_URL, "Try Connect AI free") + " · " +
+    if (fine) fine.innerHTML = "Every monster is a record Claude read through " + external(CONNECT_AI, "CData Connect AI", "", "footer") +
+      ", one MCP server between AI agents and your data. " + external(AI.SIGNUP_URL, "Try Connect AI free", "", "footer") + " · " +
       external(REPO, "Code on GitHub") + "<br>A fan project, not affiliated with or endorsed by id Software, ZeniMax Media " +
       "or Microsoft. DOOM is a trademark of id Software LLC.";
     const board = document.querySelector("#board h2");
@@ -716,7 +722,7 @@
         <p>All through one MCP server: Connect AI. It let ${how === "watched" ? esc(who) : "Claude"} read the apps it was allowed into${denied
           ? `, and blocked the one request it shouldn't answer${mine ? "" : ": a customer's Social Security number"}` : ""}.
           That's what Connect AI does for any AI agent and your data.</p>
-        <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn")}
+        <div class="row">${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "btn", "end-card")}
           ${how === "watched" ? '<button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button>'
                               : '<button class="btn alt" type="button" data-go="again">PLAY AGAIN</button>'}
           <a class="btn alt" href="about.html">HOW IT WORKS</a>
@@ -769,7 +775,6 @@
       if (go === "demo") { trackEvent("Back to the demo level"); myLevel.clear().finally(() => location.reload()); }
     });
     end.addEventListener("click", e => {
-      if (e.target.closest(`a[href="${AI.SIGNUP_URL}"]`)) trackEvent("Try Connect AI");
       if (e.target.closest("[data-go=again]")) location.reload();
     });
     // During Claude's run, a click on the game takes the marine over where it stands; in the embed, a
@@ -1395,7 +1400,7 @@
       });
       chip.parentNode.insertBefore(nav, chip);
     } else {
-      nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(WRITEUP, "BLOG POST")}${external(CONNECT_AI, "CONNECT AI")}${external(REPO, "GITHUB")}`;
+      nav.innerHTML = `<button type="button" id="build-link">BUILD A LEVEL</button><button type="button" id="ai-link"></button><a href="about.html">ABOUT</a>${external(WRITEUP, "BLOG POST")}${external(CONNECT_AI, "CONNECT AI", "", "nav")}${external(REPO, "GITHUB")}`;
       nav.querySelector("#ai-link").addEventListener("click", openSettings);
       nav.querySelector("#build-link").addEventListener("click", () => openBuilder());
       chip.parentNode.insertBefore(nav, chip);
@@ -1411,7 +1416,7 @@
       <img src="brand/connect-ai.svg" alt="Connect AI" height="32">
       <div class="doom">DOOM</div>
       <p id="desktop-why"></p>
-      <div class="links"><a href="about.html">WHAT IS THIS?</a>${EMBED ? "" : external(WRITEUP, "BLOG POST")}${external(REPO, "GITHUB")}</div></div>`;
+      <div class="links"><a href="about.html">WHAT IS THIS?</a>${EMBED ? "" : external(WRITEUP, "BLOG POST")}${external(REPO, "GITHUB")}${external(CONNECT_AI, "CONNECT AI", "", "phone-note")}</div></div>`;
     document.body.appendChild(gate);
     document.documentElement.classList.add("embed-ready");   // embed.html's head hides the page until now
     return gate;

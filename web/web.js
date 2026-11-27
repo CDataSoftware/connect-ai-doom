@@ -731,6 +731,19 @@
       tip.hidden = release.hidden = true;
       if (document.pointerLockElement) document.exitPointerLock();
       const n = kills.length;
+      // The embed: most level clears are readers of a blog post watching Claude (17 of 22 in Nov 2026), and 1 of
+      // 29 clicked through. Its small card says what they just saw (MCP data as a level) and offers theirs.
+      if (EMBED && how === "watched") {
+        end.innerHTML = `<div class="card">
+          <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
+          <h3 id="coach-end-title">That level was a company's MCP data. Make one from yours.</h3>
+          <p>Connect AI turns ${appList} and the rest of your apps into one MCP server. Ask a question, and the answer becomes the level.</p>
+          <div class="row">${external(AI.SIGNUP_URL, "BUILD A LEVEL FROM YOUR DATA", "btn", "end-card")}
+            <button class="btn alt" type="button" data-go="again">PLAY IT YOURSELF</button></div></div>`;
+        end.hidden = false;
+        playAgainLater(15);
+        return;
+      }
       end.innerHTML = `<div class="card">
         <div class="eyebrow">DOOMCP · LEVEL CLEAR · ${n}/${monsters.length} RECORDS</div>
         <h3 id="coach-end-title">${how === "watched" ? esc(who) : "You"} just read ${n} record${n === 1 ? "" : "s"} from ${appList}.</h3>
@@ -744,7 +757,6 @@
           ${external(REPO, "GITHUB", "btn alt")}</div></div>`;
       end.hidden = false;
       if (!EMBED) end.querySelector(".btn").focus();   // in a blog post, focus would pull the post's scroll to the game
-      if (EMBED && how === "watched") playAgainLater(15);
     }
 
     // The embed: Claude's level clear stays up a while (longer with the pointer on it, or paused), then

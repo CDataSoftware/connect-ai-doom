@@ -804,6 +804,12 @@ test("embed: after Claude clears the level, it plays it again", async (t, b) => 
   await killAll(p);
   await p.waitForSelector("#coach-end:not([hidden])", {timeout: 60000});
   t.check(/LEVEL CLEAR/.test(await text(p, "#coach-end")), "Claude's level clear shows");
+  t.check(/Make one from yours/.test(await text(p, "#coach-end")), "it offers a level from the reader's own MCP data");
+  t.check(await connectAIClick(p, "#coach-end a[href='https://cloud.cdata.com/']") === "end-card",
+          "BUILD A LEVEL FROM YOUR DATA counts as Try Connect AI, where=end-card");
+  const card = await p.locator("#coach-end .card").boundingBox();
+  const buttons = await p.locator("#coach-end .row").boundingBox();
+  t.check(buttons.y + buttons.height <= card.y + card.height + 1 && card.y + card.height <= 712, "the card and both buttons fit the embed");
   await p.mouse.move(400, 20);   // off the card, on the logo strip
   await p.waitForSelector("#coach-end", {state: "hidden", timeout: 30000});
   await gameSays(p, s => s.options.claude_plays === 1 && s.player.kills === 0 && s.monsters.length === 45, 20000);

@@ -143,6 +143,8 @@ const connectAIClick = (p, sel) => p.evaluate(sel => {
   document.querySelector(sel).click();
   return sent().slice(before).join();
 }, sel);
+// the props of each event of this name the page sent (the Plausible queue, as above): every goal the site counts
+const sent = (p, name) => p.evaluate(name => (window.plausible.q || []).filter(a => a[0] === name).map(a => a[1]?.props || {}), name);
 const settingsOpen = p => p.evaluate(() => !!document.getElementById("ai-settings")?.open);
 const builderOpen = p => p.evaluate(() => !!document.getElementById("ai-build")?.open);
 const saved = p => p.evaluate(() => JSON.parse(localStorage.getItem("connect-doom-ai") || "null"));
@@ -244,6 +246,8 @@ test("clearing the level: step 3, the red door, and the end card", async (t, b) 
   t.check((await panel(p)).vault.length === 1, "the red door's try shows in the panel");
   await p.waitForSelector("#coach-end:not([hidden])", {timeout: 10000});
   t.check(/LEVEL CLEAR · 45\/45 RECORDS/.test(await text(p, "#coach-end")), "the end card counts the records");
+  t.check((await sent(p, "Rooms cleared")).length === 1 && (await sent(p, "Red door")).length === 1
+          && (await sent(p, "Level clear"))[0]?.how === "played", "Rooms cleared, Red door and Level clear (how=played) are counted");
   const signup = p.locator("#coach-end a", {hasText: "TRY CONNECT AI FREE"});
   t.check(await signup.getAttribute("href") === "https://cloud.cdata.com/" && await signup.getAttribute("target") === "_blank",
           "TRY CONNECT AI FREE opens the sign-up in a new tab");
@@ -336,6 +340,7 @@ test("dying: the level restarts, every record back", async (t, b) => {
   t.check(s.player.x !== moved.x || s.player.y !== moved.y, `the marine is back at the start (${moved.x},${moved.y} → ${s.player.x},${s.player.y})`);
   t.check((await panel(p)).kill_total === 0, "the panel's kill count starts over");
   t.check(/YOU DIED/.test(await text(p, "#coach-tip")), "the tip says what happened");
+  t.check((await sent(p, "Died")).length === 1, "and counts as Died, once");
 });
 
 test("dying for real, then E at once: back in a fresh level", async (t, b) => {
@@ -428,6 +433,8 @@ test("AI settings: each provider's key, checked, kept and forgotten", async (t, 
     t.check((await saved(p)).keys[id] === `${id}-key`, `${id}: the key is kept in this browser`);
   }
   t.check(!(await p.locator("#ai-model option", {hasText: "no-tools"}).count()), "OpenRouter lists only models with tools");
+  t.check((await sent(p, "AI provider")).map(e => e.provider).join() === "anthropic,openai,openrouter"
+          && (await sent(p, "AI key checked")).every(e => e.ok === "yes"), "each pick counts as AI provider, each key as AI key checked");
   await p.click("#ai-check");
   await until(p, () => /The key works/.test(document.getElementById("ai-msg").textContent));
   t.check(true, "CHECK KEY checks it again");
@@ -479,6 +486,7 @@ test("AI settings: Connect AI, checked; set up, the builder opens", async (t, b)
   await p.click("#cai-check");
   await until(p, () => /Connected/.test(document.getElementById("cai-msg").textContent));
   t.check(/2 read-only tools, 3 connections, Salesforce, Zendesk and Stripe/.test(await text(p, "#cai-msg")), `CHECK lists the connections (${await text(p, "#cai-msg")})`);
+  t.check((await sent(p, "Connect AI checked")).at(-1)?.ok === "yes", "counted as Connect AI checked, ok=yes");
   t.check(/Ready/.test(await text(p, "#ai-status")) && await p.isVisible("#ai-next"), "the dialog says it's ready to build");
   t.check((await saved(p)).connectAI.user === "test@example.com" && (await saved(p)).connectAI.url === "", "Connect AI's own URL is kept as the default");
   await p.click("#ai-settings [data-close]");
@@ -510,6 +518,7 @@ for (const [provider, name] of [["anthropic", "CLAUDE-SONNET-5-5"], ["openai", "
     await tipSays(p, `WATCHING ${name} PLAY`, 5000);
     await gameSays(p, s => s.options.claude_plays === 1);
     t.check(true, "it plays");
+    t.check((await sent(p, "Watch own AI"))[0]?.provider === provider, "counted as Watch own AI, with the provider");
     await until(p, () => !document.getElementById("play").hidden);
     t.check(await text(p, "#s-model") === "SONNET-5-5", `BUILT BY names who built the level, not who plays (${await text(p, "#s-model")})`);
     const [who, title] = await p.evaluate(() => [document.getElementById("play-who"), document.getElementById("play-who").parentElement]
@@ -594,6 +603,7 @@ test("builder: a level from the visitor's data, played, then back to the demo", 
   t.check(await ideas.count() >= 2, `it offers a few questions (${await ideas.count()})`);
   await ideas.nth(1).click();
   t.check(await p.inputValue("#build-q") === await ideas.nth(1).getAttribute("data-idea"), "a suggested question fills the box");
+  t.check((await sent(p, "Suggested question")).length === 1, "and counts as Suggested question");
   await p.fill("#build-q", "");
   await p.click("#build-go");
   t.check(/Type a question first/.test(await text(p, "#build-msg")), "an empty question is turned down");
@@ -602,10 +612,14 @@ test("builder: a level from the visitor's data, played, then back to the demo", 
   await p.click("#build-go");
   await until(p, () => document.body.classList.contains("building"), undefined, 10000);
   t.check(true, "the building screen shows");
+  t.check((await sent(p, "Build level"))[0]?.provider === "anthropic", "counted as Build level, with the provider");
+  // Level built is sent in the moment before the page reloads into the new level
+  const built = until(p, () => (window.plausible.q || []).some(a => a[0] === "Level built"), undefined, 180000).then(() => true, () => false);
   const failed = until(p, () => /Couldn't/.test(document.getElementById("build-msg")?.textContent || ""), undefined, 180000)
     .then(() => p.textContent("#build-msg"));
   const why = await Promise.race([reloaded.then(() => null), failed]);
   if (why) throw new Error(`the level didn't build: ${why}`);
+  t.check(await built, "counted as Level built");
   await started(p);
   t.check(/read your Salesforce, Zendesk and Stripe/.test(await text(p, "#coach-intro p")), "the page plays the visitor's level");
   t.check(p.connectAICalls.some(c => c.name === "queryData" && c.arguments.query === QUERY.query), "the model read records through Connect AI to plan it");

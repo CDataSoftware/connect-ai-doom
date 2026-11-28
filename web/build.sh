@@ -61,7 +61,7 @@ python3 connect_doom.py state > "$L/state.json"   # the panel's state before the
 rm -f "$L/level-raw.wad" "$L/saved-records.json" "$L/run.jsonl" "$L/leaderboard.jsonl"
 
 # The panel, with web.js ahead of its script: the stage layout, the game, and the panel's /state.json.
-cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/ai.js web/og.jpg "$DIST/"
+cp -R panel/fonts panel/brand panel/sprites panel/favicon* web/web.js web/replay.js web/ai.js web/og.jpg web/phone-clip.mp4 web/phone-clip.jpg "$DIST/"
 # The level builder for a visitor's own level (web/levelkit.py, which web/ai.js runs in Pyodide): the
 # Mac version's own scripts and brand kit, brief.py's instructions for the model, and zdbsp compiled
 # to WebAssembly (Emscripten's libc has getopt, so zdbsp's own copy stays out)

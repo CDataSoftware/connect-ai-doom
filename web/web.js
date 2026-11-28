@@ -894,6 +894,13 @@
       setTimeout(() => finish("played"), 5000);
     });
 
+    // Where players stop: god mode keeps "Died" from firing, so leaving mid-level says how far they got
+    addEventListener("pagehide", () => {
+      if (!step || run || ended) return;
+      const roomsClear = state.rooms_live.filter((_, i) => !alive().some(m => m.pid % 3 === i)).length;
+      trackEvent("Left mid-level", {step: String(step), records: `${kills.length}/${monsters.length}`, rooms: String(roomsClear)});
+    });
+
     const mb = n => (n / 1e6).toFixed(1);
     return {
       loading(loaded, total) {
@@ -1036,7 +1043,7 @@
     el.addEventListener("click", e => {
       if (e.target === el || e.target.closest("[data-close]")) { el.close(); return; }
       const idea = e.target.closest("[data-idea]");
-      if (idea && !building) $("build-q").value = idea.dataset.idea;
+      if (idea && !building) { trackEvent("Suggested question"); $("build-q").value = idea.dataset.idea; }
       if (e.target.closest("#build-go")) build();
       if (e.target.closest("[data-settings]")) { el.close(); openSettings(); }
     });

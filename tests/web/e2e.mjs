@@ -276,6 +276,8 @@ test("freeing the mouse mid-run shows how far you got, the sign-up and RESUME; n
   t.check(await p.evaluate(() => document.activeElement?.id === "canvas"), "and hands the keys back to the game");
   await p.evaluate(() => window.ConnectDoomReplay.send("OPTION 0 1"));   // Claude plays on
   await gameSays(p, s => s.options.claude_plays === 1);
+  // the page hands the marine to Claude on its next look at the game's options: free the mouse after that
+  await eventually(async () => (await panel(p)).game.mode === "replay", "Claude's run on the page");
   await esc();
   await p.waitForTimeout(500);
   t.check(await p.isHidden("#coach-release"), "while Claude plays, freeing the mouse shows nothing");

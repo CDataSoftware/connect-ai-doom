@@ -1383,16 +1383,25 @@
       #ai-link:hover, #ai-link:focus-visible { filter: brightness(1.1); outline: 2px solid var(--clarity); outline-offset: 2px; }
       .weblinks a { font: 9px/1 var(--pixel); color: var(--balance); text-decoration: none; letter-spacing: 1px; }
       .weblinks a:hover, .weblinks a:focus-visible { color: var(--agility); }
-      #desktop-only { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-                      padding: 24px 16px; background: var(--depth); text-align: center; }
+      #desktop-only { position: fixed; inset: 0; z-index: 10; display: flex; overflow-y: auto;
+                      padding: 24px 16px; background: var(--depth); }
       #desktop-only[hidden] { display: none; }
-      #desktop-only .box { max-width: 460px; display: flex; flex-direction: column; gap: 16px; align-items: center; }
-      #desktop-only .doom { font: 22px/1 var(--pixel); color: var(--doom-red); letter-spacing: 2px; }
-      #desktop-only p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--clarity); }
-      #desktop-only .links { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-      #desktop-only .links a { font: 10px/1 var(--pixel); color: var(--depth); background: var(--agility);
-                               padding: 12px 14px; border-radius: 3px; text-decoration: none; }
-      #desktop-only .links a + a { background: var(--depth-3); color: var(--clarity); }`;
+      #desktop-only .box { margin: auto; width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 16px; }
+      #desktop-only .brand { display: flex; align-items: center; gap: 10px; }
+      #desktop-only .doom { font: 14px/1 var(--pixel); color: var(--doom-red); letter-spacing: 1px; }
+      #desktop-only .clip { width: 100%; aspect-ratio: 4 / 3; border-radius: 3px; background: #000; display: block; }
+      #desktop-only h2 { display: block; margin: 0; font: 800 26px/1.2 var(--sans); color: var(--clarity); letter-spacing: 0; text-transform: none; }
+      #desktop-only h2::before { content: none; }
+      #desktop-only h2 .hl { color: var(--agility); }
+      #desktop-only p { margin: 0; font-size: 16px; line-height: 1.5; color: var(--balance); }
+      #desktop-only #desktop-why { font-size: 14px; }
+      #desktop-only .cta { display: block; text-align: center; font: 12px/1 var(--pixel); padding: 18px 14px; border-radius: 3px;
+                           text-decoration: none; background: var(--agility); color: var(--depth); border: 0; cursor: pointer; }
+      #desktop-only .cta.alt { background: var(--depth-3); color: var(--clarity); }
+      #desktop-only .cta[hidden] { display: none; }
+      #desktop-only .sent { margin-top: -8px; font-size: 13px; color: var(--agility); text-align: center; }
+      #desktop-only .links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; font-size: 14px; }
+      #desktop-only .links a { color: var(--clarity); }`;
     document.head.appendChild(style);
     const nav = document.createElement("nav");
     nav.className = "weblinks";
@@ -1424,8 +1433,7 @@
         /* the start card: the game shows through it, and only the site's level (no bring your own AI) */
         html[data-embed] #coach-intro { background: rgba(13, 13, 18, .6); }
         html[data-embed] #coach-intro .card { text-shadow: 0 1px 3px #000; }
-        html[data-embed] #coach-byo { display: none; }
-        #desktop-only .shot { width: 100%; border-radius: 3px; }`;
+        html[data-embed] #coach-byo { display: none; }`;
       // fullscreen when the post's iframe allows it (allow="fullscreen")
       nav.innerHTML = '<button type="button" class="pause" hidden>PAUSE</button>' +
         (document.fullscreenEnabled ? '<button type="button" class="fullscreen">FULLSCREEN</button>' : "") +
@@ -1451,13 +1459,31 @@
     const gate = document.createElement("div");
     gate.id = "desktop-only";
     gate.hidden = true;
-    // on a phone, the embed shows what the game looks like
-    gate.innerHTML = `<div class="box">${EMBED ? '<img class="shot" src="og.jpg" alt="Claude playing a Doom level built from a company\'s app data">' : ""}
-      <img src="brand/connect-ai.svg" alt="Connect AI" height="32">
-      <div class="doom">DOOM</div>
+    // Phones see Claude play instead: a real run's walk from the lobby to the first room, with no shooting
+    // (phone-clip.mp4, DECISIONS 2026-11-27); its src is set only once the note shows (check())
+    gate.innerHTML = `<div class="box">
+      <div class="brand"><img src="brand/connect-ai.svg" alt="Connect AI" height="22"><span class="doom">× DOOM</span></div>
+      <video class="clip" muted loop playsinline poster="phone-clip.jpg"
+        aria-label="Claude walking a Doom level built from a demo company's records: the keycards in the lobby, then the Salesforce room"></video>
+      <h2>It turns your <span class="hl">MCP data</span> into a Doom level.</h2>
+      <p>Claude read a demo company's Salesforce, Zendesk and Stripe through the Connect AI MCP server, and every record became a monster. This is Claude playing it.</p>
+      ${external(AI.SIGNUP_URL, "TRY CONNECT AI FREE", "cta", "phone-note")}
+      <button class="cta alt" type="button" data-go="send">SEND ME THE LINK</button>
+      <div class="sent" role="status"></div>
+      <button class="cta alt" type="button" data-go="anyway" hidden>I HAVE A MOUSE: PLAY</button>
       <p id="desktop-why"></p>
-      <button class="btn" type="button" data-go="anyway" hidden>I HAVE A MOUSE: PLAY</button>
-      <div class="links"><a href="about.html">WHAT IS THIS?</a>${EMBED ? "" : external(WRITEUP, "BLOG POST")}${external(REPO, "GITHUB")}${external(CONNECT_AI, "CONNECT AI", "", "phone-note")}</div></div>`;
+      <div class="links"><a href="about.html">How it works</a>${EMBED ? "" : external(WRITEUP, "Blog post")}${external(REPO, "GitHub")}</div></div>`;
+    // the share sheet, to send the full version to themselves for a computer; without one, the link copied
+    gate.querySelector("[data-go=send]").addEventListener("click", async () => {
+      const url = new URL("./", location.href).href, sent = gate.querySelector(".sent");
+      trackEvent("Send link");
+      try {
+        if (navigator.share) await navigator.share({title: "Connect AI × DOOM", url});
+        else { await navigator.clipboard.writeText(url); sent.textContent = "Link copied. Open it on your computer."; }
+      } catch (e) {
+        if (e.name !== "AbortError") sent.textContent = `Couldn't share it: ${e.message}. The link is ${url}`;
+      }
+    });
     document.body.appendChild(gate);
     document.documentElement.classList.add("embed-ready");   // embed.html's head hides the page until now
     return gate;
@@ -1480,9 +1506,16 @@
       }
       if (gate.hidden) trackEvent("Desktop only", {reason: hasMouse() ? "small window" : "no mouse"});
       gate.hidden = false;
+      const clip = gate.querySelector(".clip");
+      if (!clip.src) {
+        clip.src = "phone-clip.mp4";
+        // reduced motion: the still, and the clip only if they press play
+        if (matchMedia("(prefers-reduced-motion: reduce)").matches) clip.controls = true;
+        else clip.play().catch(e => console.warn("Phone clip:", e));
+      }
       document.getElementById("desktop-why").textContent = hasMouse()
         ? "Connect AI × DOOM needs a bigger window. Make this one wider to play."
-        : "Connect AI × DOOM plays on a desktop browser, with a keyboard and a mouse. Open this page on your computer to play.";
+        : "The game needs a keyboard and a mouse, on a desktop browser. Open the link on your computer to play it, or let Claude play.";
       // some desktops report no mouse (remote desktops, a few touchscreen laptops): let them say so
       gate.querySelector("[data-go=anyway]").hidden = hasMouse() || !roomy();
     };

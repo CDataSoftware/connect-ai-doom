@@ -143,6 +143,8 @@ const connectAIClick = (p, sel) => p.evaluate(sel => {
   document.querySelector(sel).click();
   return sent().slice(before).join();
 }, sel);
+// the props of each event of this name the page sent (the Plausible queue, as above)
+const sent = (p, name) => p.evaluate(name => (window.plausible.q || []).filter(a => a[0] === name).map(a => a[1]?.props || {}), name);
 const settingsOpen = p => p.evaluate(() => !!document.getElementById("ai-settings")?.open);
 const builderOpen = p => p.evaluate(() => !!document.getElementById("ai-build")?.open);
 const saved = p => p.evaluate(() => JSON.parse(localStorage.getItem("connect-doom-ai") || "null"));
@@ -720,16 +722,28 @@ test("phones and small windows get a note, not the game", async (t, b) => {
   phone.on("request", r => fetched.push(r.url()));
   await phone.waitForSelector("#desktop-only:not([hidden])");
   t.check(/desktop browser/.test(await text(phone, "#desktop-why")), "a phone: play on a computer");
-  t.check(await phone.isVisible("#desktop-only a:has-text('BLOG POST')"), "with the blog post to read instead");
+  t.check(await phone.isVisible("#desktop-only a:has-text('Blog post')"), "with the blog post to read instead");
   t.check(await phone.isHidden("#desktop-only [data-go=anyway]"), "and no way past it: a phone has no room for the game");
-  t.check(await phone.isVisible("#desktop-only a:has-text('CONNECT AI')") &&
-          await connectAIClick(phone, "#desktop-only a[href='https://www.cdata.com/ai/']") === "phone-note",
-          "and Connect AI, counted as Try Connect AI, where=phone-note");
+  t.check(/MCP data/.test(await text(phone, "#desktop-only h2")), "the hook: MCP data becomes a Doom level");
+  await until(phone, () => { const v = document.querySelector("#desktop-only .clip"); return v.readyState >= 2 && !v.paused && v.muted && v.loop; });
+  t.check(true, "Claude's clip plays, muted, looping");
+  const cta = phone.locator("#desktop-only a.cta");
+  t.check(await cta.textContent() === "TRY CONNECT AI FREE" && await cta.getAttribute("href") === "https://cloud.cdata.com/"
+          && await cta.getAttribute("target") === "_blank", "TRY CONNECT AI FREE opens the sign-up in a new tab");
+  t.check(await connectAIClick(phone, "#desktop-only a.cta") === "phone-note", "counted as Try Connect AI, where=phone-note");
+  t.check((await sent(phone, "Desktop only"))[0]?.reason === "no mouse", "the note counts as Desktop only, reason=no mouse");
+  await phone.evaluate(() => { delete Navigator.prototype.share; navigator.clipboard.writeText = async t => { window.copied = t; }; });
+  await phone.click("#desktop-only [data-go=send]");
+  await until(phone, () => window.copied);
+  t.check(await phone.evaluate(() => window.copied) === SITE && /Link copied/.test(await text(phone, "#desktop-only .sent"))
+          && (await sent(phone, "Send link")).length === 1, "SEND ME THE LINK copies the full version's link where there's no share sheet, counted as Send link");
+  t.check(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing wider than the phone");
   await phone.waitForTimeout(1500);
   t.check(!fetched.some(u => /psdoom|freedoom2/.test(u)), "and nothing of the game downloads");
   const small = await open(b, t, {viewport: {width: 800, height: 500}, wait: false});
   await small.waitForSelector("#desktop-only:not([hidden])");
   t.check(/bigger window/.test(await text(small, "#desktop-why")), "a small window: make it bigger");
+  t.check((await sent(small, "Desktop only"))[0]?.reason === "small window", "counted as Desktop only, reason=small window");
   await small.setViewportSize({width: 1440, height: 900});
   await started(small);
   t.check(await small.isHidden("#desktop-only"), "made bigger, the game starts");
@@ -749,6 +763,7 @@ test("a desktop that reports no mouse can say it has one and play", async (t, b)
   await p.waitForSelector("#desktop-only:not([hidden])");
   t.check(await p.isVisible("#desktop-only [data-go=anyway]"), "the note offers I HAVE A MOUSE: PLAY");
   await p.click("#desktop-only [data-go=anyway]");
+  t.check((await p.evaluate(() => window.plausible.q.map(a => a[0]))).includes("Play anyway"), "counted as Play anyway");
   await started(p);
   t.check(await p.isHidden("#desktop-only"), "and the game starts");
 });
@@ -864,11 +879,23 @@ test("embed: in a blog post, the game leaves the mouse alone until it's clicked"
           "and so does Shift+Tab");
 });
 
-test("embed: on a phone, a picture of the game", async (t, b) => {
-  const p = await open(b, t, {viewport: {width: 390, height: 712}, mobile: true, path: "embed.html", wait: false});
-  await p.waitForSelector("#desktop-only:not([hidden]) .shot");
-  t.check(await p.evaluate(() => document.querySelector("#desktop-only .shot").naturalWidth > 0), "the screenshot loads");
-  t.check(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing wider than the phone");
+test("embed: on a phone, Claude's clip", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 320, height: 568}, mobile: true, path: "embed.html", wait: false});
+  await p.waitForSelector("#desktop-only:not([hidden]) .clip");
+  await until(p, () => !document.querySelector("#desktop-only .clip").paused);
+  t.check(true, "the clip plays");
+  t.check(await p.isHidden("#desktop-only a:has-text('Blog post')"), "no link to the post it sits in");
+  t.check(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "nothing wider than a 320 px phone");
+  t.check(await p.evaluate(() => { const n = document.getElementById("desktop-only"); return n.scrollHeight > n.clientHeight; }),
+          "taller than the phone, the note scrolls instead of cutting off its top");
+});
+
+test("phones with reduced motion get the still, and the clip only on play", async (t, b) => {
+  const p = await open(b, t, {viewport: {width: 390, height: 844}, mobile: true, wait: false, reducedMotion: "reduce"});
+  await p.waitForSelector("#desktop-only:not([hidden]) .clip");
+  await p.waitForTimeout(1500);
+  const clip = await p.evaluate(() => { const v = document.querySelector("#desktop-only .clip"); return {paused: v.paused, controls: v.controls, poster: v.poster}; });
+  t.check(clip.paused && clip.controls && /phone-clip\.jpg$/.test(clip.poster), `it stays on the still, with controls (${JSON.stringify(clip)})`);
 });
 
 // ---------- run ----------

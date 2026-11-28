@@ -287,6 +287,18 @@ test("freeing the mouse mid-run shows how far you got, the sign-up and RESUME; n
   t.check(await p.isHidden("#coach-release"), "while Claude plays, freeing the mouse shows nothing");
 });
 
+test("leaving mid-level says how far the player got; watching Claude says nothing", async (t, b) => {
+  const p = await open(b, t);
+  await p.evaluate(() => dispatchEvent(new Event("pagehide")));
+  t.check(!(await sent(p, "Left mid-level")).length, "leaving while Claude plays isn't counted");
+  await takeOver(p);
+  const pids = (await game(p)).monsters.filter(m => m.pid % 3 === 0).map(m => m.pid);   // one room's records
+  await p.evaluate(pids => pids.forEach(pid => Module.bridge(`kill ${pid}`)), pids);
+  await p.evaluate(() => dispatchEvent(new Event("pagehide")));
+  const [left] = await sent(p, "Left mid-level"), killed = (await panel(p)).kill_total;
+  t.check(left?.records === `${killed}/45` && left.rooms === "1" && /^[12]$/.test(left.step), `Left mid-level: ${JSON.stringify(left)}`);
+});
+
 test("the panel's record card links the sign-up after a kill", async (t, b) => {
   const p = await open(b, t);
   await takeOver(p);
